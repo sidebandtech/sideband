@@ -1,0 +1,26 @@
+SPDX-FileCopyrightText: 2025-present Sideband <https://sideband.tech>
+SPDX-License-Identifier: CC-BY-4.0
+
+================================================================================
+DOCUMENTATION LICENSE
+
+All documentation, specifications, and Architecture Decision Records (ADRs)
+located in the "docs/" directory are licensed under the Creative Commons
+Attribution 4.0 International (CC BY 4.0) License.
+
+You are free to:
+
+- Share — copy and redistribute the documentation in any medium or format
+- Adapt — remix, transform, and build upon the documentation for any purpose,
+  even commercially
+
+Under the following terms:
+
+- Attribution — You must give appropriate credit, provide a link to the
+  license, and indicate if changes were made. You may do so in any reasonable
+  manner, but not in any way that suggests the licensor endorses you or your use.
+
+For the full text of the CC BY 4.0 license, visit:
+https://creativecommons.org/licenses/by/4.0/
+
+================================================================================

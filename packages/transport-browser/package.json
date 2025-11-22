@@ -1,0 +1,9 @@
+{
+  "name": "@sideband/transport-browser",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@sideband/protocol": "workspace:^",
+    "@sideband/transport": "workspace:^"
+  }
+}

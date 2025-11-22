@@ -1,0 +1,6 @@
+{
+  "name": "@sideband/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {}
+}
