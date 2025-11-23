@@ -17,11 +17,13 @@ Initial wire format treated `FrameId` as UTF-8 text with space-padding to 16 byt
 
 `FrameId` is 16 opaque bytes (128 bits) generated via `crypto.getRandomValues()`.
 
-**Wire:** 16 raw bytes, no encoding or padding.
+**Wire:** 16 raw bytes, no encoding or padding, no semantic bits or structure.
 
 **Type:** `FrameId = Uint8Array & { __brand: "FrameId" }`
 
-**Validation:** `asFrameId()` enforces exactly 16 bytes.
+**Validation:** `asFrameId()` enforces exactly 16 bytes. No bit-level validation; FrameId is treated as pure entropy.
+
+**Key distinction:** Frame header flags (byte 1) are separate from FrameId. FrameId has no semantic bits or structure.
 
 **Human representation:** Helpers for logs/JSON:
 

@@ -1,6 +1,6 @@
 {
   "name": "@sideband/transport",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Transport ABI and shared helpers for Sideband: Transport interface, endpoint branding, reference memory transport, and reconnect/backoff utilities without env coupling.",
   "license": "AGPL-3.0-or-later",
   "repository": {
@@ -27,12 +27,12 @@
     "p2p"
   ],
   "type": "module",
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },

@@ -32,16 +32,8 @@ for (const pkg of packages) {
   let updated = false;
 
   // Update exports field
-  if (pkgJson.exports?.["."]?.types === "./src/index.ts") {
-    pkgJson.exports["."].types = "./dist/index.d.ts";
-    pkgJson.exports["."].import = "./dist/index.js";
-    pkgJson.exports["."].default = "./dist/index.js";
-    updated = true;
-  }
-
-  // Update top-level types field
-  if (pkgJson.types === "./src/index.ts") {
-    pkgJson.types = "./dist/index.d.ts";
+  if (pkgJson.exports?.["."]?.bun) {
+    delete pkgJson.exports["."].bun;
     updated = true;
   }
 

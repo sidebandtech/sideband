@@ -1,32 +1,32 @@
 // SPDX-FileCopyrightText: 2025-present Sideband
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
+import { ControlOp, FrameKind } from "./constants.js";
+import { ProtocolError } from "./error.js";
+import { decodeHandshake, encodeHandshake } from "./handshake.js";
 import {
+  createCloseFrame,
   createHandshakeFrame,
+  createMessageFrame,
   createPingFrame,
   createPongFrame,
-  createCloseFrame,
-  createMessageFrame,
-  encodeFrame,
   decodeFrame,
+  encodeFrame,
+  isCloseFrame,
   isHandshakeFrame,
+  isMessageFrame,
   isPingFrame,
   isPongFrame,
-  isCloseFrame,
-  isMessageFrame,
 } from "./index.js";
-import { ControlOp, ErrorCode } from "./constants.js";
-import { encodeHandshake, decodeHandshake } from "./handshake.js";
 import {
-  asPeerId,
   asFrameId,
+  asPeerId,
   asSubject,
-  generateFrameId,
-  frameIdToHex,
   frameIdFromHex,
+  frameIdToHex,
+  generateFrameId,
 } from "./types.js";
-import { ProtocolError } from "./error.js";
 
 describe("Codec: Frame ID handling", () => {
   it("should generate 16-byte (128-bit) binary frame IDs", () => {
@@ -79,16 +79,27 @@ describe("Codec: Frame ID handling", () => {
 });
 
 describe("Codec: Flag validation", () => {
-  it("should reject frames with non-zero flags", () => {
+  it("should accept frames with timestamp bit set (bit 0)", () => {
+    const frame = createPingFrame({ timestamp: Date.now() });
+    const encoded = encodeFrame(frame);
+
+    // Should decode successfully with timestamp
+    const decoded = decodeFrame(encoded);
+    expect(decoded.kind).toBe(FrameKind.Control);
+    if (!isPingFrame(decoded)) throw new Error("Not a ping frame");
+    expect(decoded.timestamp).toBeDefined();
+  });
+
+  it("should reject frames with reserved flag bits set (bits 1–7)", () => {
     const frame = createPingFrame();
     const encoded = encodeFrame(frame);
 
-    // Corrupt the flags byte (offset 1)
+    // Set bit 1 (reserved) while keeping bit 0 clear
     const corrupted = new Uint8Array(encoded);
-    corrupted[1] = 0x01; // Set flags to 1
+    corrupted[1] = 0x02; // Set flags to 0b00000010 (bit 1)
 
     expect(() => decodeFrame(corrupted)).toThrow(
-      "Invalid frame: unexpected flags",
+      "reserved flag bits must be zero",
     );
   });
 });
@@ -598,7 +609,7 @@ describe("Conformance: Handshake Validation", () => {
     const encoded = encodeHandshake(payload);
     const decoded = decodeHandshake(encoded);
 
-    expect(decoded.peerId).toBe("peer-123");
+    expect(decoded.peerId).toBe(asPeerId("peer-123"));
     expect(decoded.caps).toEqual(["rpc", "pubsub"]);
     expect(decoded.metadata).toEqual({ region: "us-east", version: "1.0" });
   });
@@ -620,7 +631,7 @@ describe("Conformance: Handshake Validation", () => {
     const encoded = encodeHandshake(payload);
     // Should decode without crashing
     const decoded = decodeHandshake(encoded);
-    expect(decoded.peerId).toBe("peer-123");
+    expect(decoded.peerId).toBe(asPeerId("peer-123"));
   });
 });
 
@@ -649,6 +660,42 @@ describe("Conformance: Round-trip Encoding", () => {
     }
   });
 
+  it("should preserve timestamps in round-trip encode/decode", () => {
+    const now = Date.now();
+    const frames = [
+      createPingFrame({ timestamp: now }),
+      createPongFrame({ timestamp: now }),
+      createMessageFrame("rpc/test", new Uint8Array([1, 2, 3]), {
+        timestamp: now,
+      }),
+      createHandshakeFrame(new TextEncoder().encode("{}"), {
+        timestamp: now,
+      }),
+    ];
+
+    for (const frame of frames) {
+      const encoded = encodeFrame(frame);
+      const decoded = decodeFrame(encoded);
+
+      // timestamp must be preserved
+      expect(decoded.timestamp).toBe(now);
+      // frameId must be identical
+      expect(decoded.frameId).toEqual(frame.frameId);
+    }
+  });
+
+  it("should omit timestamp when not provided", () => {
+    const frame = createPingFrame(); // no timestamp
+    const encoded = encodeFrame(frame);
+    const decoded = decodeFrame(encoded);
+
+    // timestamp should be undefined
+    expect(decoded.timestamp).toBeUndefined();
+    // encoded size should not include 8-byte timestamp
+    // Structure: 1 (type) + 1 (flags) + 16 (frameId) + 0 (no timestamp) + 1 (ping op) = 19 bytes
+    expect(encoded.length).toBe(19);
+  });
+
   it("should preserve order in sequence of frames", () => {
     const frames = [
       createMessageFrame("rpc/first", new Uint8Array([1])),
@@ -659,9 +706,9 @@ describe("Conformance: Round-trip Encoding", () => {
     const encoded = frames.map((f) => encodeFrame(f));
     const decoded = encoded.map((b) => decodeFrame(b));
 
-    if (!isMessageFrame(decoded[0])) throw new Error("Not a message frame");
-    if (!isMessageFrame(decoded[1])) throw new Error("Not a message frame");
-    if (!isMessageFrame(decoded[2])) throw new Error("Not a message frame");
+    if (!isMessageFrame(decoded[0]!)) throw new Error("Not a message frame");
+    if (!isMessageFrame(decoded[1]!)) throw new Error("Not a message frame");
+    if (!isMessageFrame(decoded[2]!)) throw new Error("Not a message frame");
 
     expect(decoded[0].subject).toBe(asSubject("rpc/first"));
     expect(decoded[1].subject).toBe(asSubject("event/second"));
@@ -822,19 +869,63 @@ describe("Conformance: Invalid Frame ID Handling", () => {
 });
 
 describe("Conformance: Reserved Bits Validation", () => {
-  it("should reject all non-zero flag bit patterns", () => {
+  it("should reject all non-zero reserved flag bits (bits 1–7)", () => {
     const frameId = generateFrameId();
 
-    // Test various flag patterns
-    for (let flags = 1; flags <= 255; flags++) {
+    // Test flags with reserved bits (1–7) set, with and without timestamp bit (0)
+    for (let reservedBits = 1; reservedBits <= 127; reservedBits++) {
+      // Shift left by 1 to test bits 1–7
+      const flags = reservedBits << 1;
+
       const buffer = new Uint8Array([
         0, // frame kind
-        flags, // non-zero flags (reserved)
+        flags, // reserved bits set
         ...frameId,
         0, // control op (ping)
       ]);
 
-      expect(() => decodeFrame(buffer)).toThrow(/unexpected flags/);
+      expect(() => decodeFrame(buffer)).toThrow(
+        /reserved flag bits must be zero/,
+      );
+    }
+  });
+
+  it("should accept timestamp bit (bit 0) without reserved bits", () => {
+    const now = Date.now();
+    const frame = createPingFrame({ timestamp: now });
+    const encoded = encodeFrame(frame);
+
+    // Verify flags bit 0 is set
+    expect(encoded[1]! & 0x01).toBe(1);
+    // Verify bits 1-7 are zero
+    expect(encoded[1]! & 0xfe).toBe(0);
+
+    // Decode and verify
+    const decoded = decodeFrame(encoded);
+    expect(decoded.kind).toBe(FrameKind.Control);
+    expect(decoded.timestamp).toBe(now);
+    if (!isPingFrame(decoded)) throw new Error("Not a ping frame");
+  });
+
+  it("should reject reserved bits even when timestamp bit is set", () => {
+    const frameId = generateFrameId();
+
+    // Test flags with both timestamp bit (0) and reserved bits (1–7)
+    // Examples: 0b10000001 (timestamp + bit 7), 0b00100001 (timestamp + bit 5), etc.
+    for (let reservedBits = 1; reservedBits <= 127; reservedBits++) {
+      // Combine timestamp bit (0x01) with reserved bits (shifted left by 1)
+      const flags = 0x01 | (reservedBits << 1);
+
+      const buffer = new Uint8Array([
+        0, // frame kind
+        flags, // timestamp bit + reserved bits
+        ...frameId,
+        0, // control op (ping)
+      ]);
+
+      expect(() => decodeFrame(buffer)).toThrow(
+        /reserved flag bits must be zero/,
+      );
     }
   });
 });

@@ -2,21 +2,29 @@
 
 Canonical on-wire contract for `@sideband/protocol`. Applies to all transports that carry Sideband frames (WS, loopback, future TCP). Values are little-endian unless stated otherwise.
 
+**Note**: All v1 implementations MUST support the timestamp flag bit (bit 0), even if unused. Frames with bit 0 set include an 8-byte timestamp after the frame ID.
+
 ## Envelope
 
 - Version tag: `sideband/1` (see `PROTOCOL_ID`). All frames belong to this version; negotiation happens via the handshake payload, not per-frame.
-- Header (fixed 2 bytes): `t` (1 byte, `FrameKind`), `flags` (1 byte; bit0 `ts`, bit1..7 reserved = 0).
-- Frame ID (`id`): **16 raw bytes (128 bits) of opaque data. Always present.** Generated via cryptographic randomness. Used for request/response correlation and ACK linkage; auto-generated to simplify runtime logic. No padding, no string encoding, no trimming.
-- Optional timestamp: 8-byte signed int (ms since epoch).
-- Payload: type-specific body (below).
+- **Header (fixed 2 bytes)**: `t` (1 byte, `FrameKind`), `flags` (1 byte).
+  - **Important**: Flags are part of the frame header, **not** part of the FrameId.
+  - **Bit 0** (`ts`): timestamp present (1) or absent (0). When set, an 8-byte timestamp follows the frame header before the payload.
+  - **Bits 1–7**: reserved and must be zero in v1. Non-zero reserved bits close the connection.
+- **Frame ID (`id`)**: **16 raw bytes (128 bits) of opaque entropy. Always present.** Generated via cryptographic randomness. Used for request/response correlation and ACK linkage; auto-generated to simplify runtime logic. No padding, no string encoding, no trimming, no semantic bits.
+  - Decoders MUST treat FrameId as raw binary.
+  - Decoders MUST NOT interpret any bits within FrameId.
+  - Validation is length-only: must be exactly 16 bytes.
+- **Optional timestamp** (if `flags` bit 0 is set): 8-byte signed int (milliseconds since Unix epoch).
+- **Payload**: type-specific body (below).
 
 ## Frame kinds
 
 - Control (`t=0`): first byte `c` (`ControlOp`), rest `data` (opaque).
   - Handshake (`c=0`): `data` is UTF-8 JSON of `HandshakePayload` (see below). MUST be first frame both peers send.
-  - Ping (`c=1`), Pong (`c=2`): no data. MAY include timestamp via `ts`.
+  - Ping (`c=1`), Pong (`c=2`): no `data`. Timestamp via `flags` bit 0 is optional and recommended for keepalive latency measurement.
   - Close (`c=3`): optional UTF-8 reason in `data`.
-- Message (`t=1`): **A routable, identity-bearing unit of application data.** Structure: `subjectLen` (uint32 LE) + `subject` (UTF-8, routing key) + `data` (opaque bytes). `frameId` is always present for correlation; `ts` optional. Called "Message" (not "Data") because each frame is a distinct, routable entity with optional acknowledgement support—semantically closer to messaging systems than byte streams. Wire keys: `s` (subject), `b` (data).
+- Message (`t=1`): **A routable, identity-bearing unit of application data.** Structure: `subjectLen` (uint32 LE) + `subject` (UTF-8, routing key) + `data` (opaque bytes). `frameId` always present for correlation; timestamp optional (via `flags` bit 0). Called "Message" (not "Data") because each frame is a distinct, routable entity with optional acknowledgement support—semantically closer to messaging systems than byte streams. Wire keys: `s` (subject), `b` (data).
   - **Important**: `frameId` is sender-local unique and MUST NOT be reused or copied by the receiver into outbound frames. Each peer generates its own unique `frameId` for every frame it emits. For RPC correlation, see ADR-010 (uses explicit `cid` field in the envelope payload, not `frameId`).
 - Ack (`t=2`): 16-byte `ackFrameId` (opaque binary, matching a prior frame's `frameId`). No payload data.
 - Error (`t=3`): `code` (uint16 LE `ErrorCode`) + `msgLen` (uint32 LE) + `message` (UTF-8) + optional `details` (opaque bytes). SHOULD set `frameId` to the failing frame's `frameId` when available.
@@ -38,7 +46,7 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
 
 - Required: header bytes, `id` (frameId, always present), frame-specific payload fields; handshake `protocol`, `version`, `peerId`, Message `subject`, Error `code` + `message`.
 - Optional: `ts`, `caps`, `metadata`, message `data`, error `details`, Close reason.
-- Reserved: flags bit1..7, Control ops >3, future frame kinds >3. Receivers MUST ignore reserved bits set to 0 and close on non-zero reserved bits.
+- Reserved: Control ops >3, future frame kinds >3. For flags: bit 0 has defined semantics (timestamp); bits 1–7 are reserved and MUST be zero.
 
 ## Size & limits
 
@@ -59,6 +67,9 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
 
 ## Compatibility matrix (v1)
 
-- Accept frames where: `t` ∈ [0..3], reserved flags clear, required fields present, `frameId` is exactly 16 bytes.
+- Accept frames where: `t` ∈ [0..3], reserved flag bits (1–7) are zero, required fields present, `frameId` is exactly 16 bytes.
+  - Bit 0 of flags can be 0 or 1 (controls timestamp presence).
+  - Bits 1–7 MUST be zero.
 - Ignore: unknown `caps`/`metadata` keys, extra bytes in Error `details`.
-- Reject/close: unsupported `protocol`/`version`, malformed lengths, unknown frame kind, reserved flag bits set, frames before handshake, invalid `frameId` length.
+- Reject/close: unsupported `protocol`/`version`, malformed lengths, unknown frame kind, non-zero reserved flag bits (1–7), frames before handshake, invalid `frameId` length.
+  - **Flag validation**: If any bit 1–7 is set in the flags byte, send `ErrorFrame{code=InvalidFrame}` and close.

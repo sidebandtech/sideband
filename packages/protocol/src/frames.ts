@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025-present Sideband
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ControlOp, ErrorCode, FrameKind } from "./constants.js";
 import type { FrameId, Subject } from "./types.js";
-import { FrameKind, ControlOp, ErrorCode } from "./constants.js";
-import { generateFrameId, asSubject } from "./types.js";
+import { asSubject, generateFrameId } from "./types.js";
 
 /**
  * Base frame structure shared by all frame types.
@@ -15,6 +15,7 @@ import { generateFrameId, asSubject } from "./types.js";
 export interface BaseFrame {
   readonly kind: FrameKind;
   readonly frameId: FrameId; // identifies this frame instance; used for request/response correlation and ACK linkage
+  readonly timestamp?: number; // optional: milliseconds since Unix epoch; omitted if not present on wire
 }
 
 /**
@@ -124,6 +125,7 @@ export type Frame = Readonly<
  */
 export interface ControlFrameOptions {
   frameId?: FrameId;
+  timestamp?: number; // optional: milliseconds since Unix epoch
 }
 
 /**
@@ -141,6 +143,7 @@ export function createHandshakeFrame(
     kind: FrameKind.Control,
     op: ControlOp.Handshake,
     frameId: opts?.frameId ?? generateFrameId(),
+    timestamp: opts?.timestamp,
     data,
   };
 }
@@ -158,6 +161,7 @@ export function createPingFrame(
     kind: FrameKind.Control,
     op: ControlOp.Ping,
     frameId: opts?.frameId ?? generateFrameId(),
+    timestamp: opts?.timestamp,
     data: undefined,
   };
 }
@@ -175,6 +179,7 @@ export function createPongFrame(
     kind: FrameKind.Control,
     op: ControlOp.Pong,
     frameId: opts?.frameId ?? generateFrameId(),
+    timestamp: opts?.timestamp,
     data: undefined,
   };
 }
@@ -194,6 +199,7 @@ export function createCloseFrame(
     kind: FrameKind.Control,
     op: ControlOp.Close,
     frameId: opts?.frameId ?? generateFrameId(),
+    timestamp: opts?.timestamp,
     data: reason,
   };
 }
@@ -204,6 +210,7 @@ export function createCloseFrame(
  */
 export interface MessageFrameOptions {
   frameId?: FrameId;
+  timestamp?: number; // optional: milliseconds since Unix epoch
 }
 
 /**
@@ -226,6 +233,7 @@ export function createMessageFrame(
   return {
     kind: FrameKind.Message,
     frameId: opts?.frameId ?? generateFrameId(),
+    timestamp: opts?.timestamp,
     subject: validatedSubject,
     data,
   };

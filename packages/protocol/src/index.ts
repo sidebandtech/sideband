@@ -19,78 +19,79 @@
 
 // Types
 export type {
-  PeerId,
   ConnectionId,
-  FrameId,
   CorrelationId,
+  FrameId,
+  PeerId,
   StreamId,
   Subject,
 } from "./types.js";
 
 export {
-  asPeerId,
   asConnectionId,
-  asFrameId,
   asCorrelationId,
+  asFrameId,
+  asPeerId,
   asStreamId,
   asSubject,
-  generateFrameId,
-  frameIdToHex,
   frameIdFromHex,
+  frameIdToHex,
+  generateFrameId,
+  MAX_SUBJECT_BYTES,
 } from "./types.js";
 
 // Constants and enums
 export {
-  PROTOCOL_NAME,
-  PROTOCOL_VERSION,
-  PROTOCOL_ID,
-  FrameKind,
   ControlOp,
   ErrorCode,
+  FrameKind,
+  PROTOCOL_ID,
+  PROTOCOL_NAME,
+  PROTOCOL_VERSION,
 } from "./constants.js";
 
 // Frames
 export type {
-  Frame,
-  BaseFrame,
-  ControlFrame,
+  AckFrame,
   BaseControlFrame,
+  BaseFrame,
+  CloseControlFrame,
+  ControlFrame,
+  ControlFrameOptions,
+  ErrorFrame,
+  Frame,
   HandshakeControlFrame,
+  MessageFrame,
+  MessageFrameOptions,
   PingControlFrame,
   PongControlFrame,
-  CloseControlFrame,
-  MessageFrame,
-  AckFrame,
-  ErrorFrame,
-  ControlFrameOptions,
-  MessageFrameOptions,
 } from "./frames.js";
 
 export {
+  createCloseFrame,
   createHandshakeFrame,
+  createMessageFrame,
   createPingFrame,
   createPongFrame,
-  createCloseFrame,
-  createMessageFrame,
 } from "./frames.js";
 
 // Handshake
+export { decodeHandshake, encodeHandshake } from "./handshake.js";
 export type { HandshakePayload } from "./handshake.js";
-export { encodeHandshake, decodeHandshake } from "./handshake.js";
 
 // Codec
-export { encodeFrame, decodeFrame } from "./codec.js";
+export { decodeFrame, encodeFrame } from "./codec.js";
 
 // Type guards
 export {
+  isAckFrame,
+  isCloseFrame,
   isControlFrame,
+  isErrorFrame,
   isHandshakeFrame,
+  isMessageFrame,
   isPingFrame,
   isPongFrame,
-  isCloseFrame,
-  isMessageFrame,
-  isAckFrame,
-  isErrorFrame,
   isValidFrameId,
 } from "./guards.js";
 

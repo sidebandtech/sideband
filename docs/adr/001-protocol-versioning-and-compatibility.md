@@ -17,7 +17,8 @@
 - Compatibility rules for v1:
   - Additive only: new optional fields, new `ControlOp`, new capability strings are allowed without a major bump.
   - Unknown fields/caps/metadata MUST be ignored, not rejected.
-  - Reserved bits in the frame header MUST stay zero; receiving non-zero reserved bits is a protocol error and should close the connection.
+  - **Frame header flags** (byte 1): bit 0 signals timestamp presence; bits 1–7 reserved and must be zero. Non-zero reserved bits close the connection. See protocol-wire-format.md.
+  - **FrameId** (16 bytes): opaque entropy with no semantic bits or structure. Decoders MUST treat as raw binary and MUST NOT interpret any bits. Validation is length-only (must be exactly 16 bytes).
   - Mandatory field changes (renames/removals) require a new major version.
 - Error behavior on skew:
   - If `protocol` or `version` is unsupported, send `ErrorFrame{code=UnsupportedVersion}` then close.
@@ -29,4 +30,5 @@
 - Implementations can evolve v1 by adding optional data without breaking peers.
 - Tests must include cases where unknown `caps`/metadata are ignored and reserved bits cause rejection.
 - Transports should surface version errors early (during handshake) to avoid partial session setup.
+- **v1 Timestamp Feature**: Timestamps (flag bit 0) are an integrated v1 feature. All implementations MUST handle the timestamp bit, even if unused. Senders MAY include timestamps on any frame; receivers simply skip them if not used.
 - Future major versions will introduce a new handshake version string and may reuse the same framing with different semantics; coexistence requires either separate listeners or a negotiator shim.

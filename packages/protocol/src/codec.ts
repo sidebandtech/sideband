@@ -1,19 +1,19 @@
 // SPDX-FileCopyrightText: 2025-present Sideband
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ControlOp, ErrorCode, FrameKind } from "./constants.js";
+import { ProtocolError } from "./error.js";
 import type {
-  Frame,
+  AckFrame,
+  CloseControlFrame,
   ControlFrame,
+  ErrorFrame,
+  Frame,
   HandshakeControlFrame,
+  MessageFrame,
   PingControlFrame,
   PongControlFrame,
-  CloseControlFrame,
-  MessageFrame,
-  AckFrame,
-  ErrorFrame,
 } from "./frames.js";
-import { FrameKind, ControlOp, ErrorCode } from "./constants.js";
-import { ProtocolError } from "./error.js";
 import type { FrameId } from "./types.js";
 import { asFrameId, asSubject } from "./types.js";
 
@@ -21,8 +21,9 @@ import { asFrameId, asSubject } from "./types.js";
  * Binary codec for frames.
  * Format (little-endian):
  *   - 1 byte: frame type (FrameKind)
- *   - 1 byte: frame flags (reserved; must be 0)
+ *   - 1 byte: frame flags (bit 0: timestamp present; bits 1–7: reserved, must be zero)
  *   - 16 bytes: frame ID (always present, opaque binary)
+ *   - [conditional] 8 bytes: timestamp (milliseconds since Unix epoch, if flags & 0x01)
  *   - Remaining: payload (type-specific)
  */
 
@@ -32,14 +33,21 @@ const HEADER_SIZE = 2;
 const FRAME_ID_SIZE = 16;
 const HEADER_WITH_FRAME_ID_SIZE = HEADER_SIZE + FRAME_ID_SIZE;
 
+// Flag bit semantics (v1)
+const TIMESTAMP_FLAG_BIT = 0x01; // bit 0: timestamp present (1) or absent (0)
+const RESERVED_FLAGS_MASK = 0b11111110; // bits 1–7: reserved, must be zero
+
 /**
  * Encode a frame to bytes.
+ * Frame format: [type (1)] [flags (1)] [frameId (16)] [timestamp (8, if flags&0x01)] [payload]
  */
 export function encodeFrame(frame: Frame): Uint8Array {
-  const flags = 0; // reserved for future use
+  const flags = frame.timestamp !== undefined ? TIMESTAMP_FLAG_BIT : 0x00;
 
   const payloadBytes = encodeFramePayload(frame);
-  const totalSize = HEADER_WITH_FRAME_ID_SIZE + payloadBytes.length;
+  const timestampSize = frame.timestamp !== undefined ? 8 : 0;
+  const totalSize =
+    HEADER_WITH_FRAME_ID_SIZE + timestampSize + payloadBytes.length;
   const buffer = new Uint8Array(totalSize);
   const view = new DataView(buffer.buffer);
 
@@ -53,12 +61,19 @@ export function encodeFrame(frame: Frame): Uint8Array {
   buffer.set(frame.frameId, offset);
   offset += FRAME_ID_SIZE;
 
+  // optional 8-byte timestamp (milliseconds since Unix epoch)
+  if (frame.timestamp !== undefined) {
+    view.setBigInt64(offset, BigInt(frame.timestamp), true);
+    offset += 8;
+  }
+
   buffer.set(payloadBytes, offset);
   return buffer;
 }
 
 /**
  * Decode a frame from bytes.
+ * Frame format: [type (1)] [flags (1)] [frameId (16)] [timestamp (8, if flags&0x01)] [payload]
  * Returns a deeply readonly frame to prevent accidental mutation.
  * See ADR 007 for immutability rationale.
  */
@@ -71,17 +86,21 @@ export function decodeFrame(buffer: Uint8Array): Readonly<Frame> {
   const frameKind = view.getUint8(FRAME_TYPE_OFFSET) as FrameKind;
   const flags = view.getUint8(FLAGS_OFFSET);
 
-  // flags is reserved for future use; validate it's zero for now
-  if (flags !== 0) {
+  // Per ADR-001 and protocol-wire-format: reserved bits 1–7 must be zero in v1.
+  // Bit 0 controls timestamp presence. Non-zero reserved bits are a protocol violation.
+  if ((flags & RESERVED_FLAGS_MASK) !== 0) {
     throw new ProtocolError(
-      "Invalid frame: unexpected flags",
+      "Invalid frame: reserved flag bits must be zero",
       ErrorCode.InvalidFrame,
     );
   }
 
+  const hasTimestamp = (flags & TIMESTAMP_FLAG_BIT) !== 0;
+
   let offset = HEADER_SIZE;
 
-  // frameId is always present, opaque 16 bytes
+  // frameId is always present, opaque 16 bytes.
+  // Per ADR-004 and protocol-wire-format, FrameId is raw entropy with no semantic bits.
   if (buffer.length < offset + FRAME_ID_SIZE) {
     throw new ProtocolError(
       "Invalid frame: incomplete frame ID",
@@ -92,8 +111,21 @@ export function decodeFrame(buffer: Uint8Array): Readonly<Frame> {
   const frameId = asFrameId(frameIdBytes);
   offset += FRAME_ID_SIZE;
 
+  // optional 8-byte timestamp (if bit 0 is set)
+  let timestamp: number | undefined;
+  if (hasTimestamp) {
+    if (buffer.length < offset + 8) {
+      throw new ProtocolError(
+        "Invalid frame: incomplete timestamp",
+        ErrorCode.InvalidFrame,
+      );
+    }
+    timestamp = Number(view.getBigInt64(offset, true));
+    offset += 8;
+  }
+
   const payload = buffer.slice(offset);
-  return decodeFramePayload(frameKind, payload, { frameId });
+  return decodeFramePayload(frameKind, payload, { frameId, timestamp });
 }
 
 /**
@@ -217,7 +249,7 @@ function encodeFramePayload(frame: Frame): Uint8Array {
 function decodeFramePayload(
   frameKind: FrameKind,
   payload: Uint8Array,
-  base: { frameId: FrameId },
+  base: { frameId: FrameId; timestamp?: number },
 ): Frame {
   const decodeString = (bytes: Uint8Array): string => {
     return globalThis.TextDecoder

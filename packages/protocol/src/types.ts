@@ -24,7 +24,14 @@ export type ConnectionId = Brand<string, "ConnectionId">;
  * Unique identifier for a frame instance on the wire.
  * In v1, this ID is used for request/response correlation and ACK linkage.
  * Reserved CorrelationId for v2 multi-hop tracing semantics.
- * FrameId is 16 opaque bytes (128 bits) of cryptographic randomness.
+ * FrameId is 16 opaque bytes (128 bits) of cryptographic randomness, generated via crypto.getRandomValues().
+ *
+ * **Important**: FrameId is opaque entropy with no semantic bits or structure.
+ * Decoders MUST NOT interpret any bits within FrameId.
+ * Validation is length-only (must be exactly 16 bytes).
+ *
+ * Frame header flags (byte 1 of the envelope) are separate from FrameId.
+ * See ADR-001, ADR-004, and protocol-wire-format.md for details.
  */
 export type FrameId = Uint8Array & { readonly __brand: "FrameId" };
 
@@ -57,9 +64,21 @@ export function asConnectionId(value: string): ConnectionId {
   return value as ConnectionId;
 }
 
+/**
+ * Brand a Uint8Array as a valid FrameId.
+ * Per ADR-004 and protocol-wire-format, FrameId is opaque entropy with no semantic bits.
+ * Validation is length-only; FrameId bytes are treated as raw binary and never interpreted.
+ *
+ * @param value The bytes to validate
+ * @returns The branded FrameId
+ * @throws {ProtocolError} with code InvalidFrame if value is not exactly 16 bytes
+ */
 export function asFrameId(value: Uint8Array): FrameId {
   if (value.length !== 16) {
-    throw new Error(`FrameId must be exactly 16 bytes, got ${value.length}`);
+    throw new ProtocolError(
+      `FrameId must be exactly 16 bytes, got ${value.length}`,
+      ErrorCode.InvalidFrame,
+    );
   }
   return value as FrameId;
 }
@@ -84,10 +103,16 @@ const RESERVED_SUBJECT_PREFIXES = [
 ] as const;
 
 /**
+ * Maximum length of a subject in UTF-8 bytes.
+ * Used to prevent unbounded memory allocations and enforce protocol limits.
+ */
+export const MAX_SUBJECT_BYTES = 256;
+
+/**
  * Validate and brand a subject string.
  *
  * A valid subject:
- * - Must be 1–256 UTF-8 bytes in length
+ * - Must be 1–MAX_SUBJECT_BYTES UTF-8 bytes in length
  * - Must not contain null bytes
  * - Must start with one of the reserved prefixes: "rpc/", "event/", "stream/", "app/"
  *
@@ -121,9 +146,9 @@ export function asSubject(value: string): Subject {
       ErrorCode.ProtocolViolation,
     );
   }
-  if (utf8Bytes.byteLength > 256) {
+  if (utf8Bytes.byteLength > MAX_SUBJECT_BYTES) {
     throw new ProtocolError(
-      `Subject exceeds 256 UTF-8 bytes (got ${utf8Bytes.byteLength})`,
+      `Subject exceeds ${MAX_SUBJECT_BYTES} UTF-8 bytes (got ${utf8Bytes.byteLength})`,
       ErrorCode.ProtocolViolation,
     );
   }
