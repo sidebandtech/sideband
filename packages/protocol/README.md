@@ -1,6 +1,6 @@
 # @sideband/protocol
 
-Canonical Sideband wire contract: branded IDs, protocol constants/error codes, frame + handshake shapes, binary codec, and the raw transport interface. No I/O or runtime logic.
+Canonical Sideband wire contract: branded IDs, protocol constants/error codes, frame + handshake shapes, and binary codec. No I/O, runtime logic, or transport definitions.
 
 ## Install
 
@@ -54,9 +54,8 @@ const msgBytes = encodeFrame(msg);
 - Protocol constants/enums and standardized error codes
 - Handshake payload helpers (encode/decode + validation)
 - Binary frame codec with invariants enforced on encode/decode
-- `RawTransport` interface for browser/node transport implementations
 
-Keep business logic, retries, and state machines in `@sideband/runtime` or transports—this package only defines the contract.
+For transport implementations, see `@sideband/transport`, which defines the transport ABI that all concrete transports must implement. Keep business logic, retries, and state machines in `@sideband/runtime` or transports—this package only defines the wire contract.
 
 ## License
 
