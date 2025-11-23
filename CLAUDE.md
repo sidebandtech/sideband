@@ -25,4 +25,4 @@ protocol → core runtime → RPC → client SDK → browser/node transports →
 - **Package Management**: Bun workspaces
 - **Strict Mode**: Full strict TypeScript with additional safety checks
 - **Project Structure**: @docs/architecture/project-structure.md
-- **Glossary and naming**: @docs/adr/002-naming-matrix.md @docs/glossary.md
+- **Naming matrix (canonical reference)**: @docs/adr/002-naming-matrix.md

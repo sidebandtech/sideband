@@ -22,10 +22,14 @@ Sideband is a modern peer-to-peer communication stack for Bun and TypeScript: pr
 - Install deps: `bun install`
 - Explore code: [`packages/*`](./packages/)
 
+### Learn the concepts
+
+For protocol terminology, type names, frame kinds, and subject namespace rules, see the **[Naming Matrix](./docs/adr/002-naming-matrix.md)** (ADR-002), which is the canonical reference for all Sideband concepts.
+
 ### Get involved
 
 - Open an issue or start a discussion to say hi
-- Interested in sponsoring or collaborating? [Reach out](mailto:hello@sideband.tech) and let’s plan it together
+- Interested in sponsoring or collaborating? [Reach out](mailto:hello@sideband.tech) and let's plan it together
 
 ### License
 
