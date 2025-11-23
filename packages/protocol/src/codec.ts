@@ -16,10 +16,9 @@ import { asFrameId } from "./types.js";
 /**
  * Binary codec for frames.
  * Format (little-endian):
- *   - 1 byte: frame type
- *   - 1 byte: frame flags (bit 0: has ts)
- *   - 16 bytes: frame ID (always present)
- *   - Optional 8 bytes: timestamp (if flag 0 set)
+ *   - 1 byte: frame type (FrameKind)
+ *   - 1 byte: frame flags (reserved; must be 0)
+ *   - 16 bytes: frame ID (always present, UTF-8 left-padded with spaces)
  *   - Remaining: payload (type-specific)
  */
 
@@ -27,25 +26,16 @@ const FRAME_TYPE_OFFSET = 0;
 const FLAGS_OFFSET = 1;
 const HEADER_SIZE = 2;
 const FRAME_ID_SIZE = 16;
-const TIMESTAMP_SIZE = 8;
 const HEADER_WITH_FRAME_ID_SIZE = HEADER_SIZE + FRAME_ID_SIZE;
-
-const FLAG_HAS_TS = 0b01;
 
 /**
  * Encode a frame to bytes.
  */
 export function encodeFrame(frame: Frame): Uint8Array {
-  const hasTs = frame.timestamp !== undefined;
-
-  let flags = 0;
-  if (hasTs) flags |= FLAG_HAS_TS;
+  const flags = 0; // reserved for future use
 
   const payloadBytes = encodeFramePayload(frame);
-  const totalSize =
-    HEADER_WITH_FRAME_ID_SIZE +
-    (hasTs ? TIMESTAMP_SIZE : 0) +
-    payloadBytes.length;
+  const totalSize = HEADER_WITH_FRAME_ID_SIZE + payloadBytes.length;
   const buffer = new Uint8Array(totalSize);
   const view = new DataView(buffer.buffer);
 
@@ -64,11 +54,6 @@ export function encodeFrame(frame: Frame): Uint8Array {
   buffer.set(frameIdBytes, offset);
   offset += FRAME_ID_SIZE;
 
-  if (hasTs) {
-    view.setBigInt64(offset, BigInt(frame.timestamp), true);
-    offset += TIMESTAMP_SIZE;
-  }
-
   buffer.set(payloadBytes, offset);
   return buffer;
 }
@@ -85,7 +70,13 @@ export function decodeFrame(buffer: Uint8Array): Frame {
   const frameKind = view.getUint8(FRAME_TYPE_OFFSET) as FrameKind;
   const flags = view.getUint8(FLAGS_OFFSET);
 
-  const hasTs = (flags & FLAG_HAS_TS) !== 0;
+  // flags is reserved for future use; validate it's zero for now
+  if (flags !== 0) {
+    throw new ProtocolError(
+      "Invalid frame: unexpected flags",
+      ErrorCode.InvalidFrame
+    );
+  }
 
   let offset = HEADER_SIZE;
 
@@ -105,20 +96,8 @@ export function decodeFrame(buffer: Uint8Array): Frame {
   const frameId = asFrameId(frameIdStr);
   offset += FRAME_ID_SIZE;
 
-  let timestamp: number | undefined;
-  if (hasTs) {
-    if (buffer.length < offset + TIMESTAMP_SIZE) {
-      throw new ProtocolError(
-        "Invalid frame: incomplete timestamp",
-        ErrorCode.InvalidFrame
-      );
-    }
-    timestamp = Number(view.getBigInt64(offset, true));
-    offset += TIMESTAMP_SIZE;
-  }
-
   const payload = buffer.slice(offset);
-  return decodeFramePayload(frameKind, payload, { frameId, timestamp });
+  return decodeFramePayload(frameKind, payload, { frameId });
 }
 
 /**
@@ -196,7 +175,7 @@ function encodeFramePayload(frame: Frame): Uint8Array {
 function decodeFramePayload(
   frameKind: FrameKind,
   payload: Uint8Array,
-  base: { frameId: FrameId; timestamp?: number }
+  base: { frameId: FrameId }
 ): Frame {
   const decodeString = (bytes: Uint8Array): string => {
     return globalThis.TextDecoder

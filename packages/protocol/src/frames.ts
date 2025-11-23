@@ -13,7 +13,6 @@ import { FrameKind, ControlOp, ErrorCode } from "./constants.js";
 export interface BaseFrame {
   kind: FrameKind;
   frameId: FrameId; // identifies this frame instance; used for request/response correlation and ACK linkage
-  timestamp?: number; // optional timestamp in epoch ms
 }
 
 /**

@@ -14,7 +14,7 @@
 
 - Canonicalize on **Peer** as the intrinsic identity, using `PeerId` for type names and `peerId` for properties.
 - Adopt the following naming matrix as the canonical reference for protocol-level types, wire keys, and SDK-facing naming.
-- Wire keys (`t`, `id`, `ts`, `peerId`, `caps`, `s`, `b`) are internal to encode/decode; public TypeScript types expose descriptive names.
+- Wire keys (`t`, `id`, `peerId`, `caps`, `s`, `b`) are internal to encode/decode; public TypeScript types expose descriptive names.
 - Use these names in code, docs, tests, and public APIs; deviations require an ADR update.
 
 **Rationale**: `PeerId` avoids collision with Node.js ecosystem terminology and aligns with modern P2P standards (libp2p, IPFS, WebRTC). `NodeId` created semantic ambiguity in browser contexts and confused process identity with network-visible peer identity.
@@ -29,7 +29,6 @@
 | Frame identity       | `FrameId`        | `frameId`        | `id`     | Identifies this frame instance on the wire               |
 | Correlation identity | `CorrelationId`  | `correlationId`  | -        | **Reserved for v2.**                                     |
 | Trace identity (req) | `TraceId`        | `traceId`        | -        | Optional, spans multi-frame flows                        |
-| Timestamp            | `Timestamp`      | `timestamp`      | `ts`     | `number` (ms since epoch)                                |
 
 > `frameId` — In v1, used for request/response correlation and ACK linkage. Always present on every frame; auto-generated at construction to eliminate defensive checks in runtime/RPC layers.
 > `correlationId` — Reserved for v2 when explicit tracing or multi-hop flows require separate correlation semantics.
@@ -123,7 +122,7 @@
 > - Use `AppMessage` for application/pubsub semantics.
 > - Use `peerId` for stable peer identity; `connectionId` is per link, `sessionId` spans reconnects.
 > - Use `frameId` to identify frames; `correlationId` (or `traceId`) to link frames.
-> - Map wire fields (`t`, `id`, `ts`, `peerId`, `caps`, `s`, `b`) only inside encode/decode; never expose them in public TS types.
+> - Map wire fields (`t`, `id`, `peerId`, `caps`, `s`, `b`) only inside encode/decode; never expose them in public TS types.
 
 ## Consequences
 
