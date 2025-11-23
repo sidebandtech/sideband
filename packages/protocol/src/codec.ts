@@ -4,6 +4,10 @@
 import type {
   Frame,
   ControlFrame,
+  HandshakeControlFrame,
+  PingControlFrame,
+  PongControlFrame,
+  CloseControlFrame,
   MessageFrame,
   AckFrame,
   ErrorFrame,
@@ -11,14 +15,14 @@ import type {
 import { FrameKind, ControlOp, ErrorCode } from "./constants.js";
 import { ProtocolError } from "./error.js";
 import type { FrameId } from "./types.js";
-import { asFrameId } from "./types.js";
+import { asFrameId, asSubject } from "./types.js";
 
 /**
  * Binary codec for frames.
  * Format (little-endian):
  *   - 1 byte: frame type (FrameKind)
  *   - 1 byte: frame flags (reserved; must be 0)
- *   - 16 bytes: frame ID (always present, UTF-8 left-padded with spaces)
+ *   - 16 bytes: frame ID (always present, opaque binary)
  *   - Remaining: payload (type-specific)
  */
 
@@ -45,13 +49,8 @@ export function encodeFrame(frame: Frame): Uint8Array {
   view.setUint8(offset, flags);
   offset += 1;
 
-  // frameId is always present
-  const frameIdStr = frame.frameId as string;
-  const frameIdPadded = frameIdStr.slice(0, 16).padEnd(16);
-  const frameIdBytes = globalThis.TextEncoder
-    ? new (globalThis.TextEncoder as any)().encode(frameIdPadded)
-    : new Uint8Array(frameIdPadded.split("").map((c) => c.charCodeAt(0)));
-  buffer.set(frameIdBytes, offset);
+  // frameId is always present, opaque 16 bytes
+  buffer.set(frame.frameId, offset);
   offset += FRAME_ID_SIZE;
 
   buffer.set(payloadBytes, offset);
@@ -60,8 +59,10 @@ export function encodeFrame(frame: Frame): Uint8Array {
 
 /**
  * Decode a frame from bytes.
+ * Returns a deeply readonly frame to prevent accidental mutation.
+ * See ADR 007 for immutability rationale.
  */
-export function decodeFrame(buffer: Uint8Array): Frame {
+export function decodeFrame(buffer: Uint8Array): Readonly<Frame> {
   if (buffer.length < HEADER_WITH_FRAME_ID_SIZE) {
     throw new ProtocolError("Invalid frame: too short", ErrorCode.InvalidFrame);
   }
@@ -80,7 +81,7 @@ export function decodeFrame(buffer: Uint8Array): Frame {
 
   let offset = HEADER_SIZE;
 
-  // frameId is always present
+  // frameId is always present, opaque 16 bytes
   if (buffer.length < offset + FRAME_ID_SIZE) {
     throw new ProtocolError(
       "Invalid frame: incomplete frame ID",
@@ -88,15 +89,7 @@ export function decodeFrame(buffer: Uint8Array): Frame {
     );
   }
   const frameIdBytes = buffer.slice(offset, offset + FRAME_ID_SIZE);
-  const frameIdStr = (
-    globalThis.TextDecoder
-      ? new (globalThis.TextDecoder as any)().decode(frameIdBytes)
-      : new Uint8Array(frameIdBytes).reduce(
-          (acc, byte) => acc + String.fromCharCode(byte),
-          "",
-        )
-  ).trim();
-  const frameId = asFrameId(frameIdStr);
+  const frameId = asFrameId(frameIdBytes);
   offset += FRAME_ID_SIZE;
 
   const payload = buffer.slice(offset);
@@ -116,12 +109,55 @@ function encodeFramePayload(frame: Frame): Uint8Array {
   switch (frame.kind) {
     case FrameKind.Control: {
       const cf = frame as ControlFrame;
-      const header = new Uint8Array([cf.op]);
-      const data = cf.data || new Uint8Array();
-      const result = new Uint8Array(header.length + data.length);
-      result.set(header);
-      result.set(data, header.length);
-      return result;
+      const opByte = new Uint8Array([cf.op]);
+
+      // Per ADR 002, control ops have specific data invariants:
+      // Handshake and Close may have data; Ping/Pong must not.
+      switch (cf.op) {
+        case ControlOp.Handshake: {
+          // Handshake requires data (JSON-encoded HandshakePayload)
+          const hcf = cf as HandshakeControlFrame;
+          if (!hcf.data || hcf.data.length === 0) {
+            throw new ProtocolError(
+              "Invalid handshake frame: data is required",
+              ErrorCode.InvalidFrame,
+            );
+          }
+          const result = new Uint8Array(opByte.length + hcf.data.length);
+          result.set(opByte);
+          result.set(hcf.data, opByte.length);
+          return result;
+        }
+
+        case ControlOp.Ping:
+        case ControlOp.Pong: {
+          // Ping/Pong must not carry payload
+          const pcf = cf as PingControlFrame | PongControlFrame;
+          if (pcf.data !== undefined) {
+            throw new ProtocolError(
+              "Invalid ping/pong frame: must not have payload",
+              ErrorCode.InvalidFrame,
+            );
+          }
+          return opByte;
+        }
+
+        case ControlOp.Close: {
+          // Close may optionally have reason bytes
+          const ccf = cf as CloseControlFrame;
+          if (ccf.data) {
+            const result = new Uint8Array(opByte.length + ccf.data.length);
+            result.set(opByte);
+            result.set(ccf.data, opByte.length);
+            return result;
+          }
+          return opByte;
+        }
+
+        default:
+          // Exhaustiveness: all ControlOp variants handled above
+          throw new ProtocolError("Unknown control op", ErrorCode.InvalidFrame);
+      }
     }
 
     case FrameKind.Message: {
@@ -144,8 +180,7 @@ function encodeFramePayload(frame: Frame): Uint8Array {
 
     case FrameKind.Ack: {
       const af = frame as AckFrame;
-      const ackFrameIdStr = af.ackFrameId as string;
-      return encodeString(ackFrameIdStr.slice(0, 16).padEnd(16));
+      return new Uint8Array(af.ackFrameId);
     }
 
     case FrameKind.Error: {
@@ -201,8 +236,73 @@ function decodeFramePayload(
         );
       }
       const op = payload[0] as ControlOp;
-      const framePayload = payload.length > 1 ? payload.slice(1) : undefined;
-      return { kind: FrameKind.Control, op, data: framePayload, ...base };
+      const remainingPayload =
+        payload.length > 1 ? payload.slice(1) : undefined;
+
+      // Per ADR 002, validate control op invariants during decode.
+      switch (op) {
+        case ControlOp.Handshake: {
+          // Handshake requires data (JSON-encoded HandshakePayload)
+          if (!remainingPayload || remainingPayload.length === 0) {
+            throw new ProtocolError(
+              "Invalid handshake frame: data is required",
+              ErrorCode.InvalidFrame,
+            );
+          }
+          return {
+            kind: FrameKind.Control,
+            op: ControlOp.Handshake,
+            data: remainingPayload,
+            ...base,
+          } satisfies HandshakeControlFrame;
+        }
+
+        case ControlOp.Ping: {
+          // Ping must not carry payload
+          if (remainingPayload !== undefined) {
+            throw new ProtocolError(
+              "Invalid ping/pong frame: must not have payload",
+              ErrorCode.InvalidFrame,
+            );
+          }
+          return {
+            kind: FrameKind.Control,
+            op: ControlOp.Ping,
+            data: undefined,
+            ...base,
+          } satisfies PingControlFrame;
+        }
+
+        case ControlOp.Pong: {
+          // Pong must not carry payload
+          if (remainingPayload !== undefined) {
+            throw new ProtocolError(
+              "Invalid ping/pong frame: must not have payload",
+              ErrorCode.InvalidFrame,
+            );
+          }
+          return {
+            kind: FrameKind.Control,
+            op: ControlOp.Pong,
+            data: undefined,
+            ...base,
+          } satisfies PongControlFrame;
+        }
+
+        case ControlOp.Close: {
+          // Close may optionally have reason bytes
+          return {
+            kind: FrameKind.Control,
+            op: ControlOp.Close,
+            data: remainingPayload,
+            ...base,
+          } satisfies CloseControlFrame;
+        }
+
+        default:
+          // Exhaustiveness: all ControlOp variants handled above
+          throw new ProtocolError("Unknown control op", ErrorCode.InvalidFrame);
+      }
     }
 
     case FrameKind.Message: {
@@ -220,20 +320,28 @@ function decodeFramePayload(
           ErrorCode.InvalidFrame,
         );
       }
-      const subject = decodeString(payload.slice(4, 4 + subjectLen));
+      const rawSubject = decodeString(payload.slice(4, 4 + subjectLen));
+      // Validate subject per ADR-006 and ADR-008
+      const subject = asSubject(rawSubject);
       const framePayload = payload.slice(4 + subjectLen);
       return { kind: FrameKind.Message, subject, data: framePayload, ...base };
     }
 
     case FrameKind.Ack: {
+      // ACK frames are exactly 16 bytes: the ackFrameId (opaque binary). No payload allowed.
       if (payload.length < 16) {
         throw new ProtocolError(
           "Invalid ack frame: no frame ID",
           ErrorCode.InvalidFrame,
         );
       }
-      const ackFrameIdStr = decodeString(payload.slice(0, 16)).trim();
-      const ackFrameId = asFrameId(ackFrameIdStr);
+      if (payload.length > 16) {
+        throw new ProtocolError(
+          "Invalid ack frame: unexpected trailing data",
+          ErrorCode.InvalidFrame,
+        );
+      }
+      const ackFrameId = asFrameId(payload.slice(0, 16));
       return { kind: FrameKind.Ack, ackFrameId, ...base };
     }
 

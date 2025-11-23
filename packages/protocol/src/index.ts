@@ -23,6 +23,7 @@ export type {
   FrameId,
   CorrelationId,
   StreamId,
+  Subject,
 } from "./types.js";
 
 export {
@@ -31,7 +32,10 @@ export {
   asFrameId,
   asCorrelationId,
   asStreamId,
+  asSubject,
   generateFrameId,
+  frameIdToHex,
+  frameIdFromHex,
 } from "./types.js";
 
 // Constants and enums
@@ -49,9 +53,24 @@ export type {
   Frame,
   BaseFrame,
   ControlFrame,
+  BaseControlFrame,
+  HandshakeControlFrame,
+  PingControlFrame,
+  PongControlFrame,
+  CloseControlFrame,
   MessageFrame,
   AckFrame,
   ErrorFrame,
+  ControlFrameOptions,
+  MessageFrameOptions,
+} from "./frames.js";
+
+export {
+  createHandshakeFrame,
+  createPingFrame,
+  createPongFrame,
+  createCloseFrame,
+  createMessageFrame,
 } from "./frames.js";
 
 // Transport (low-level, protocol-bound)
@@ -67,9 +86,14 @@ export { encodeFrame, decodeFrame } from "./codec.js";
 // Type guards
 export {
   isControlFrame,
+  isHandshakeFrame,
+  isPingFrame,
+  isPongFrame,
+  isCloseFrame,
   isMessageFrame,
   isAckFrame,
   isErrorFrame,
+  isValidFrameId,
 } from "./guards.js";
 
 // Error

@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -28,3 +28,5 @@ jobs:
       - run: bun prettier --check .
 
       - run: bun typecheck
+
+      - run: bun test

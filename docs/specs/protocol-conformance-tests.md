@@ -4,17 +4,18 @@ Lightweight checklist for cross-implementation compatibility. Use deterministic 
 
 ## Fixtures
 
-- Frame vectors: encode/decode golden cases for each frame kind (with/without `id`/`ts`), using fixed inputs for `subject`, `body`, `message`, `ackId`, `code`.
+- Frame vectors: encode/decode golden cases for each frame kind (with fixed 16-byte `frameId` values), using fixed inputs for `subject`, `body`, `message`, `ackId`, `code`.
 - Handshake payloads: valid base case; invalid protocol/version; missing `peerId`; oversized metadata.
-- Error cases: malformed headers (short buffer, bad lengths), reserved flag bits set, unknown frame kind, incomplete payload for each frame kind.
+- Error cases: malformed headers (short buffer, bad lengths), invalid frameId length (not 16 bytes), reserved flag bits set, unknown frame kind, incomplete payload for each frame kind.
 
 ## Invariants to assert
 
 - Round-trip encoding: `decode(encode(frame))` yields the same structure for all supported frames.
+- Frame ID validity: `frameId` MUST be exactly 16 bytes (opaque binary). Equality checked by byte-wise comparison.
 - Reserved bits: any non-zero reserved flag bit MUST throw `InvalidFrame`.
 - Length guards: subject length mismatch and message length mismatch MUST throw `InvalidFrame`.
 - Handshake validation: wrong protocol/version MUST throw `UnsupportedVersion`; missing required fields MUST throw `InvalidFrame`.
-- Trimming: correlation IDs MUST be trimmed/padded to 16 bytes consistently across implementations.
+- Ack frame ID: must reference exactly 16 bytes from another frame's `frameId`.
 
 ## Negative fuzzing
 

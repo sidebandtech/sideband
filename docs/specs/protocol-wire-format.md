@@ -6,7 +6,7 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
 
 - Version tag: `sideband/1` (see `PROTOCOL_ID`). All frames belong to this version; negotiation happens via the handshake payload, not per-frame.
 - Header (fixed 2 bytes): `t` (1 byte, `FrameKind`), `flags` (1 byte; bit0 `ts`, bit1..7 reserved = 0).
-- Frame ID (`id`): 16 bytes UTF-8 (left-padded with spaces; trimmed on decode). **Always present.** Used for request/response correlation and ACK linkage; auto-generated to simplify runtime logic.
+- Frame ID (`id`): **16 raw bytes (128 bits) of opaque data. Always present.** Generated via cryptographic randomness. Used for request/response correlation and ACK linkage; auto-generated to simplify runtime logic. No padding, no string encoding, no trimming.
 - Optional timestamp: 8-byte signed int (ms since epoch).
 - Payload: type-specific body (below).
 
@@ -16,8 +16,8 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
   - Handshake (`c=0`): `data` is UTF-8 JSON of `HandshakePayload` (see below). MUST be first frame both peers send.
   - Ping (`c=1`), Pong (`c=2`): no data. MAY include timestamp via `ts`.
   - Close (`c=3`): optional UTF-8 reason in `data`.
-- Message (`t=1`): **A routable, identity-bearing unit of application data.** Structure: `subjectLen` (uint32 LE) + `subject` (UTF-8, routing key) + `data` (opaque bytes). `frameId` MAY be set for correlation; `ts` optional. Called "Message" (not "Data") because each frame is a distinct, routable entity with optional acknowledgement support—semantically closer to messaging systems than byte streams. Wire keys: `s` (subject), `b` (data).
-- Ack (`t=2`): 16-byte `ackFrameId` matching a prior frame's `frameId`. No data.
+- Message (`t=1`): **A routable, identity-bearing unit of application data.** Structure: `subjectLen` (uint32 LE) + `subject` (UTF-8, routing key) + `data` (opaque bytes). `frameId` is always present for correlation; `ts` optional. Called "Message" (not "Data") because each frame is a distinct, routable entity with optional acknowledgement support—semantically closer to messaging systems than byte streams. Wire keys: `s` (subject), `b` (data).
+- Ack (`t=2`): 16-byte `ackFrameId` (opaque binary, matching a prior frame's `frameId`). No payload data.
 - Error (`t=3`): `code` (uint16 LE `ErrorCode`) + `msgLen` (uint32 LE) + `message` (UTF-8) + optional `details` (opaque bytes). SHOULD set `frameId` to the failing frame's `frameId` when available.
 
 ## Handshake payload (JSON, UTF-8)
@@ -58,6 +58,6 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
 
 ## Compatibility matrix (v1)
 
-- Accept frames where: `t` ∈ [0..3], reserved flags clear, required fields present.
+- Accept frames where: `t` ∈ [0..3], reserved flags clear, required fields present, `frameId` is exactly 16 bytes.
 - Ignore: unknown `caps`/`metadata` keys, extra bytes in Error `details`.
-- Reject/close: unsupported `protocol`/`version`, malformed lengths, unknown frame kind, reserved flag bits set, frames before handshake.
+- Reject/close: unsupported `protocol`/`version`, malformed lengths, unknown frame kind, reserved flag bits set, frames before handshake, invalid `frameId` length.

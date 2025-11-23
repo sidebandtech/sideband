@@ -26,13 +26,13 @@
 | Peer identity        | `PeerId`         | `peerId`         | `peerId` | Stable identity of a peer node; survives reconnects      |
 | Connection identity  | `ConnectionId`   | `connectionId`   | -        | Transient transport link identity; new per TCP/WebSocket |
 | Session identity     | `SessionId`      | `sessionId`      | -        | Optional higher-level session across reconnects          |
-| Frame identity       | `FrameId`        | `frameId`        | `id`     | Identifies this frame instance on the wire               |
+| Frame identity       | `FrameId`        | `frameId`        | `id`     | 16 opaque bytes; identifies this frame instance on wire  |
 | Correlation identity | `CorrelationId`  | `correlationId`  | -        | **Reserved for v2.**                                     |
 | Trace identity (req) | `TraceId`        | `traceId`        | -        | Optional, spans multi-frame flows                        |
 
-> `frameId` — In v1, used for request/response correlation and ACK linkage. Always present on every frame; auto-generated at construction to eliminate defensive checks in runtime/RPC layers.
+> `frameId` — In v1, used for request/response correlation and ACK linkage. Always present on every frame (16 bytes, binary); auto-generated at construction to eliminate defensive checks in runtime/RPC layers.
 > `correlationId` — Reserved for v2 when explicit tracing or multi-hop flows require separate correlation semantics.
-> Helper: `generateFrameId()` creates a unique FrameId from 12 bytes of cryptographic randomness encoded as hex (16 chars).
+> Helper: `generateFrameId()` creates a 128-bit (16 bytes) FrameId via `crypto.getRandomValues()`. Human-readable representation (for logs/JSON) uses `frameIdToHex()` → lowercase hex (32 chars).
 
 ### 2. Frames and variants
 
@@ -61,12 +61,21 @@
 
 ### 4. Wire message vs application message
 
-| Domain concept          | Type / Enum name | Field / Property  | Wire key | Notes                                       |
-| ----------------------- | ---------------- | ----------------- | -------- | ------------------------------------------- |
-| Routing key             | -                | `subject`         | `s`      | UTF-8 string in `MessageFrame`              |
-| Raw message bytes       | -                | `data`            | `b`      | `Uint8Array`; wire is opaque bytes          |
-| Wire message (frame)    | `MessageFrame`   | `subject`, `data` | `t=1`    | Routable, identity-bearing unit on the wire |
-| App-level message (SDK) | `AppMessage`     | `subject`, `data` | -        | High-level concept in `@sideband/peer`      |
+| Domain concept          | Type / Enum name | Field / Property  | Wire key | Notes                                           |
+| ----------------------- | ---------------- | ----------------- | -------- | ----------------------------------------------- |
+| Routing key             | `Subject`        | `subject`         | `s`      | UTF-8 string; see subject namespace rules below |
+| Raw message bytes       | -                | `data`            | `b`      | `Uint8Array`; wire is opaque bytes              |
+| Wire message (frame)    | `MessageFrame`   | `subject`, `data` | `t=1`    | Routable, identity-bearing unit on the wire     |
+| App-level message (SDK) | `AppMessage`     | `subject`, `data` | -        | High-level concept in `@sideband/peer`          |
+
+**Subject namespace rules** (see ADR-006 for full RPC envelope spec):
+
+| Prefix    | Purpose                       | Example                  | Semantics        |
+| --------- | ----------------------------- | ------------------------ | ---------------- |
+| `rpc/`    | RPC request/response          | `rpc/getUser`            | Request/Response |
+| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      | Notification     |
+| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    | (future)         |
+| `app/`    | Vendor-specific / custom      | `app/com.example/mydata` | Custom           |
 
 ### 5. Errors
 
@@ -98,17 +107,21 @@
 
 ### 8. RPC and pub/sub (higher level)
 
-| Domain concept       | Type / Enum name         | Field / Property         | Notes                                              |
-| -------------------- | ------------------------ | ------------------------ | -------------------------------------------------- |
-| RPC request          | `RpcRequest`             | `id`, `method`, `params` | App-level type, carried in `MessageFrame.data`     |
-| RPC response         | `RpcResponse`            | `id`, `result`, `error`  | Ditto                                              |
-| Message handler kind | `HandlerKind` (optional) | -                        | For internal routing (RPC, event, broadcast, etc.) |
+| Domain concept             | Type / Enum name         | Field / Property                 | Notes                                              |
+| -------------------------- | ------------------------ | -------------------------------- | -------------------------------------------------- |
+| RPC envelope (wire format) | `RpcEnvelope`            | `t`, `m`, `p`, `result`, `error` | Binary structure in `MessageFrame.data` (ADR-006)  |
+| RPC request envelope       | `RpcRequest`             | `t: "r"`, `m`, `p?`              | Carries method name + params                       |
+| RPC response envelope      | `RpcResponse`            | `t: "R"`, `result?`, `error?`    | Success or error payload                           |
+| RPC notification envelope  | `RpcNotification`        | `t: "N"`, `e`, `d?`              | Fire-and-forget event                              |
+| Message handler kind       | `HandlerKind` (optional) | -                                | For internal routing (RPC, event, broadcast, etc.) |
 
 ### 9. Helper API verbs (for AI assistants)
 
 | Operation              | Function name          | Notes                                      |
 | ---------------------- | ---------------------- | ------------------------------------------ |
-| Generate frame ID      | `generateFrameId`      | `() -> FrameId`                            |
+| Generate frame ID      | `generateFrameId`      | `() -> FrameId` (16-byte binary)           |
+| Frame ID to hex        | `frameIdToHex`         | `(FrameId) -> string` (32-char lowercase)  |
+| Frame ID from hex      | `frameIdFromHex`       | `(string) -> FrameId` (validates 32 hex)   |
 | Encode frame to bytes  | `encodeFrame`          | `Frame -> Uint8Array`                      |
 | Decode bytes to frame  | `decodeFrame`          | `ArrayBufferView -> Frame`                 |
 | Create message frame   | `createMessageFrame`   | `(subject, data, opts) -> MessageFrame`    |
