@@ -8,7 +8,8 @@
   "scripts": {
     "prepare": "husky",
     "typecheck": "tsc --build --noEmit",
-    "build": "bun run scripts/build.ts"
+    "build": "tsc --build",
+    "prepublishOnly": "bun run scripts/prepublish.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.3",

@@ -1,5 +1,9 @@
 ## Sideband
 
+[![CI](https://github.com/sidebandtech/sideband/actions/workflows/main.yml/badge.svg)](https://github.com/sidebandtech/sideband/actions)
+[![npm](https://img.shields.io/npm/v/@sideband/protocol.svg)](https://www.npmjs.com/package/@sideband/protocol)
+[![Downloads](https://img.shields.io/npm/dm/@sideband/protocol.svg)](https://www.npmjs.com/package/@sideband/protocol)
+
 Sideband is a modern peer-to-peer communication stack for Bun and TypeScript: protocol + RPC + client helpers + CLI, with browser/node transports for real-time apps without the boilerplate.
 
 > ⚠️ Early-stage and evolving — seeking partners and sponsors to shape the roadmap.
