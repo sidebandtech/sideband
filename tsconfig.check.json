@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/protocol/tsconfig.check.json" },
+    { "path": "./packages/transport/tsconfig.check.json" },
+    { "path": "./packages/runtime/tsconfig.check.json" },
+    { "path": "./packages/rpc/tsconfig.check.json" },
+    { "path": "./packages/peer/tsconfig.check.json" },
+    { "path": "./packages/transport-browser/tsconfig.check.json" },
+    { "path": "./packages/transport-node/tsconfig.check.json" },
+    { "path": "./packages/cli/tsconfig.check.json" },
+    { "path": "./packages/testing/tsconfig.check.json" }
+  ]
+}

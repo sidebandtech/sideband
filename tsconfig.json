@@ -1,14 +1,14 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/protocol/tsconfig.json" },
-    { "path": "./packages/transport/tsconfig.json" },
-    { "path": "./packages/runtime/tsconfig.json" },
-    { "path": "./packages/rpc/tsconfig.json" },
-    { "path": "./packages/peer/tsconfig.json" },
-    { "path": "./packages/transport-browser/tsconfig.json" },
-    { "path": "./packages/transport-node/tsconfig.json" },
-    { "path": "./packages/cli/tsconfig.json" },
-    { "path": "./packages/testing/tsconfig.json" }
+    { "path": "./packages/protocol" },
+    { "path": "./packages/transport" },
+    { "path": "./packages/runtime" },
+    { "path": "./packages/rpc" },
+    { "path": "./packages/peer" },
+    { "path": "./packages/transport-browser" },
+    { "path": "./packages/transport-node" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/testing" }
   ]
 }

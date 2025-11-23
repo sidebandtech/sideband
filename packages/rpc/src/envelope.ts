@@ -8,8 +8,10 @@
  * The envelope discriminates between requests, responses, notifications, and errors.
  * Encoding can be CBOR (default, compact) or JSON (fallback).
  *
- * See ADR-006 for the full specification.
+ * See ADR-006 and ADR-010 for the full specification.
  */
+
+import type { FrameId } from "@sideband/protocol";
 
 /**
  * Discriminant for the RPC envelope type.
@@ -31,31 +33,40 @@ interface RpcEnvelopeBase {
 /**
  * RPC request envelope.
  * Sent by initiator; receiver must send a response (either success or error).
+ * The `cid` field contains this frame's own frameId for correlation with responses.
  */
 export interface RpcRequest extends RpcEnvelopeBase {
   t: "r";
-  /** Method name */
+  /** Method name (required) */
   m: string;
   /** Optional parameters (JSON-compatible or custom serializable type) */
   p?: unknown;
+  /** Correlation ID: set to this request frame's own frameId (required for correlation) */
+  cid: FrameId;
 }
 
 /**
  * RPC success response envelope.
- * Correlates to request via the request's `FrameId` (in `MessageFrame`).
+ * Correlates to the request via the `cid` field (copied from the request envelope).
+ * See ADR-010 for correlation semantics.
  */
 export interface RpcSuccessResponse extends RpcEnvelopeBase {
   t: "R";
+  /** Correlation ID: matches the request's cid (required for correlation) */
+  cid: FrameId;
   /** Result payload */
   result?: unknown;
 }
 
 /**
  * RPC error response envelope.
- * Correlates to request via the request's `FrameId` (in `MessageFrame`).
+ * Correlates to the request via the `cid` field (copied from the request envelope).
+ * See ADR-010 for correlation semantics.
  */
 export interface RpcErrorResponse extends RpcEnvelopeBase {
   t: "E";
+  /** Correlation ID: matches the request's cid (required for correlation) */
+  cid: FrameId;
   /** Error code (application-defined) */
   code: number;
   /** Human-readable error message */
@@ -125,35 +136,49 @@ export function isRpcRequest(envelope: RpcEnvelope): envelope is RpcRequest {
 
 /**
  * Create an RPC request envelope.
+ * The `cid` field must be set to the request frame's own frameId.
  */
-export function createRpcRequest(method: string, params?: unknown): RpcRequest {
+export function createRpcRequest(
+  method: string,
+  cid: FrameId,
+  params?: unknown,
+): RpcRequest {
   return {
     t: "r",
     m: method,
+    cid,
     ...(params !== undefined && { p: params }),
   };
 }
 
 /**
  * Create an RPC success response envelope.
+ * The `cid` field must match the request's cid (copied from the request envelope).
  */
-export function createRpcSuccessResponse(result?: unknown): RpcSuccessResponse {
+export function createRpcSuccessResponse(
+  cid: FrameId,
+  result?: unknown,
+): RpcSuccessResponse {
   return {
     t: "R",
+    cid,
     ...(result !== undefined && { result }),
   };
 }
 
 /**
  * Create an RPC error response envelope.
+ * The `cid` field must match the request's cid (copied from the request envelope).
  */
 export function createRpcErrorResponse(
+  cid: FrameId,
   code: number,
   message: string,
   data?: unknown,
 ): RpcErrorResponse {
   return {
     t: "E",
+    cid,
     code,
     message,
     ...(data !== undefined && { data }),

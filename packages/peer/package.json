@@ -1,6 +1,32 @@
 {
   "name": "@sideband/peer",
   "version": "0.0.0",
+  "description": "Peer SDK for Sideband: friendly API over runtime + transports with lifecycle utilities, pub/sub, and RPC helpers to run peers quickly.",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sidebandtech/sideband.git",
+    "directory": "packages/peer"
+  },
+  "bugs": {
+    "url": "https://github.com/sidebandtech/sideband/issues"
+  },
+  "homepage": "https://sideband.tech",
+  "author": "Sideband <hello@sideband.tech>",
+  "contributors": [
+    "Konstantin Tarkus <koistya@kriasoft.com>"
+  ],
+  "keywords": [
+    "sideband",
+    "peer",
+    "sdk",
+    "client",
+    "p2p",
+    "rpc",
+    "pubsub",
+    "runtime",
+    "transport"
+  ],
   "type": "module",
   "types": "./src/index.ts",
   "exports": {

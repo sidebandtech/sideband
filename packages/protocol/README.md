@@ -15,18 +15,19 @@ import {
   FrameKind,
   createHandshakeFrame,
   createMessageFrame,
+  createAckFrame,
   encodeFrame,
   decodeFrame,
   encodeHandshake,
+  asPeerId,
   asSubject,
+  generateFrameId,
 } from "@sideband/protocol";
 
 // Build a handshake frame
 const handshake = createHandshakeFrame(
   encodeHandshake({
-    protocol: "sideband",
-    version: "1",
-    peerId: "peer-123" as any, // typically from runtime
+    peerId: asPeerId("peer-123"),
     caps: ["rpc"],
   }),
 );
@@ -36,26 +37,33 @@ const bytes = encodeFrame(handshake);
 
 // Decode on the other side
 const frame = decodeFrame(bytes);
-if (frame.kind === FrameKind.Control && frame.op === 0 /* Handshake */) {
-  console.log("handshake ok");
+if (frame.kind === FrameKind.Control) {
+  console.log("control frame received");
 }
 
-// Send an application payload
+// Send an application message
 const msg = createMessageFrame({
   subject: asSubject("rpc/echo"),
   data: new TextEncoder().encode("hello"),
 });
 const msgBytes = encodeFrame(msg);
+
+// Acknowledge a frame
+const ack = createAckFrame(generateFrameId());
+const ackBytes = encodeFrame(ack);
 ```
 
 ## What it provides
 
-- Wire-safe types: branded IDs, subject validation, typed frames
-- Protocol constants/enums and standardized error codes
-- Handshake payload helpers (encode/decode + validation)
-- Binary frame codec with invariants enforced on encode/decode
+- **Branded types**: `PeerId`, `FrameId`, `Subject` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`)
+- **Frame codec**: `encodeFrame` / `decodeFrame` with invariant enforcement
+- **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createAckFrame`, `createErrorFrame`, etc.
+- **FrameId helpers**: `generateFrameId`, `frameIdToHex`, `frameIdFromHex` for correlation and logging
+- **Handshake encode/decode**: `encodeHandshake` / `decodeHandshake` with validation
+- **Protocol constants**: `PROTOCOL_NAME`, `FrameKind` enum, `ControlOp` enum, `ErrorCode` ranges
+- **Type guards**: `isControlFrame`, `isMessageFrame`, `isAckFrame`, etc. for discriminated unions
 
-For transport implementations, see `@sideband/transport`, which defines the transport ABI that all concrete transports must implement. Keep business logic, retries, and state machines in `@sideband/runtime` or transports—this package only defines the wire contract.
+For transport implementations, see [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport) (defines the Transport interface). For request correlation and RPC semantics, see [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc) and ADR-010. Keep state machines, retries, and routing in [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)—this package only defines the wire contract.
 
 ## License
 

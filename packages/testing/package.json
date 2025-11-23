@@ -1,6 +1,30 @@
 {
   "name": "@sideband/testing",
   "version": "0.0.0",
+  "description": "Shared test helpers for Sideband: fakes, loopback transports, peer fixtures, and utilities to keep runtime/transport tests consistent.",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sidebandtech/sideband.git",
+    "directory": "packages/testing"
+  },
+  "bugs": {
+    "url": "https://github.com/sidebandtech/sideband/issues"
+  },
+  "homepage": "https://sideband.tech",
+  "author": "Sideband <hello@sideband.tech>",
+  "contributors": [
+    "Konstantin Tarkus <koistya@kriasoft.com>"
+  ],
+  "keywords": [
+    "sideband",
+    "testing",
+    "mocks",
+    "fixtures",
+    "transport",
+    "runtime",
+    "p2p"
+  ],
   "type": "module",
   "types": "./src/index.ts",
   "exports": {

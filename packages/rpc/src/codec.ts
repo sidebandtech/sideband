@@ -7,11 +7,16 @@
  * Supports JSON encoding (v1, always available).
  * CBOR encoding can be added when Bun's built-in or lightweight CBOR support is available.
  *
- * See ADR-006 for the envelope specification.
+ * See ADR-006 and ADR-010 for the envelope specification.
  */
 
 import type { RpcEnvelope } from "./envelope.js";
-import { ProtocolViolation } from "./subject.js";
+import {
+  frameIdFromHex,
+  frameIdToHex,
+  ProtocolError,
+  ErrorCode,
+} from "@sideband/protocol";
 
 export type EncodingFormat = "json";
 
@@ -33,7 +38,10 @@ export function encodeRpcEnvelope(
     return encodeJson(envelope);
   }
 
-  throw new ProtocolViolation(`Unsupported encoding format: ${format}`);
+  throw new ProtocolError(
+    `Unsupported encoding format: ${format}`,
+    ErrorCode.ProtocolViolation,
+  );
 }
 
 /**
@@ -45,7 +53,7 @@ export function encodeRpcEnvelope(
  * @param data The encoded bytes
  * @param format The encoding format ("json")
  * @returns The decoded RPC envelope
- * @throws {ProtocolViolation} if decoding fails or envelope is malformed
+ * @throws {ProtocolError} if decoding fails or envelope is malformed
  */
 export function decodeRpcEnvelope(
   data: Uint8Array | ArrayBufferView,
@@ -55,28 +63,39 @@ export function decodeRpcEnvelope(
     return decodeJson(data);
   }
 
-  throw new ProtocolViolation(`Unsupported encoding format: ${format}`);
+  throw new ProtocolError(
+    `Unsupported encoding format: ${format}`,
+    ErrorCode.ProtocolViolation,
+  );
 }
 
 /**
  * Encode to JSON.
+ * Converts FrameId (Uint8Array) to hex string for JSON serialization.
  */
 function encodeJson(envelope: RpcEnvelope): Uint8Array {
   try {
-    const json = JSON.stringify(envelope);
+    // Convert FrameId to hex string for JSON serialization
+    const envelopeForJson = { ...envelope };
+    if ("cid" in envelope) {
+      (envelopeForJson as any).cid = frameIdToHex(envelope.cid);
+    }
+    const json = JSON.stringify(envelopeForJson);
     const encoder = new TextEncoder();
     return encoder.encode(json);
   } catch (err) {
-    throw new ProtocolViolation(
+    throw new ProtocolError(
       `Failed to JSON-encode RPC envelope: ${
         err instanceof Error ? err.message : String(err)
       }`,
+      ErrorCode.ProtocolViolation,
     );
   }
 }
 
 /**
  * Decode from JSON.
+ * Converts hex string cid back to FrameId (Uint8Array).
  */
 function decodeJson(data: Uint8Array | ArrayBufferView): RpcEnvelope {
   try {
@@ -93,17 +112,41 @@ function decodeJson(data: Uint8Array | ArrayBufferView): RpcEnvelope {
     // Validate envelope structure
     validateEnvelopeStructure(envelope);
 
+    // Convert cid hex string back to FrameId
+    if ("cid" in envelope && typeof envelope.cid === "string") {
+      try {
+        (envelope as any).cid = frameIdFromHex(envelope.cid);
+      } catch (err) {
+        throw new ProtocolError(
+          `Invalid cid hex value: ${envelope.cid}`,
+          ErrorCode.ProtocolViolation,
+        );
+      }
+    }
+
     return envelope as RpcEnvelope;
   } catch (err) {
-    if (err instanceof ProtocolViolation) {
+    if (err instanceof ProtocolError) {
       throw err;
     }
-    throw new ProtocolViolation(
+    throw new ProtocolError(
       `Failed to JSON-decode RPC envelope: ${
         err instanceof Error ? err.message : String(err)
       }`,
+      ErrorCode.ProtocolViolation,
     );
   }
+}
+
+/**
+ * Check if a string is a valid hex-encoded FrameId (32 hex characters = 16 bytes).
+ */
+function isValidHexFrameId(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  // FrameId is 16 bytes = 32 hex characters
+  return /^[0-9a-f]{32}$/i.test(value);
 }
 
 /**
@@ -112,8 +155,9 @@ function decodeJson(data: Uint8Array | ArrayBufferView): RpcEnvelope {
  */
 function validateEnvelopeStructure(obj: unknown): void {
   if (typeof obj !== "object" || obj === null) {
-    throw new ProtocolViolation(
+    throw new ProtocolError(
       "RPC envelope must be an object, got " + typeof obj,
+      ErrorCode.ProtocolViolation,
     );
   }
 
@@ -122,9 +166,22 @@ function validateEnvelopeStructure(obj: unknown): void {
   // Check discriminant
   const t = envelope.t;
   if (typeof t !== "string" || !["r", "R", "E", "N"].includes(t)) {
-    throw new ProtocolViolation(
+    throw new ProtocolError(
       `Invalid envelope type: "${t}". Must be one of: "r", "R", "E", "N"`,
+      ErrorCode.ProtocolViolation,
     );
+  }
+
+  // Validate cid for request/response envelopes (required for correlation)
+  const t_char = t as string;
+  if (t_char === "r" || t_char === "R" || t_char === "E") {
+    // Request and responses must have cid (correlation ID)
+    if (typeof envelope.cid !== "string" || !isValidHexFrameId(envelope.cid)) {
+      throw new ProtocolError(
+        `${t === "r" ? "Request" : "Response"} envelope missing or invalid cid (must be 32-char hex): ${envelope.cid}`,
+        ErrorCode.ProtocolViolation,
+      );
+    }
   }
 
   // Type-specific validation
@@ -132,36 +189,40 @@ function validateEnvelopeStructure(obj: unknown): void {
     case "r": {
       // Request: must have method (m)
       if (typeof envelope.m !== "string") {
-        throw new ProtocolViolation(
+        throw new ProtocolError(
           `Request envelope missing or invalid method: ${envelope.m}`,
+          ErrorCode.ProtocolViolation,
         );
       }
       break;
     }
     case "R": {
-      // Success response: must have result (optional by spec)
-      // No additional validation needed
+      // Success response: result is optional by spec
+      // cid validation already done above
       break;
     }
     case "E": {
       // Error response: must have code and message
       if (typeof envelope.code !== "number") {
-        throw new ProtocolViolation(
+        throw new ProtocolError(
           `Error response missing or invalid code: ${envelope.code}`,
+          ErrorCode.ProtocolViolation,
         );
       }
       if (typeof envelope.message !== "string") {
-        throw new ProtocolViolation(
+        throw new ProtocolError(
           `Error response missing or invalid message: ${envelope.message}`,
+          ErrorCode.ProtocolViolation,
         );
       }
       break;
     }
     case "N": {
-      // Notification: must have event name (e)
+      // Notification: must have event name (e), no cid needed
       if (typeof envelope.e !== "string") {
-        throw new ProtocolViolation(
+        throw new ProtocolError(
           `Notification envelope missing or invalid event: ${envelope.e}`,
+          ErrorCode.ProtocolViolation,
         );
       }
       break;

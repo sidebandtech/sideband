@@ -1,7 +1,7 @@
 # RPC Envelope Specification
 
 **Date**: 2025-11-23
-**References**: ADR-006, ADR-002
+**References**: ADR-010 (correlation), ADR-006, ADR-002
 
 ## Overview
 
@@ -20,40 +20,67 @@ All `MessageFrame.subject` values must match one of these reserved prefixes (val
 | `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    |
 | `app/`    | Vendor-specific               | `app/com.example/mydata` |
 
-**Constraints:**
-
-- Subject length: 1–256 characters (UTF-8)
-- No null bytes (`\0`)
-- Invalid subjects → `ProtocolViolation` error at runtime
+Subjects: 1–256 UTF-8 characters, no null bytes.
 
 ## Envelope Structure
 
-**Request** (`t: "r"`): `m` (method name), `p?` (params)
-**Success Response** (`t: "R"`): `result?` (payload)
-**Error Response** (`t: "E"`): `code` (number), `message` (string), `data?` (details)
-**Notification** (`t: "N"`): `e` (event name), `d?` (data)
+```ts
+interface RpcRequest {
+  t: "r";
+  m: string; // method name
+  p?: unknown; // params
+  cid: FrameId; // request's frameId
+}
 
-All fields except discriminant `t` and required fields are optional. Error code ranges:
+interface RpcSuccess {
+  t: "R";
+  cid: FrameId; // matches request.cid
+  result?: unknown;
+}
+
+interface RpcError {
+  t: "E";
+  cid: FrameId; // matches request.cid
+  code: number;
+  message: string;
+  data?: unknown; // error details
+}
+
+interface RpcNotification {
+  t: "N";
+  e: string; // event name
+  d?: unknown; // no cid (fire-and-forget)
+}
+```
+
+Error code ranges:
 
 - `1000–1999`: Protocol errors (framework reserved)
 - `2000+`: Application errors (user-defined)
 
 ## Encoding
 
-**JSON (v1, always available)**: UTF-8 text; undefined fields omitted for compactness.
+**JSON (v1)**: UTF-8 text, undefined fields omitted.
 
-**CBOR (v2+)**: Binary format; negotiated via handshake capability `"encoding/cbor"`. If both peers advertise it, use CBOR; otherwise fall back to JSON.
+**CBOR (v2+)**: Negotiated via handshake capability `"encoding/cbor"`; use if both peers support it, else JSON.
 
 ## Correlation
 
-Responses correlate to requests via `MessageFrame.ackFrameId`: the response's `ackFrameId` field contains the request's `frameId`.
+Every frame's `frameId` is sender-local unique and MUST NOT be reused by receivers.
+
+RPC correlation is explicit in the envelope:
+
+- Requests set `cid` to their request frame's `frameId`
+- Responses copy that `cid` unchanged
+- Runtime matches on `cid`, not `frameId`
+
+This preserves the `frameId` invariant and enables relays, proxies, and fan-out without changes to the wire format. See ADR-010.
 
 ## Validation Rules
 
-- **Subject**: Must match reserved prefixes (`rpc/`, `event/`, `stream/`, `app/`), 1–256 chars, no null bytes.
-- **Request**: `t: "r"`, `m` required.
-- **Response**: `t: "R"` (success) or `t: "E"` (error with `code` and `message`).
-- **Notification**: `t: "N"`, `e` required.
-- **Encoding**: JSON in v1; CBOR in v2+ (capability-negotiated).
+- **Subject**: Reserved prefix (`rpc/`, `event/`, `stream/`, `app/`), 1–256 UTF-8, no nulls
+- **Request**: `t: "r"`, `m` and `cid` required
+- **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
+- **Notification**: `t: "N"`, `e` required
 
-Invalid envelopes → `ProtocolViolation` error at runtime.
+Invalid envelopes raise `ProtocolViolation`.

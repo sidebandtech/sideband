@@ -1,86 +1,44 @@
 # @sideband/transport
 
-Transport ABI and shared utilities for Sideband communication.
+Transport ABI + shared helpers for Sideband. Defines the contract concrete transports must implement (browser/node WebSocket, custom TCP, in-memory, etc.). No runtime/RPC coupling.
 
-## Overview
+## Install
 
-This package defines the interface that concrete transport implementations (browser WebSocket, Node.js/Bun WebSocket, memory transport, etc.) must implement.
+```bash
+bun add @sideband/transport
+```
 
-The `Transport` interface provides two modes:
+## Quick use
 
-- **Client mode**: `connect()` to establish outbound connections
-- **Server mode**: `listen()` to accept inbound connections (optional)
+```ts
+import { MemoryTransport, asTransportEndpoint } from "@sideband/transport";
 
-## Key Types
+const transport = new MemoryTransport();
+const endpoint = asTransportEndpoint("memory://loop");
 
-### `Transport`
+// Server side
+await transport.listen(endpoint, async (conn) => {
+  for await (const bytes of conn.inbound) {
+    await conn.send(bytes); // echo back
+  }
+});
 
-The main interface for transport implementations:
-
-```typescript
-export interface Transport {
-  readonly kind: string;
-
-  connect(
-    endpoint: TransportEndpoint,
-    options?: ConnectOptions,
-  ): Promise<TransportConnection>;
-
-  listen?(
-    endpoint: TransportEndpoint,
-    handler: ConnectionHandler,
-    options?: ListenOptions,
-  ): Promise<TransportListener>;
+// Client side
+const conn = await transport.connect(endpoint);
+await conn.send(new TextEncoder().encode("hello"));
+for await (const bytes of conn.inbound) {
+  console.log(new TextDecoder().decode(bytes)); // "hello"
+  break;
 }
 ```
 
-### `TransportConnection`
+## What it provides
 
-Represents a single link (TCP/WebSocket/etc.) between two peers:
+- `Transport`/`TransportConnection`/`TransportListener` interfaces for byte-level links
+- Endpoint branding helper (`asTransportEndpoint`) and shared option/handler types
+- Reference `MemoryTransport` for tests and local loops
+- Safe to use in browser or Node transports; depends only on [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)
 
-```typescript
-export interface TransportConnection {
-  readonly id: ConnectionId;
-  readonly endpoint: TransportEndpoint;
+## License
 
-  send(bytes: Uint8Array): Promise<void>;
-  close(reason?: string): Promise<void>;
-
-  readonly inbound: AsyncIterable<Uint8Array>;
-}
-```
-
-### `TransportEndpoint`
-
-An abstract endpoint representation (format depends on concrete transport):
-
-- Browser: `"ws://hostname:port"` or `"wss://hostname:port"`
-- Node/Bun: `"ws://hostname:port"` or `"tcp://hostname:port"`
-- Custom: Any string format appropriate for the transport
-
-## Dependencies
-
-- `@sideband/protocol`: For `ConnectionId` and protocol types
-
-## Architecture
-
-Transport implementations **must not** depend on:
-
-- `@sideband/runtime`
-- `@sideband/rpc`
-- `@sideband/peer`
-- `@sideband/cli`
-- `@sideband/testing` (for production code)
-
-Transport implementations **may** depend on:
-
-- `@sideband/protocol`
-- `@sideband/transport` (this package)
-
-## Design Notes
-
-- **No I/O logic in the ABI**: Transport is purely a definition of how to send/receive bytes.
-- **Frame encoding/decoding is separate**: The runtime and higher-level packages handle frame encoding/decoding using `@sideband/protocol` codecs.
-- **Byte-level abstraction**: TransportConnection works with raw `Uint8Array`, not decoded frames.
-- **Async iterable inbound stream**: Allows efficient buffering and backpressure handling.
-- **Connection identity**: Each connection gets a unique `ConnectionId`; reconnects create new connections with new IDs.
+Code: AGPL-3.0-or-later. Commercial licensing available via hello@sideband.tech.

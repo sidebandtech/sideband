@@ -1,6 +1,30 @@
 {
   "name": "@sideband/runtime",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "description": "Transport-agnostic Sideband runtime: manage peers, attach transports, route frames, correlate RPC calls, and expose middleware hooks without concrete I/O.",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sidebandtech/sideband.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": {
+    "url": "https://github.com/sidebandtech/sideband/issues"
+  },
+  "homepage": "https://sideband.tech",
+  "author": "Sideband <hello@sideband.tech>",
+  "contributors": [
+    "Konstantin Tarkus <koistya@kriasoft.com>"
+  ],
+  "keywords": [
+    "sideband",
+    "runtime",
+    "router",
+    "correlation",
+    "p2p",
+    "transport",
+    "middleware"
+  ],
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -11,7 +35,12 @@
     },
     "./package.json": "./package.json"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@sideband/protocol": "workspace:^"
+  },
+  "devDependencies": {
+    "@sideband/rpc": "workspace:^"
+  },
   "files": [
     "dist"
   ],

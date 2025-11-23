@@ -40,7 +40,10 @@ Success Response (`t: "R"`): optional result.
 Error Response (`t: "E"`): code + message + optional data.
 Notification (`t: "N"`): event name + optional data.
 
-Correlation is implicit: responses reference the request's `frameId` via `ackFrameId`.
+Correlation is explicit: responses copy the request's `cid` (correlation ID) field.
+The `cid` field is set to the request frame's own `frameId` and copied unchanged by the server into all response envelopes.
+
+See ADR-010 for the complete correlation design rationale.
 
 Full schema at `docs/specs/rpc-envelope.md`.
 

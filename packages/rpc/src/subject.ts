@@ -16,7 +16,7 @@
  */
 
 import type { Subject } from "@sideband/protocol";
-import { asSubject, ProtocolError, ErrorCode } from "@sideband/protocol";
+import { asSubject } from "@sideband/protocol";
 
 /**
  * Type alias for clarity in RPC contexts.
@@ -40,35 +40,6 @@ export const SUBJECT_PREFIXES = {
 } as const;
 
 /**
- * Validate a subject string against the reserved namespace rules.
- *
- * @param subject The subject string to validate
- * @returns true if valid, false otherwise
- * @deprecated Use asRpcSubject() which throws on invalid input for better error handling
- */
-export function isValidRpcSubject(subject: string): boolean {
-  try {
-    asSubject(subject);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Re-export protocol Subject validator for RPC use.
  */
 export { asSubject as asRpcSubject };
-
-/**
- * Protocol violation error.
- * This is now handled via ProtocolError at the protocol layer.
- * Kept for backwards compatibility with existing RPC code patterns.
- * @deprecated Use ProtocolError from @sideband/protocol instead.
- */
-export class ProtocolViolation extends ProtocolError {
-  constructor(message: string) {
-    super(message, ErrorCode.ProtocolViolation);
-    this.name = "ProtocolViolation";
-  }
-}

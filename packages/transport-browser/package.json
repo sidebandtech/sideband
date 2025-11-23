@@ -1,6 +1,30 @@
 {
   "name": "@sideband/transport-browser",
   "version": "0.0.0",
+  "description": "Browser transport implementation of the Sideband Transport interface using WebSocket primitives with reconnect/error handling for real-time apps.",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sidebandtech/sideband.git",
+    "directory": "packages/transport-browser"
+  },
+  "bugs": {
+    "url": "https://github.com/sidebandtech/sideband/issues"
+  },
+  "homepage": "https://sideband.tech",
+  "author": "Sideband <hello@sideband.tech>",
+  "contributors": [
+    "Konstantin Tarkus <koistya@kriasoft.com>"
+  ],
+  "keywords": [
+    "sideband",
+    "transport",
+    "browser",
+    "websocket",
+    "reconnect",
+    "client",
+    "p2p"
+  ],
   "type": "module",
   "types": "./src/index.ts",
   "exports": {

@@ -1,6 +1,6 @@
 ## Sideband
 
-[![CI](https://github.com/sidebandtech/sideband/actions/workflows/main.yml/badge.svg)](https://github.com/sidebandtech/sideband/actions)
+[![CI](https://github.com/sidebandtech/sideband/actions/workflows/ci.yml/badge.svg)](https://github.com/sidebandtech/sideband/actions)
 [![npm](https://img.shields.io/npm/v/@sideband/protocol.svg)](https://www.npmjs.com/package/@sideband/protocol)
 [![Downloads](https://img.shields.io/npm/dm/@sideband/protocol.svg)](https://www.npmjs.com/package/@sideband/protocol)
 
@@ -10,11 +10,11 @@ Sideband is a modern peer-to-peer communication stack for Bun and TypeScript: pr
 
 ### What's here
 
-- Core runtime, protocol, and RPC helpers (`@sideband/runtime`, `@sideband/protocol`, `@sideband/rpc`)
-- Peer SDK scaffolding (`@sideband/peer`)
-- Browser and Node transports (`@sideband/transport-browser`, `@sideband/transport-node`)
-- Developer CLI (`@sideband/cli`)
-- Test scaffolding (`@sideband/testing`)
+- Core runtime, protocol, and RPC helpers ([`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime), [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol), [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc))
+- Peer SDK scaffolding ([`@sideband/peer`](https://www.npmjs.com/package/@sideband/peer))
+- Browser and Node transports ([`@sideband/transport-browser`](https://www.npmjs.com/package/@sideband/transport-browser), [`@sideband/transport-node`](https://www.npmjs.com/package/@sideband/transport-node))
+- Developer CLI ([`@sideband/cli`](https://www.npmjs.com/package/@sideband/cli))
+- Test scaffolding ([`@sideband/testing`](https://www.npmjs.com/package/@sideband/testing))
 
 ### Develop
 

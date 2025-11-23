@@ -40,12 +40,7 @@ export {
 
 // Subject validation
 export type { RpcSubject } from "./subject.js";
-export {
-  SUBJECT_PREFIXES,
-  isValidRpcSubject,
-  asRpcSubject,
-  ProtocolViolation,
-} from "./subject.js";
+export { SUBJECT_PREFIXES, asRpcSubject } from "./subject.js";
 
 // Codec
 export type { EncodingFormat } from "./codec.js";
