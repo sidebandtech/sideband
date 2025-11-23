@@ -10,10 +10,11 @@
  * - Branded types for type-safe IDs
  * - Protocol constants, enums, and frame model
  * - Handshake payload and encoding
- * - Transport interface for implementations
  * - Frame codec for serialization
  * - Type guards for discriminated unions
  * - Protocol error class
+ *
+ * For transport ABI (Transport, TransportConnection, etc.), see @sideband/transport.
  */
 
 // Types
@@ -72,9 +73,6 @@ export {
   createCloseFrame,
   createMessageFrame,
 } from "./frames.js";
-
-// Transport (low-level, protocol-bound)
-export type { RawTransport, RawTransportInfo } from "./transport.js";
 
 // Handshake
 export type { HandshakePayload } from "./handshake.js";

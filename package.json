@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "prepare": "husky",
-    "typecheck": "tsc --build --noEmit",
+    "typecheck": "tsc --build tsconfig.check.json",
     "build": "tsc --build",
     "prepublishOnly": "bun run scripts/prepublish.ts"
   },

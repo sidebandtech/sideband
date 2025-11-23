@@ -17,6 +17,7 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
   - Ping (`c=1`), Pong (`c=2`): no data. MAY include timestamp via `ts`.
   - Close (`c=3`): optional UTF-8 reason in `data`.
 - Message (`t=1`): **A routable, identity-bearing unit of application data.** Structure: `subjectLen` (uint32 LE) + `subject` (UTF-8, routing key) + `data` (opaque bytes). `frameId` is always present for correlation; `ts` optional. Called "Message" (not "Data") because each frame is a distinct, routable entity with optional acknowledgement support—semantically closer to messaging systems than byte streams. Wire keys: `s` (subject), `b` (data).
+  - **Important**: `frameId` is sender-local unique and MUST NOT be reused or copied by the receiver into outbound frames. Each peer generates its own unique `frameId` for every frame it emits. For RPC correlation, see ADR-010 (uses explicit `cid` field in the envelope payload, not `frameId`).
 - Ack (`t=2`): 16-byte `ackFrameId` (opaque binary, matching a prior frame's `frameId`). No payload data.
 - Error (`t=3`): `code` (uint16 LE `ErrorCode`) + `msgLen` (uint32 LE) + `message` (UTF-8) + optional `details` (opaque bytes). SHOULD set `frameId` to the failing frame's `frameId` when available.
 

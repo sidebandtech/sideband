@@ -1,6 +1,32 @@
 {
   "name": "@sideband/transport-node",
   "version": "0.0.0",
+  "description": "Node/Bun transport implementation of the Sideband Transport interface using ws/TCP primitives with server/client wiring for services and workers.",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sidebandtech/sideband.git",
+    "directory": "packages/transport-node"
+  },
+  "bugs": {
+    "url": "https://github.com/sidebandtech/sideband/issues"
+  },
+  "homepage": "https://sideband.tech",
+  "author": "Sideband <hello@sideband.tech>",
+  "contributors": [
+    "Konstantin Tarkus <koistya@kriasoft.com>"
+  ],
+  "keywords": [
+    "sideband",
+    "transport",
+    "node",
+    "bun",
+    "websocket",
+    "tcp",
+    "server",
+    "client",
+    "p2p"
+  ],
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
