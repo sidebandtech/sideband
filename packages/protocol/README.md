@@ -63,7 +63,7 @@ const ackBytes = encodeFrame(ack);
 - **Protocol constants**: `PROTOCOL_NAME`, `FrameKind` enum, `ControlOp` enum, error code ranges
 - **Type guards**: `isControlFrame`, `isMessageFrame`, `isAckFrame`, etc. for discriminated unions
 
-For transport implementations, see [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport), which defines the Transport ABI. Keep business logic, retries, and state machines in [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)—this package only defines the wire contract.
+For transport implementations, see [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport) (defines the Transport interface). For request correlation and RPC semantics, see [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc). Keep state machines, retries, and routing in [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)—this package only defines the wire contract.
 
 ## License
 
