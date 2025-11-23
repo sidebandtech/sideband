@@ -48,7 +48,7 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
 
 ## Stream semantics on the wire
 
-- Requests/responses/events all reuse Message frames (`t=1`); in v1, correlation is by `frameId` if provided.
+- Requests/responses/events all reuse `Message` frames (`t=1`). RPC correlation is defined at the envelope layer (see RPC envelope spec): `cid` inside `MessageFrame.data` is used for request/response matching. `frameId` remains sender-local unique and is _not_ reused by receivers. See ADR-010.
 - Acks (`t=2`) confirm receipt of the frame whose `frameId` matches `ackFrameId`; no cumulative acking.
 - Timestamp is advisory and not part of ordering guarantees.
 

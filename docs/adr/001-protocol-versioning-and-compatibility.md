@@ -1,7 +1,7 @@
 # ADR 001: Protocol Versioning & Compatibility
 
 - **Date**: 2025-11-22
-- **Status**: Proposed
+- **Status**: Accepted
 - **Tags**: protocol, frames, handshake
 
 ## Context

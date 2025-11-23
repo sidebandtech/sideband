@@ -48,15 +48,18 @@ const msg = createMessageFrame({
 });
 const msgBytes = encodeFrame(msg);
 
-// Acknowledge a frame
-const ack = createAckFrame(generateFrameId());
-const ackBytes = encodeFrame(ack);
+// Acknowledge a frame (references an existing frame's frameId)
+const incoming = decodeFrame(bytes);
+if (incoming.kind === FrameKind.Message) {
+  const ack = createAckFrame(incoming.frameId);
+  const ackBytes = encodeFrame(ack);
+}
 ```
 
 ## What it provides
 
 - **Branded types**: `PeerId`, `FrameId`, `Subject` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`) for wire-safe validation
-- **Frame codec**: `encodeFrame` / `decodeFrame` with invariant enforcement
+- **Frame codec**: `encodeFrame` / `decodeFrame` with invariant enforcement (validates subject compliance with reserved namespaces per ADR-008)
 - **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createAckFrame`, `createErrorFrame`
 - **FrameId helpers**: `generateFrameId`, `frameIdToHex`, `frameIdFromHex` for correlation and logging
 - **Handshake encode/decode**: `encodeHandshake` / `decodeHandshake` with validation

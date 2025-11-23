@@ -22,30 +22,46 @@ import {
   SUBJECT_PREFIXES,
   asRpcSubject,
 } from "@sideband/rpc";
-import { generateFrameId } from "@sideband/protocol";
+import {
+  generateFrameId,
+  createMessageFrame,
+  encodeFrame,
+  decodeFrame,
+  asSubject,
+  FrameKind,
+} from "@sideband/protocol";
 
-// Build a request envelope (cid must equal the frame's frameId)
-const cid = generateFrameId();
-const request = createRpcRequest("echo", cid, { text: "hi" });
-const bytes = encodeRpcEnvelope(request);
+// Build an RPC request envelope
+const cid = generateFrameId(); // Correlation ID = frame's frameId
+const methodName = "echo";
+const request = createRpcRequest(methodName, cid, { text: "hi" });
+const envelopeBytes = encodeRpcEnvelope(request);
 
-// ...send bytes as MessageFrame.data...
+// Wrap in a MessageFrame with rpc/ subject
+const subject = asSubject(`${SUBJECT_PREFIXES.RPC}${methodName}`); // "rpc/echo"
+const messageFrame = createMessageFrame({ subject, data: envelopeBytes });
+const frameBytes = encodeFrame(messageFrame);
 
-// Receive + decode
-const envelope = decodeRpcEnvelope(bytes);
-if (isRpcResponse(envelope)) {
-  console.log("result:", envelope);
+// ...send frameBytes over transport...
+
+// On receive: decode frame, extract envelope, dispatch by subject
+const decodedFrame = decodeFrame(frameBytes);
+if (decodedFrame.kind === FrameKind.Message) {
+  const envelope = decodeRpcEnvelope(decodedFrame.data);
+  if (isRpcResponse(envelope)) {
+    console.log("result:", envelope.result);
+  }
 }
 
 // Craft responses/notifications
-const ok = createRpcSuccessResponse(cid, { text: "hi" });
-const err = createRpcErrorResponse(cid, 500, "oops");
-const note = createRpcNotification(`${SUBJECT_PREFIXES.EVENT}user.joined`, {
-  userId: "123",
-});
+const responseEnvelope = createRpcSuccessResponse(cid, { text: "hi back" });
+const notifyEnvelope = createRpcNotification(
+  `${SUBJECT_PREFIXES.EVENT}user.joined`,
+  { userId: "123" },
+);
 
 // Validate reserved subjects for routing (rpc/, event/, stream/, app/)
-const rpcSubject = asRpcSubject(`${SUBJECT_PREFIXES.RPC}echo`);
+const validSubject = asRpcSubject(`${SUBJECT_PREFIXES.RPC}echo`);
 ```
 
 ## What it provides

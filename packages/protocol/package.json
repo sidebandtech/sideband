@@ -1,7 +1,7 @@
 {
   "name": "@sideband/protocol",
   "version": "0.0.4",
-  "description": "Canonical Sideband wire contract: branded IDs, protocol constants and error codes, frame+handshake shapes, encode/decode helpers, and raw transport interface; no I/O or runtime logic; used by all packages.",
+  "description": "Canonical Sideband wire contract: branded IDs, protocol constants/error codes, frame + handshake shapes, and binary codec. No I/O, runtime logic, or transport definitions.",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
