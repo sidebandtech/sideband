@@ -55,15 +55,15 @@ const ackBytes = encodeFrame(ack);
 
 ## What it provides
 
-- **Branded types**: `PeerId`, `FrameId`, `Subject` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`)
+- **Branded types**: `PeerId`, `FrameId`, `Subject` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`) for wire-safe validation
 - **Frame codec**: `encodeFrame` / `decodeFrame` with invariant enforcement
-- **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createAckFrame`, `createErrorFrame`, etc.
+- **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createAckFrame`, `createErrorFrame`
 - **FrameId helpers**: `generateFrameId`, `frameIdToHex`, `frameIdFromHex` for correlation and logging
 - **Handshake encode/decode**: `encodeHandshake` / `decodeHandshake` with validation
-- **Protocol constants**: `PROTOCOL_NAME`, `FrameKind` enum, `ControlOp` enum, `ErrorCode` ranges
+- **Protocol constants**: `PROTOCOL_NAME`, `FrameKind` enum, `ControlOp` enum, error code ranges
 - **Type guards**: `isControlFrame`, `isMessageFrame`, `isAckFrame`, etc. for discriminated unions
 
-For transport implementations, see [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport) (defines the Transport interface). For request correlation and RPC semantics, see [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc) and ADR-010. Keep state machines, retries, and routing in [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)—this package only defines the wire contract.
+For transport implementations, see [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport), which defines the Transport ABI. Keep business logic, retries, and state machines in [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)—this package only defines the wire contract.
 
 ## License
 
