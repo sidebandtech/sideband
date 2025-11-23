@@ -17,7 +17,13 @@
  */
 
 // Types
-export type { PeerId, ConnectionId, FrameId, CorrelationId, StreamId } from "./types.js";
+export type {
+  PeerId,
+  ConnectionId,
+  FrameId,
+  CorrelationId,
+  StreamId,
+} from "./types.js";
 
 export {
   asPeerId,

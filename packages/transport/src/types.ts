@@ -10,6 +10,9 @@
 
 import type { ConnectionId } from "@sideband/protocol";
 
+export type { ConnectionId };
+export { asConnectionId } from "@sideband/protocol";
+
 /**
  * Abstract endpoint representation for transport connections.
  * Format depends on concrete transport (e.g., "ws://host:port", "tcp://host:port").
@@ -87,7 +90,9 @@ export interface TransportConnection {
 /**
  * A ConnectionHandler is called when an inbound connection is accepted.
  */
-export type ConnectionHandler = (conn: TransportConnection) => void | Promise<void>;
+export type ConnectionHandler = (
+  conn: TransportConnection,
+) => void | Promise<void>;
 
 /**
  * Represents a listening transport server.
@@ -125,7 +130,7 @@ export interface Transport {
    */
   connect(
     endpoint: TransportEndpoint,
-    options?: ConnectOptions
+    options?: ConnectOptions,
   ): Promise<TransportConnection>;
 
   /**
@@ -140,6 +145,6 @@ export interface Transport {
   listen?(
     endpoint: TransportEndpoint,
     handler: ConnectionHandler,
-    options?: ListenOptions
+    options?: ListenOptions,
   ): Promise<TransportListener>;
 }

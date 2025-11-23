@@ -4,8 +4,9 @@
   "type": "module",
   "exports": {
     ".": {
+      "types": "./src/index.ts",
       "bun": "./src/index.ts",
-      "default": "./dist/src/index.js"
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },

@@ -53,13 +53,13 @@ export function decodeHandshake(bytes: Uint8Array): HandshakePayload {
     if (data.protocol !== PROTOCOL_NAME) {
       throw new ProtocolError(
         "Unsupported protocol: " + data.protocol,
-        ErrorCode.UnsupportedVersion
+        ErrorCode.UnsupportedVersion,
       );
     }
     if (data.version !== PROTOCOL_VERSION) {
       throw new ProtocolError(
         "Unsupported protocol version: " + data.version,
-        ErrorCode.UnsupportedVersion
+        ErrorCode.UnsupportedVersion,
       );
     }
 
@@ -72,7 +72,7 @@ export function decodeHandshake(bytes: Uint8Array): HandshakePayload {
     throw new ProtocolError(
       "Failed to decode handshake: " + message,
       ErrorCode.InvalidFrame,
-      err
+      err,
     );
   }
 }

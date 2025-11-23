@@ -26,8 +26,15 @@ Created `@sideband/transport` as a dedicated package that:
 ```typescript
 export interface Transport {
   readonly kind: string;
-  connect(endpoint: TransportEndpoint, options?: ConnectOptions): Promise<TransportConnection>;
-  listen?(endpoint: TransportEndpoint, handler: ConnectionHandler, options?: ListenOptions): Promise<TransportListener>;
+  connect(
+    endpoint: TransportEndpoint,
+    options?: ConnectOptions,
+  ): Promise<TransportConnection>;
+  listen?(
+    endpoint: TransportEndpoint,
+    handler: ConnectionHandler,
+    options?: ListenOptions,
+  ): Promise<TransportListener>;
 }
 
 export interface TransportConnection {
@@ -82,6 +89,7 @@ export interface TransportConnection {
 ## Testing
 
 All tests pass (3 test cases for MemoryTransport):
+
 - ✅ Connect and exchange data
 - ✅ Reject connection to non-existent endpoint
 - ✅ Reject duplicate listen on same endpoint

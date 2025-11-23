@@ -7,6 +7,7 @@ Transport ABI and shared utilities for Sideband communication.
 This package defines the interface that concrete transport implementations (browser WebSocket, Node.js/Bun WebSocket, memory transport, etc.) must implement.
 
 The `Transport` interface provides two modes:
+
 - **Client mode**: `connect()` to establish outbound connections
 - **Server mode**: `listen()` to accept inbound connections (optional)
 
@@ -22,13 +23,13 @@ export interface Transport {
 
   connect(
     endpoint: TransportEndpoint,
-    options?: ConnectOptions
+    options?: ConnectOptions,
   ): Promise<TransportConnection>;
 
   listen?(
     endpoint: TransportEndpoint,
     handler: ConnectionHandler,
-    options?: ListenOptions
+    options?: ListenOptions,
   ): Promise<TransportListener>;
 }
 ```
@@ -52,6 +53,7 @@ export interface TransportConnection {
 ### `TransportEndpoint`
 
 An abstract endpoint representation (format depends on concrete transport):
+
 - Browser: `"ws://hostname:port"` or `"wss://hostname:port"`
 - Node/Bun: `"ws://hostname:port"` or `"tcp://hostname:port"`
 - Custom: Any string format appropriate for the transport
@@ -63,6 +65,7 @@ An abstract endpoint representation (format depends on concrete transport):
 ## Architecture
 
 Transport implementations **must not** depend on:
+
 - `@sideband/runtime`
 - `@sideband/rpc`
 - `@sideband/peer`
@@ -70,6 +73,7 @@ Transport implementations **must not** depend on:
 - `@sideband/testing` (for production code)
 
 Transport implementations **may** depend on:
+
 - `@sideband/protocol`
 - `@sideband/transport` (this package)
 

@@ -9,8 +9,8 @@
  */
 
 import { asConnectionId } from "@sideband/protocol";
+import type { ConnectionId } from "@sideband/protocol";
 import type {
-  ConnectionId,
   Transport,
   TransportConnection,
   TransportEndpoint,
@@ -37,10 +37,10 @@ export class MemoryTransport implements Transport {
 
   async connect(
     endpoint: TransportEndpoint,
-    _options?: ConnectOptions
+    _options?: ConnectOptions,
   ): Promise<TransportConnection> {
     const clientChannel = new MemoryChannel(
-      asConnectionId(`client-${Math.random()}`)
+      asConnectionId(`client-${Math.random()}`),
     );
 
     const listener = this.endpoints.get(endpoint as string);
@@ -49,7 +49,7 @@ export class MemoryTransport implements Transport {
     }
 
     const serverChannel = new MemoryChannel(
-      asConnectionId(`server-${Math.random()}`)
+      asConnectionId(`server-${Math.random()}`),
     );
 
     // Cross-connect channels
@@ -65,7 +65,7 @@ export class MemoryTransport implements Transport {
   async listen(
     endpoint: TransportEndpoint,
     handler: ConnectionHandler,
-    _options?: ListenOptions
+    _options?: ListenOptions,
   ): Promise<TransportListener> {
     const key = endpoint as string;
     if (this.endpoints.has(key)) {
@@ -88,7 +88,8 @@ export class MemoryTransport implements Transport {
  */
 class MemoryChannel implements TransportConnection {
   readonly id: ConnectionId;
-  readonly endpoint: TransportEndpoint = "memory://" as unknown as TransportEndpoint;
+  readonly endpoint: TransportEndpoint =
+    "memory://" as unknown as TransportEndpoint;
 
   peer?: MemoryChannel;
   private closed = false;
@@ -119,7 +120,7 @@ class MemoryChannel implements TransportConnection {
   get inbound(): AsyncIterable<Uint8Array> {
     return {
       [Symbol.asyncIterator]: () => ({
-        next: async () => {
+        next: async (): Promise<IteratorResult<Uint8Array, void>> => {
           while (this.buffer.length === 0 && !this.closed) {
             await new Promise<void>((resolve) => {
               this.resolvers.push(resolve);
@@ -128,7 +129,7 @@ class MemoryChannel implements TransportConnection {
           if (this.buffer.length > 0) {
             return { value: this.buffer.shift()!, done: false };
           }
-          return { done: true };
+          return { done: true, value: undefined };
         },
       }),
     };
