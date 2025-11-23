@@ -17,9 +17,9 @@ import { asFrameId } from "./types.js";
  * Binary codec for frames.
  * Format (little-endian):
  *   - 1 byte: frame type
- *   - 1 byte: frame flags (bit 0: has frameId, bit 1: has ts)
- *   - Optional 16 bytes: frame ID (if flag 0 set)
- *   - Optional 8 bytes: timestamp (if flag 1 set)
+ *   - 1 byte: frame flags (bit 0: has ts)
+ *   - 16 bytes: frame ID (always present)
+ *   - Optional 8 bytes: timestamp (if flag 0 set)
  *   - Remaining: payload (type-specific)
  */
 
@@ -28,25 +28,22 @@ const FLAGS_OFFSET = 1;
 const HEADER_SIZE = 2;
 const FRAME_ID_SIZE = 16;
 const TIMESTAMP_SIZE = 8;
+const HEADER_WITH_FRAME_ID_SIZE = HEADER_SIZE + FRAME_ID_SIZE;
 
-const FLAG_HAS_FRAME_ID = 0b01;
-const FLAG_HAS_TS = 0b10;
+const FLAG_HAS_TS = 0b01;
 
 /**
  * Encode a frame to bytes.
  */
 export function encodeFrame(frame: Frame): Uint8Array {
-  const hasFrameId = frame.frameId !== undefined;
   const hasTs = frame.timestamp !== undefined;
 
   let flags = 0;
-  if (hasFrameId) flags |= FLAG_HAS_FRAME_ID;
   if (hasTs) flags |= FLAG_HAS_TS;
 
   const payloadBytes = encodeFramePayload(frame);
   const totalSize =
-    HEADER_SIZE +
-    (hasFrameId ? FRAME_ID_SIZE : 0) +
+    HEADER_WITH_FRAME_ID_SIZE +
     (hasTs ? TIMESTAMP_SIZE : 0) +
     payloadBytes.length;
   const buffer = new Uint8Array(totalSize);
@@ -58,15 +55,17 @@ export function encodeFrame(frame: Frame): Uint8Array {
   view.setUint8(offset, flags);
   offset += 1;
 
-  if (hasFrameId) {
-    const frameIdStr = frame.frameId as string;
-    const frameIdBytes = new TextEncoder().encode(frameIdStr.slice(0, 16).padEnd(16));
-    buffer.set(frameIdBytes, offset);
-    offset += FRAME_ID_SIZE;
-  }
+  // frameId is always present
+  const frameIdStr = frame.frameId as string;
+  const frameIdPadded = frameIdStr.slice(0, 16).padEnd(16);
+  const frameIdBytes = globalThis.TextEncoder
+    ? new (globalThis.TextEncoder as any)().encode(frameIdPadded)
+    : new Uint8Array(frameIdPadded.split("").map((c) => c.charCodeAt(0)));
+  buffer.set(frameIdBytes, offset);
+  offset += FRAME_ID_SIZE;
 
   if (hasTs) {
-    view.setBigInt64(offset, BigInt(frame.timestamp || 0), true);
+    view.setBigInt64(offset, BigInt(frame.timestamp), true);
     offset += TIMESTAMP_SIZE;
   }
 
@@ -78,7 +77,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
  * Decode a frame from bytes.
  */
 export function decodeFrame(buffer: Uint8Array): Frame {
-  if (buffer.length < HEADER_SIZE) {
+  if (buffer.length < HEADER_WITH_FRAME_ID_SIZE) {
     throw new ProtocolError("Invalid frame: too short", ErrorCode.InvalidFrame);
   }
 
@@ -86,24 +85,25 @@ export function decodeFrame(buffer: Uint8Array): Frame {
   const frameKind = view.getUint8(FRAME_TYPE_OFFSET) as FrameKind;
   const flags = view.getUint8(FLAGS_OFFSET);
 
-  const hasFrameId = (flags & FLAG_HAS_FRAME_ID) !== 0;
   const hasTs = (flags & FLAG_HAS_TS) !== 0;
 
   let offset = HEADER_SIZE;
 
-  let frameId: FrameId | undefined;
-  if (hasFrameId) {
-    if (buffer.length < offset + FRAME_ID_SIZE) {
-      throw new ProtocolError(
-        "Invalid frame: incomplete frame ID",
-        ErrorCode.InvalidFrame
-      );
-    }
-    const frameIdBytes = buffer.slice(offset, offset + FRAME_ID_SIZE);
-    const frameIdStr = new TextDecoder().decode(frameIdBytes).trim();
-    frameId = asFrameId(frameIdStr);
-    offset += FRAME_ID_SIZE;
+  // frameId is always present
+  if (buffer.length < offset + FRAME_ID_SIZE) {
+    throw new ProtocolError(
+      "Invalid frame: incomplete frame ID",
+      ErrorCode.InvalidFrame
+    );
   }
+  const frameIdBytes = buffer.slice(offset, offset + FRAME_ID_SIZE);
+  const frameIdStr = (globalThis.TextDecoder
+    ? new (globalThis.TextDecoder as any)().decode(frameIdBytes)
+    : new Uint8Array(frameIdBytes)
+        .reduce((acc, byte) => acc + String.fromCharCode(byte), "")
+  ).trim();
+  const frameId = asFrameId(frameIdStr);
+  offset += FRAME_ID_SIZE;
 
   let timestamp: number | undefined;
   if (hasTs) {
@@ -125,6 +125,12 @@ export function decodeFrame(buffer: Uint8Array): Frame {
  * Encode the payload portion of a frame (type-specific).
  */
 function encodeFramePayload(frame: Frame): Uint8Array {
+  const encodeString = (str: string): Uint8Array => {
+    return globalThis.TextEncoder
+      ? new (globalThis.TextEncoder as any)().encode(str)
+      : new Uint8Array(str.split("").map((c) => c.charCodeAt(0)));
+  };
+
   switch (frame.kind) {
     case FrameKind.Control: {
       const cf = frame as ControlFrame;
@@ -138,7 +144,7 @@ function encodeFramePayload(frame: Frame): Uint8Array {
 
     case FrameKind.Message: {
       const mf = frame as MessageFrame;
-      const subjectBytes = new TextEncoder().encode(mf.subject);
+      const subjectBytes = encodeString(mf.subject);
       const subjectLenBytes = new Uint8Array(4);
       new DataView(subjectLenBytes.buffer).setUint32(0, subjectBytes.length, true);
       const result = new Uint8Array(
@@ -153,14 +159,14 @@ function encodeFramePayload(frame: Frame): Uint8Array {
     case FrameKind.Ack: {
       const af = frame as AckFrame;
       const ackFrameIdStr = af.ackFrameId as string;
-      return new TextEncoder().encode(ackFrameIdStr.slice(0, 16).padEnd(16));
+      return encodeString(ackFrameIdStr.slice(0, 16).padEnd(16));
     }
 
     case FrameKind.Error: {
       const ef = frame as ErrorFrame;
       const codeBytes = new Uint8Array(2);
       new DataView(codeBytes.buffer).setUint16(0, ef.code, true);
-      const msgBytes = new TextEncoder().encode(ef.message);
+      const msgBytes = encodeString(ef.message);
       const msgLenBytes = new Uint8Array(4);
       new DataView(msgLenBytes.buffer).setUint32(0, msgBytes.length, true);
       const result = new Uint8Array(
@@ -190,8 +196,14 @@ function encodeFramePayload(frame: Frame): Uint8Array {
 function decodeFramePayload(
   frameKind: FrameKind,
   payload: Uint8Array,
-  base: { frameId?: FrameId; timestamp?: number }
+  base: { frameId: FrameId; timestamp?: number }
 ): Frame {
+  const decodeString = (bytes: Uint8Array): string => {
+    return globalThis.TextDecoder
+      ? new (globalThis.TextDecoder as any)().decode(bytes)
+      : new Uint8Array(bytes)
+          .reduce((acc, byte) => acc + String.fromCharCode(byte), "");
+  };
   switch (frameKind) {
     case FrameKind.Control: {
       if (payload.length < 1) {
@@ -220,7 +232,7 @@ function decodeFramePayload(
           ErrorCode.InvalidFrame
         );
       }
-      const subject = new TextDecoder().decode(payload.slice(4, 4 + subjectLen));
+      const subject = decodeString(payload.slice(4, 4 + subjectLen));
       const framePayload = payload.slice(4 + subjectLen);
       return { kind: FrameKind.Message, subject, data: framePayload, ...base };
     }
@@ -232,7 +244,7 @@ function decodeFramePayload(
           ErrorCode.InvalidFrame
         );
       }
-      const ackFrameIdStr = new TextDecoder().decode(payload.slice(0, 16)).trim();
+      const ackFrameIdStr = decodeString(payload.slice(0, 16)).trim();
       const ackFrameId = asFrameId(ackFrameIdStr);
       return { kind: FrameKind.Ack, ackFrameId, ...base };
     }
@@ -253,7 +265,7 @@ function decodeFramePayload(
           ErrorCode.InvalidFrame
         );
       }
-      const message = new TextDecoder().decode(payload.slice(6, 6 + msgLen));
+      const message = decodeString(payload.slice(6, 6 + msgLen));
       const framePayload =
         payload.length > 6 + msgLen ? payload.slice(6 + msgLen) : undefined;
       return { kind: FrameKind.Error, code, message, details: framePayload, ...base };

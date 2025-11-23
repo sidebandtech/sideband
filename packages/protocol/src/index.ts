@@ -25,6 +25,7 @@ export {
   asFrameId,
   asCorrelationId,
   asStreamId,
+  generateFrameId,
 } from "./types.js";
 
 // Constants and enums

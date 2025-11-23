@@ -57,3 +57,16 @@ export function asCorrelationId(value: string): CorrelationId {
 export function asStreamId(value: string): StreamId {
   return value as StreamId;
 }
+
+/**
+ * Generate a unique FrameId for a new frame instance.
+ * Uses 12 bytes of cryptographic randomness encoded as hex (16 chars).
+ */
+export function generateFrameId(): FrameId {
+  const bytes = new Uint8Array(12);
+  globalThis.crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return asFrameId(hex);
+}

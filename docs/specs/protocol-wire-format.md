@@ -5,8 +5,8 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
 ## Envelope
 
 - Version tag: `sideband/1` (see `PROTOCOL_ID`). All frames belong to this version; negotiation happens via the handshake payload, not per-frame.
-- Header (fixed 2 bytes): `t` (1 byte, `FrameKind`), `flags` (1 byte; bit0 `frameId`, bit1 `ts`, bit2..7 reserved = 0).
-- Optional frame ID (`id`): 16 bytes UTF-8, left-padded with spaces if shorter; trimmed on decode. Identifies this frame instance; used for request/response correlation and ACK linkage in v1.
+- Header (fixed 2 bytes): `t` (1 byte, `FrameKind`), `flags` (1 byte; bit0 `ts`, bit1..7 reserved = 0).
+- Frame ID (`id`): 16 bytes UTF-8 (left-padded with spaces; trimmed on decode). **Always present.** Used for request/response correlation and ACK linkage; auto-generated to simplify runtime logic.
 - Optional timestamp: 8-byte signed int (ms since epoch).
 - Payload: type-specific body (below).
 
@@ -35,9 +35,9 @@ Canonical on-wire contract for `@sideband/protocol`. Applies to all transports t
 
 ## Required vs optional fields (v1)
 
-- Required: header bytes, frame-specific payload fields; handshake `protocol`, `version`, `peerId`, Message `subject`, Error `code` + `message`.
-- Optional: `id`, `ts`, `caps`, `metadata`, message `data`, error `details`, Close reason.
-- Reserved: flags bit2..7, Control ops >3, future frame kinds >3. Receivers MUST ignore reserved bits set to 0 and close on non-zero reserved bits.
+- Required: header bytes, `id` (frameId, always present), frame-specific payload fields; handshake `protocol`, `version`, `peerId`, Message `subject`, Error `code` + `message`.
+- Optional: `ts`, `caps`, `metadata`, message `data`, error `details`, Close reason.
+- Reserved: flags bit1..7, Control ops >3, future frame kinds >3. Receivers MUST ignore reserved bits set to 0 and close on non-zero reserved bits.
 
 ## Size & limits
 

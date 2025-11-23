@@ -26,14 +26,14 @@
 | Peer identity        | `PeerId`         | `peerId`         | `peerId` | Stable identity of a peer node; survives reconnects      |
 | Connection identity  | `ConnectionId`   | `connectionId`   | -        | Transient transport link identity; new per TCP/WebSocket |
 | Session identity     | `SessionId`      | `sessionId`      | -        | Optional higher-level session across reconnects          |
-| Frame identity       | `FrameId`        | `frameId`        | `id`     | Identifies this frame instance on the wire.              |
+| Frame identity       | `FrameId`        | `frameId`        | `id`     | Identifies this frame instance on the wire               |
 | Correlation identity | `CorrelationId`  | `correlationId`  | -        | **Reserved for v2.**                                     |
 | Trace identity (req) | `TraceId`        | `traceId`        | -        | Optional, spans multi-frame flows                        |
 | Timestamp            | `Timestamp`      | `timestamp`      | `ts`     | `number` (ms since epoch)                                |
 
-> `frameId` — In v1, used for request/response correlation and ACK linkage.  
-> `correlationId` — Reserved for v2 when explicit tracing or multi-hop flows require separate correlation semantics.  
-> Every frame has a `frameId` (optional on wire).
+> `frameId` — In v1, used for request/response correlation and ACK linkage. Always present on every frame; auto-generated at construction to eliminate defensive checks in runtime/RPC layers.
+> `correlationId` — Reserved for v2 when explicit tracing or multi-hop flows require separate correlation semantics.
+> Helper: `generateFrameId()` creates a unique FrameId from 12 bytes of cryptographic randomness encoded as hex (16 chars).
 
 ### 2. Frames and variants
 
@@ -109,6 +109,7 @@
 
 | Operation              | Function name          | Notes                                      |
 | ---------------------- | ---------------------- | ------------------------------------------ |
+| Generate frame ID      | `generateFrameId`      | `() -> FrameId`                            |
 | Encode frame to bytes  | `encodeFrame`          | `Frame -> Uint8Array`                      |
 | Decode bytes to frame  | `decodeFrame`          | `ArrayBufferView -> Frame`                 |
 | Create message frame   | `createMessageFrame`   | `(subject, data, opts) -> MessageFrame`    |
@@ -128,6 +129,7 @@
 
 - All packages align on shared names and wire keys with **PeerId** as the intrinsic identity, reducing ambiguity in docs, code, and AI-assisted edits.
 - Eliminates naming collision with Node.js ecosystem and aligns with libp2p/IPFS/WebRTC conventions.
+- Every frame has a `frameId` created by `generateFrameId()` at construction. This eliminates defensive `frameId === undefined` checks throughout runtime and RPC layers, improving code clarity and reducing bugs.
 - Future additions (new frame kinds, error codes, capability keys) must extend this matrix and update the ADR.
 - Tests and examples should assert the public property names while keeping wire keys scoped to codecs.
 - Adding `connectionId`/`sessionId` is optional but recommended when distinguishing links or resumable sessions; codecs should keep those out-of-band unless explicitly encoded.
