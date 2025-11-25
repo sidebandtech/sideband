@@ -1,6 +1,6 @@
 {
   "name": "@sideband/runtime",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Transport-agnostic Sideband runtime: manage peers, attach transports, route frames, correlate RPC calls, and expose middleware hooks without concrete I/O.",
   "license": "AGPL-3.0-or-later",
   "repository": {
