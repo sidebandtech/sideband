@@ -12,6 +12,8 @@
     "prepublishOnly": "bun run scripts/prepublish.ts"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.5.1",
+    "@changesets/cli": "^2.29.7",
     "@types/bun": "^1.3.3",
     "eslint": "^9.39.1",
     "husky": "^9.1.7",
