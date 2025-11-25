@@ -19,5 +19,6 @@
   },
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true,
-  "typescript.preferences.importModuleSpecifierEnding": "index"
+  "typescript.preferences.importModuleSpecifierEnding": "index",
+  "cSpell.words": ["sidebandtech"]
 }
