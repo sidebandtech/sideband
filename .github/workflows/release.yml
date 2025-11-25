@@ -39,6 +39,7 @@ jobs:
           title: "chore: release"
           commit: "chore: release"
           version: bun changeset version
-          publish: bun run prepublishOnly && npx changeset publish
+          publish: bun run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
