@@ -1,35 +1,33 @@
-# dependencies (bun install)
+# Dependencies
 node_modules
 
-# output
-out
+# Build output
 dist
 *.tgz
+*.tsbuildinfo
 
-# code coverage
+# Test coverage
 coverage
 *.lcov
 
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+# Logs
+*.log
 
-# Environment variables
-.env.*.local
-.env.local
+# Environment and local files
+.env*.local
+*.local.md
+*.local.ts
 
-# Local development files
-**/*.local.md
-**/*.local.ts
-
-# caches
-.eslintcache
+# Caches
 .cache
-*.tsbuildinfo
 
-# IntelliJ based IDEs
+# IDEs
 .idea
 
-# Finder (MacOS) folder config
+# VitePress
+.vitepress/dist
+.vitepress/cache
+
+# OS
 .DS_Store
+
