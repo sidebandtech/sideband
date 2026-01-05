@@ -14,6 +14,7 @@ What lives where, who depends on whom, and where to start.
 │  ├─ runtime/
 │  ├─ rpc/
 │  ├─ peer/
+│  ├─ secure-relay/        # E2EE relay protocol (SBRP)
 │  ├─ testing/             # Test helpers (when added)
 │  ├─ transport-browser/
 │  ├─ transport-node/
@@ -55,9 +56,15 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 • Implements the Transport interface via browser primitives (e.g., WebSocket); may handle reconnects/errors.  
 • Depends on: protocol, transport. Must not depend on runtime/rpc/peer.
 
-`@sideband/transport-node` — Node/Bun transport  
-• Transport interface via Node/Bun networking (e.g., ws/Bun WS); server/client wiring.  
+`@sideband/transport-node` — Node/Bun transport
+• Transport interface via Node/Bun networking (e.g., ws/Bun WS); server/client wiring.
 • Depends on: protocol, transport. Must not depend on runtime/rpc/peer.
+
+`@sideband/secure-relay` — Sideband Relay Protocol (SBRP)
+• E2EE handshake, session encryption/decryption, TOFU identity pinning, replay protection.
+• Enables secure browser↔daemon communication via untrusted relay servers.
+• Standalone cryptographic layer; no I/O or transport code.
+• Depends on: none (uses @noble/\* for crypto). Used by: relay implementations, browser/daemon apps.
 
 `@sideband/cli` — Developer tooling  
 • Commands for scaffolding, inspection, debugging, admin. Logic should reuse existing packages.  
@@ -83,6 +90,7 @@ graph TD
   runtime --> peer
   transport_browser --> peer
   transport_node --> peer
+  secure_relay --> peer
   peer --> cli
   rpc --> cli
 ```

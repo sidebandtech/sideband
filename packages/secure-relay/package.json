@@ -1,0 +1,63 @@
+{
+  "name": "@sideband/secure-relay",
+  "version": "0.0.0",
+  "description": "Secure Relay Protocol (SBRP): E2EE handshake, session encryption, and TOFU identity pinning for relay-mediated communication.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sidebandtech/sideband.git",
+    "directory": "packages/secure-relay"
+  },
+  "bugs": {
+    "url": "https://github.com/sidebandtech/sideband/issues"
+  },
+  "homepage": "https://sideband.tech",
+  "author": "Sideband <hello@sideband.tech>",
+  "contributors": [
+    "Konstantin Tarkus <koistya@kriasoft.com>"
+  ],
+  "keywords": [
+    "sideband",
+    "secure-relay",
+    "relay-protocol",
+    "e2ee",
+    "end-to-end-encryption",
+    "authenticated-encryption",
+    "identity-pinning",
+    "tofu",
+    "zero-trust",
+    "secure-websocket",
+    "agent-communication",
+    "browser-to-daemon",
+    "remote-daemon",
+    "encryption",
+    "x25519",
+    "ed25519",
+    "chacha20-poly1305"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^1.2.1",
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.7.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.3"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
