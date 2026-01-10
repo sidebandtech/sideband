@@ -1,6 +1,6 @@
 # @sideband/runtime
 
-Transport-agnostic runtime primitives: peer wiring, frame routing, and RPC correlation utilities. Ships zero transport/UI code—pair it with `@sideband/transport-*` and [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc).
+RPC correlation utilities for Sideband. Tracks pending requests and matches incoming responses by correlation ID with automatic timeout handling.
 
 ## Install
 
@@ -36,10 +36,15 @@ const response = await pending; // resolved or rejected on timeout/clear()
 
 ## What it provides
 
-- RpcCorrelationManager: promise-based request/response tracking with timeouts and cleanup
-- Runtime scaffolding without transport coupling; safe to embed in browser, Node, or service hosts
-- Helpers to clear/reject all pending work when transports disconnect or peers drop
+- **RpcCorrelationManager**: Promise-based request/response tracking with configurable timeouts
+  - `registerRequest(cid)` — register a pending request and get a promise
+  - `matchResponse(cid, response)` — resolve a pending request with a response
+  - `rejectRequest(cid, reason)` — reject a specific pending request
+  - `clear()` — reject all pending requests (e.g., on disconnect)
+  - `getPendingCount()` — get the number of pending requests
+
+Ships zero transport or I/O code—safe to embed in browser, Node, or service hosts. See ADR-010 for correlation semantics.
 
 ## License
 
-Code: AGPL-3.0-or-later. Commercial licensing available via hello@sideband.tech.
+Apache-2.0

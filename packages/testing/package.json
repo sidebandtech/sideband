@@ -2,7 +2,7 @@
   "name": "@sideband/testing",
   "version": "0.0.0",
   "description": "Shared test helpers for Sideband: fakes, loopback transports, peer fixtures, and utilities to keep runtime/transport tests consistent.",
-  "license": "AGPL-3.0-or-later",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sidebandtech/sideband.git",

@@ -41,4 +41,4 @@ for await (const bytes of conn.inbound) {
 
 ## License
 
-Code: AGPL-3.0-or-later. Commercial licensing available via hello@sideband.tech.
+Apache-2.0

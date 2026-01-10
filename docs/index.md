@@ -3,21 +3,21 @@ layout: home
 
 hero:
   name: Sideband
-  text: Secure P2P communication for TypeScript
-  tagline: Protocol, runtime, RPC, transports, and end-to-end encrypted relays.
+  text: "Browser \u2194 local daemon without WebSocket code."
+  tagline: "A drop-in SDK that lets browsers talk to local daemons reliably – no reconnect logic, no NAT hacks, no exposed ports. E2EE by default."
   actions:
     - theme: brand
-      text: Get Started
+      text: Quick Start
       link: /guide/
     - theme: alt
-      text: View on GitHub
+      text: GitHub
       link: https://github.com/sidebandtech/sideband
 
 features:
-  - title: Transport Agnostic
-    details: Core runtime works with any transport — WebSocket, WebRTC, or custom implementations.
-  - title: Typed RPC
-    details: Define method signatures once; get full type safety across client and server.
-  - title: End-to-End Encryption
-    details: Secure relay protocol enables encrypted communication through untrusted relay servers.
+  - title: Delete Your WebSocket Code
+    details: "Reconnects, multiplexing, and correlation are handled for you. Delete your WebSocket code. Focus on your app."
+  - title: Works Everywhere
+    details: "Works behind NAT, firewalls, and mobile networks. No port forwarding. No VPNs. No tunnels."
+  - title: Secure by Default
+    details: "End-to-end encrypted by default. The relay never sees your data. Ed25519 · X25519 · ChaCha20."
 ---

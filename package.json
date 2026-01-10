@@ -1,6 +1,7 @@
 {
   "name": "sideband",
   "type": "module",
+  "license": "Apache-2.0",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -25,7 +26,9 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.6.2",
-    "typescript": "^5.9.3"
+    "shiki": "^3.21.0",
+    "typescript": "^5.9.3",
+    "vitepress-plugin-llms": "^1.10.0"
   },
   "prettier": {
     "singleQuote": false,

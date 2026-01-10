@@ -94,16 +94,23 @@
 | Capabilities list | -                | `capabilities`   | `caps`   | `string[]`, feature flags or protocol extensions |
 | Peer metadata     | -                | `metadata`       | -        | `Record<string, string>` namespaced keys         |
 
-### 7. Transports and runtime
+### 7. Protocols and packages
 
-| Domain concept            | Package / Type name           | Notes                                    |
-| ------------------------- | ----------------------------- | ---------------------------------------- |
-| Transport ABI and helpers | `@sideband/transport`         | Shared interfaces, no env-specific logic |
-| Node.js/Bun transport     | `@sideband/transport-node`    | Node.js / Bun WebSocket adapters         |
-| Browser transport         | `@sideband/transport-browser` | Browser / ServiceWorker adapters         |
-| Protocol package          | `@sideband/protocol`          | `Frame`, `FrameKind`, encode/decode      |
-| Runtime engine            | `@sideband/runtime`           | Peer lifecycle, routing, subscriptions   |
-| Peer SDK                  | `@sideband/peer`              | High-level publish/subscribe/RPC API     |
+| Layer          | Protocol                 | Abbreviation | Package                     | Notes                                |
+| -------------- | ------------------------ | ------------ | --------------------------- | ------------------------------------ |
+| App Framing    | Sideband Protocol        | **SBP**      | `@sideband/protocol`        | Topology-agnostic application frames |
+| Relay Session  | Sideband Relay Protocol  | **SBRP**     | `@sideband/secure-relay`    | E2EE tunnel via relay server         |
+| Direct Session | Sideband Direct Protocol | **SBDP**     | `@sideband/direct` (future) | P2P session via DTLS or similar      |
+
+> **SBP** is the base protocol used by all session layers. SBRP wraps SBP frames with E2EE for relay mode; SBDP (future) will secure SBP frames for direct P2P.
+
+| Package                       | Notes                                    |
+| ----------------------------- | ---------------------------------------- |
+| `@sideband/transport`         | Shared interfaces, no env-specific logic |
+| `@sideband/transport-node`    | Node.js / Bun WebSocket adapters         |
+| `@sideband/transport-browser` | Browser / ServiceWorker adapters         |
+| `@sideband/runtime`           | Peer lifecycle, routing, subscriptions   |
+| `@sideband/peer`              | High-level publish/subscribe/RPC API     |
 
 ### 8. RPC and pub/sub (higher level)
 

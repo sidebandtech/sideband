@@ -29,9 +29,9 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 
 ## Package roles and boundaries
 
-`@sideband/protocol` — Wire contract  
-• Canonical message/frame types, constants, error codes; light encode/decode helpers.  
-• No I/O or runtime logic.  
+`@sideband/protocol` — Sideband Protocol (SBP)
+• Canonical message/frame types, constants, error codes; light encode/decode helpers.
+• No I/O or runtime logic. Topology-agnostic (used by both relay and direct modes).
 • Depends on: none. Used by: all.
 
 `@sideband/transport` — Transport ABI + shared utilities  

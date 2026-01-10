@@ -2,6 +2,7 @@
 
 - **Date**: 2025-11-22
 - **Status**: Accepted
+- **Applies to**: SBP
 - **Tags**: protocol, frames, handshake
 
 ## Context
@@ -17,7 +18,7 @@
 - Compatibility rules for v1:
   - Additive only: new optional fields, new `ControlOp`, new capability strings are allowed without a major bump.
   - Unknown fields/caps/metadata MUST be ignored, not rejected.
-  - **Frame header flags** (byte 1): bit 0 signals timestamp presence; bits 1–7 reserved and must be zero. Non-zero reserved bits close the connection. See protocol-wire-format.md.
+  - **Frame header flags** (byte 1): bit 0 signals timestamp presence; bits 1–7 reserved and must be zero. Non-zero reserved bits close the connection. See docs/protocols/sbp/wire-format.md.
   - **FrameId** (16 bytes): opaque entropy with no semantic bits or structure. Decoders MUST treat as raw binary and MUST NOT interpret any bits. Validation is length-only (must be exactly 16 bytes).
   - Mandatory field changes (renames/removals) require a new major version.
 - Error behavior on skew:

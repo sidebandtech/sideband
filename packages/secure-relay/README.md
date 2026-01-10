@@ -1,6 +1,8 @@
 # @sideband/secure-relay
 
-End-to-end encrypted communication between browsers and daemons via untrusted relay servers.
+Low-level E2EE primitives for the Sideband Relay Protocol (SBRP).
+
+Implements authenticated handshake, key derivation, and message encryption for secure browser ↔ daemon communication via untrusted relay servers. Most applications should use `@sideband/peer` instead of this package directly.
 
 ## Features
 
@@ -10,6 +12,15 @@ End-to-end encrypted communication between browsers and daemons via untrusted re
 - **TOFU identity pinning** — Trust-on-first-use with key change detection
 - **Replay protection** — Bitmap-based sequence window
 
+## Non-Goals
+
+This package intentionally does NOT:
+
+- Handle network transport or WebSockets
+- Manage session lifecycle or reconnection
+- Persist identity keys or TOFU pins
+- Implement relay authentication or tokens
+
 ## Install
 
 ```bash
@@ -18,7 +29,7 @@ bun add @sideband/secure-relay
 
 ## Usage
 
-```typescript
+```ts
 import {
   generateIdentityKeyPair,
   createHandshakeInit,
@@ -34,7 +45,8 @@ import {
   asClientId,
 } from "@sideband/secure-relay";
 
-// Daemon: generate identity keypair (persist this!)
+// Daemon: generate identity keypair ONCE and persist securely.
+// Regenerating causes TOFU mismatch warnings for all clients.
 const identity = generateIdentityKeyPair();
 const daemonId = asDaemonId("my-daemon");
 
@@ -61,25 +73,35 @@ const { sessionKeys } = processHandshakeAccept(
 );
 const daemonSession = createDaemonSession(sessionKeys);
 
-// Encrypt/decrypt messages
+// Encrypt/decrypt messages (sessions are stateful — do not clone)
 const encrypted = encryptClientToDaemon(daemonSession, plaintext);
 const decrypted = decryptClientToDaemon(clientSession, encrypted);
 ```
+
+## TOFU Security
+
+Identity keys use trust-on-first-use (TOFU) pinning:
+
+- Pin daemon identity keys on first successful handshake
+- Never accept key changes silently — `identity_key_changed` indicates potential MITM
+- On mismatch, present both fingerprints and require explicit user approval
 
 ## Error Handling
 
 All errors throw `SbrpError` with a specific `code`:
 
-| Code                   | Meaning                                   |
-| ---------------------- | ----------------------------------------- |
-| `identity_key_changed` | Pinned key doesn't match (potential MITM) |
-| `handshake_failed`     | Signature verification failed             |
-| `decrypt_failed`       | Message authentication failed             |
-| `sequence_error`       | Replay detected or sequence out of window |
+| Code                   | Meaning                                   | Recovery                  |
+| ---------------------- | ----------------------------------------- | ------------------------- |
+| `identity_key_changed` | Pinned key doesn't match (potential MITM) | Close session, alert user |
+| `handshake_failed`     | Signature verification failed             | Close session             |
+| `decrypt_failed`       | Message authentication failed             | Close session             |
+| `sequence_error`       | Replay detected or sequence out of window | Close session             |
+
+All errors are fatal — close the session and re-handshake.
 
 ## Specification
 
-See [Secure Relay Protocol](https://sideband.tech/specs/secure-relay-protocol) for the full protocol specification.
+See the [SBRP protocol specification](https://sideband.tech/protocols/sbrp/) for implementation details.
 
 ## License
 

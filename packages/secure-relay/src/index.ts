@@ -1,5 +1,4 @@
-// SPDX-FileCopyrightText: 2025-present Sideband
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * @sideband/secure-relay
@@ -46,6 +45,7 @@ export type {
   HandshakeInit,
   IdentityKeyPair,
   PinnedIdentity,
+  SessionId,
   SessionKeys,
 } from "./types.js";
 
@@ -55,6 +55,8 @@ export {
   Direction,
   SbrpError,
   SbrpErrorCode,
+  SignalCode,
+  SignalReason,
 } from "./types.js";
 
 // Constants
@@ -66,11 +68,19 @@ export {
   ED25519_PRIVATE_KEY_LENGTH,
   ED25519_PUBLIC_KEY_LENGTH,
   ED25519_SIGNATURE_LENGTH,
+  FRAME_HEADER_SIZE,
+  HANDSHAKE_ACCEPT_PAYLOAD_SIZE,
+  HANDSHAKE_INIT_PAYLOAD_SIZE,
+  MAX_PAYLOAD_SIZE,
+  MAX_PING_PAYLOAD_SIZE,
+  MIN_CONTROL_PAYLOAD_SIZE,
+  MIN_ENCRYPTED_PAYLOAD_SIZE,
   NONCE_LENGTH,
   SBRP_HANDSHAKE_CONTEXT,
   SBRP_SESSION_KEYS_INFO,
   SBRP_TRANSCRIPT_CONTEXT,
   SESSION_KEYS_LENGTH,
+  SIGNAL_PAYLOAD_SIZE,
   SYMMETRIC_KEY_LENGTH,
   X25519_PRIVATE_KEY_LENGTH,
   X25519_PUBLIC_KEY_LENGTH,
@@ -130,3 +140,35 @@ export {
   encryptClientToDaemon,
   encryptDaemonToClient,
 } from "./session.js";
+
+// Wire format (binary framing)
+export type {
+  ControlPayload,
+  Frame,
+  FrameHeader,
+  SignalPayload,
+} from "./frame.js";
+
+export {
+  decodeControl,
+  decodeData,
+  decodeFrame,
+  decodeHandshakeAccept,
+  decodeHandshakeInit,
+  decodeSignal,
+  encodeControl,
+  encodeData,
+  encodeFrame,
+  encodeHandshakeAccept,
+  encodeHandshakeInit,
+  encodePing,
+  encodePong,
+  encodeSignal,
+  FrameDecoder,
+  FrameType,
+  fromWireControlCode,
+  isTerminalCode,
+  readFrameHeader,
+  toWireControlCode,
+  WireControlCode,
+} from "./frame.js";

@@ -1,5 +1,4 @@
-// SPDX-FileCopyrightText: 2025-present Sideband
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { ErrorCode } from "./constants.js";
 import { ProtocolError } from "./error.js";
@@ -31,7 +30,7 @@ export type ConnectionId = Brand<string, "ConnectionId">;
  * Validation is length-only (must be exactly 16 bytes).
  *
  * Frame header flags (byte 1 of the envelope) are separate from FrameId.
- * See ADR-001, ADR-004, and protocol-wire-format.md for details.
+ * See ADR-001, ADR-004, and docs/protocols/sbp/wire-format.md for details.
  */
 export type FrameId = Uint8Array & { readonly __brand: "FrameId" };
 

@@ -1,0 +1,17 @@
+Sideband Project
+Copyright 2025 Sideband Project
+
+This product includes software developed by the Sideband Project.
+
+Source code in this repository is licensed under the Apache License,
+Version 2.0.
+
+Documentation, specifications, protocol definitions, and architectural
+materials are licensed under the Creative Commons Attribution 4.0
+International License (CC BY 4.0).
+
+Sideband is an open protocol and reference implementation for secure
+browser-to-local-daemon communication.
+
+The names "Sideband", "Sideband Protocol", and "Sideband Relay Protocol"
+are used to identify the original project and specification.

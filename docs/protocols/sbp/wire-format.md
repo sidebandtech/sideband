@@ -1,6 +1,6 @@
-# Protocol Wire Format (v1)
+# SBP Wire Format (v1)
 
-Canonical on-wire contract for `@sideband/protocol`. Applies to all transports that carry Sideband frames (WS, loopback, future TCP). Values are little-endian unless stated otherwise.
+Canonical on-wire contract for `@sideband/protocol`. Applies to all transports that carry SBP frames (WS, loopback, future TCP). Values are little-endian unless stated otherwise.
 
 **Note**: All v1 implementations MUST support the timestamp flag bit (bit 0), even if unused. Frames with bit 0 set include an 8-byte timestamp after the frame ID.
 
