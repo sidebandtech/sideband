@@ -1,0 +1,3350 @@
+---
+url: /adr/001-protocol-versioning-and-compatibility.md
+---
+# ADR 001: Protocol Versioning & Compatibility
+
+* **Date**: 2025-11-22
+* **Status**: Accepted
+* **Applies to**: SBP
+* **Tags**: protocol, frames, handshake
+
+## Context
+
+* `@sideband/protocol` is the foundation for all transports and runtimes. Breaking wire changes ripple through every package.
+* Current implementation encodes frames in a binary envelope with a JSON handshake. Version fields exist (`PROTOCOL_VERSION = "1"`) but policy was undocumented.
+* We need predictable rules for adding fields, handling unknown data, and reacting to version skew.
+
+## Decision
+
+* Version label: `"sideband/1"` (`PROTOCOL_ID`). Version is asserted during handshake; all frames on a connection share the same major version.
+* Negotiation: no downgrade/upgrade; v1 endpoints accept only `version === "1"` and `protocol === "sideband"`. Future negotiation, if needed, will happen via a new major version handshake.
+* Compatibility rules for v1:
+  * Additive only: new optional fields, new `ControlOp`, new capability strings are allowed without a major bump.
+  * Unknown fields/caps/metadata MUST be ignored, not rejected.
+  * **Frame header flags** (byte 1): bit 0 signals timestamp presence; bits 1–7 reserved and must be zero. Non-zero reserved bits close the connection. See docs/protocols/sbp/wire-format.md.
+  * **FrameId** (16 bytes): opaque entropy with no semantic bits or structure. Decoders MUST treat as raw binary and MUST NOT interpret any bits. Validation is length-only (must be exactly 16 bytes).
+  * Mandatory field changes (renames/removals) require a new major version.
+* Error behavior on skew:
+  * If `protocol` or `version` is unsupported, send `ErrorFrame{code=UnsupportedVersion}` then close.
+  * If a frame is malformed or uses a reserved bit/type, send `ErrorFrame{code=ProtocolViolation}` or `InvalidFrame` then close.
+* Deprecation: v1 features may be deprecated via docs/caps but remain accepted until v2 exists; removal happens only in a new major version.
+
+## Consequences
+
+* Implementations can evolve v1 by adding optional data without breaking peers.
+* Tests must include cases where unknown `caps`/metadata are ignored and reserved bits cause rejection.
+* Transports should surface version errors early (during handshake) to avoid partial session setup.
+* **v1 Timestamp Feature**: Timestamps (flag bit 0) are an integrated v1 feature. All implementations MUST handle the timestamp bit, even if unused. Senders MAY include timestamps on any frame; receivers simply skip them if not used.
+* Future major versions will introduce a new handshake version string and may reuse the same framing with different semantics; coexistence requires either separate listeners or a negotiator shim.
+
+---
+
+---
+url: /adr/002-naming-matrix.md
+---
+# ADR 002: Naming Matrix for Protocol Types
+
+* **Date**: 2025-11-22
+* **Status**: Accepted
+* **Tags**: protocol, transport, runtime
+
+## Context
+
+* Names for ids, timestamps, frame kinds, and wire keys have drifted across packages, which makes interop harder and confuses new contributors.
+* We need a single source of truth that pins type names, property names, and wire-level keys, including how higher-level SDK concepts map onto protocol frames.
+* The matrix should be concise enough to live near specs and code but explicit enough to guide future changes and AI-assisted edits.
+
+## Decision
+
+* Canonicalize on **Peer** as the intrinsic identity, using `PeerId` for type names and `peerId` for properties.
+* Adopt the following naming matrix as the canonical reference for protocol-level types, wire keys, and SDK-facing naming.
+* Wire keys (`t`, `id`, `peerId`, `caps`, `s`, `b`) are internal to encode/decode; public TypeScript types expose descriptive names.
+* Use these names in code, docs, tests, and public APIs; deviations require an ADR update.
+
+**Rationale**: `PeerId` avoids collision with Node.js ecosystem terminology and aligns with modern P2P standards (libp2p, IPFS, WebRTC). `NodeId` created semantic ambiguity in browser contexts and confused process identity with network-visible peer identity.
+
+### 1. Identity, timestamps, correlation
+
+| Domain concept       | Type / Enum name | Field / Property | Wire key | Notes / invariants                                       |
+| -------------------- | ---------------- | ---------------- | -------- | -------------------------------------------------------- |
+| Peer identity        | `PeerId`         | `peerId`         | `peerId` | Stable identity of a peer node; survives reconnects      |
+| Connection identity  | `ConnectionId`   | `connectionId`   | -        | Transient transport link identity; new per TCP/WebSocket |
+| Session identity     | `SessionId`      | `sessionId`      | -        | Optional higher-level session across reconnects          |
+| Frame identity       | `FrameId`        | `frameId`        | `id`     | 16 opaque bytes; identifies this frame instance on wire  |
+| Correlation identity | `CorrelationId`  | `correlationId`  | -        | **Reserved for v2.**                                     |
+| Trace identity (req) | `TraceId`        | `traceId`        | -        | Optional, spans multi-frame flows                        |
+
+> `frameId` — In v1, used for request/response correlation and ACK linkage. Always present on every frame (16 bytes, binary); auto-generated at construction to eliminate defensive checks in runtime/RPC layers.
+> `correlationId` — Reserved for v2 when explicit tracing or multi-hop flows require separate correlation semantics.
+> Helper: `generateFrameId()` creates a 128-bit (16 bytes) FrameId via `crypto.getRandomValues()`. Human-readable representation (for logs/JSON) uses `frameIdToHex()` → lowercase hex (32 chars).
+
+### 2. Frames and variants
+
+| Domain concept     | Type / Enum name | Field / Property                    | Wire key | Notes                                              |
+| ------------------ | ---------------- | ----------------------------------- | -------- | -------------------------------------------------- |
+| Frame discriminant | `FrameKind`      | `kind`                              | `t`      | Enum: `Control`, `Message`, `Ack`, `Error`         |
+| Base frame         | `Frame`          | -                                   | -        | Union of all frame variants                        |
+| Control frame      | `ControlFrame`   | `kind: FrameKind.Control`           | `t=0`    | Handshake / Ping / Pong / Close                    |
+| Message frame      | `MessageFrame`   | `kind: FrameKind.Message`           | `t=1`    | Carries routable application data (RPC + pub/sub)¹ |
+| Ack frame          | `AckFrame`       | `kind: FrameKind.Ack`; `ackFrameId` | `t=2`    | Acknowledges another frame²                        |
+| Error frame        | `ErrorFrame`     | `kind: FrameKind.Error`             | `t=3`    | Represents protocol or app errors                  |
+
+> 1. Message frames carry routable application data (RPC + pub/sub). Do not confuse with `AppMessage` (SDK type), which wraps decoded payloads.
+> 2. `ackFrameId` references the target's `frameId`.
+
+### 3. Control operations and payloads
+
+| Domain concept    | Type / Enum name   | Field / Property | Wire key | Notes                                         |
+| ----------------- | ------------------ | ---------------- | -------- | --------------------------------------------- |
+| Control op        | `ControlOp`        | `op`             | `c`      | `Handshake`, `Ping`, `Pong`, `Close`          |
+| Control data      | -                  | `data`           | -        | Optional opaque binary                        |
+| Handshake payload | `HandshakePayload` | -                | -        | Contains `peerId`, `capabilities`, `metadata` |
+
+> `c` is scoped to `ControlFrame` payloads only; never used in other frame types.
+> `data` is an optional binary blob used for control frame metadata or handshake extensions.
+
+### 4. Wire message vs application message
+
+| Domain concept          | Type / Enum name | Field / Property  | Wire key | Notes                                           |
+| ----------------------- | ---------------- | ----------------- | -------- | ----------------------------------------------- |
+| Routing key             | `Subject`        | `subject`         | `s`      | UTF-8 string; see subject namespace rules below |
+| Raw message bytes       | -                | `data`            | `b`      | `Uint8Array`; wire is opaque bytes              |
+| Wire message (frame)    | `MessageFrame`   | `subject`, `data` | `t=1`    | Routable, identity-bearing unit on the wire     |
+| App-level message (SDK) | `AppMessage`     | `subject`, `data` | -        | High-level concept in `@sideband/peer`          |
+
+**Subject namespace rules** (see ADR-006 for full RPC envelope spec):
+
+| Prefix    | Purpose                       | Example                  | Semantics        |
+| --------- | ----------------------------- | ------------------------ | ---------------- |
+| `rpc/`    | RPC request/response          | `rpc/getUser`            | Request/Response |
+| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      | Notification     |
+| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    | (future)         |
+| `app/`    | Vendor-specific / custom      | `app/com.example/mydata` | Custom           |
+
+### 5. Errors
+
+| Domain concept                    | Type / Enum name       | Field / Property     | Wire key | Notes                                        |
+| --------------------------------- | ---------------------- | -------------------- | -------- | -------------------------------------------- |
+| Protocol error code               | `ProtocolErrorCode`    | `code`               | -        | Enum, low range (e.g. 1000-1999)             |
+| Application error code (optional) | `ApplicationErrorCode` | `code`               | -        | App-defined, high range (e.g. 2000+)         |
+| Error frame details               | `ErrorFrame`           | `message`, `details` | -        | Optional `details` (binary); see note below. |
+
+> `details` is an optional binary/structured payload (e.g. JSON, CBOR) carried alongside the error message.
+
+### 6. Capabilities and metadata
+
+| Domain concept    | Type / Enum name | Field / Property | Wire key | Notes                                            |
+| ----------------- | ---------------- | ---------------- | -------- | ------------------------------------------------ |
+| Capabilities list | -                | `capabilities`   | `caps`   | `string[]`, feature flags or protocol extensions |
+| Peer metadata     | -                | `metadata`       | -        | `Record<string, string>` namespaced keys         |
+
+### 7. Protocols and packages
+
+| Layer          | Protocol                 | Abbreviation | Package                     | Notes                                |
+| -------------- | ------------------------ | ------------ | --------------------------- | ------------------------------------ |
+| App Framing    | Sideband Protocol        | **SBP**      | `@sideband/protocol`        | Topology-agnostic application frames |
+| Relay Session  | Sideband Relay Protocol  | **SBRP**     | `@sideband/secure-relay`    | E2EE tunnel via relay server         |
+| Direct Session | Sideband Direct Protocol | **SBDP**     | `@sideband/direct` (future) | P2P session via DTLS or similar      |
+
+> **SBP** is the base protocol used by all session layers. SBRP wraps SBP frames with E2EE for relay mode; SBDP (future) will secure SBP frames for direct P2P.
+
+| Package                       | Notes                                    |
+| ----------------------------- | ---------------------------------------- |
+| `@sideband/transport`         | Shared interfaces, no env-specific logic |
+| `@sideband/transport-node`    | Node.js / Bun WebSocket adapters         |
+| `@sideband/transport-browser` | Browser / ServiceWorker adapters         |
+| `@sideband/runtime`           | Peer lifecycle, routing, subscriptions   |
+| `@sideband/peer`              | High-level publish/subscribe/RPC API     |
+
+### 8. RPC and pub/sub (higher level)
+
+| Domain concept             | Type / Enum name         | Field / Property                 | Notes                                              |
+| -------------------------- | ------------------------ | -------------------------------- | -------------------------------------------------- |
+| RPC envelope (wire format) | `RpcEnvelope`            | `t`, `m`, `p`, `result`, `error` | Binary structure in `MessageFrame.data` (ADR-006)  |
+| RPC request envelope       | `RpcRequest`             | `t: "r"`, `m`, `p?`              | Carries method name + params                       |
+| RPC response envelope      | `RpcResponse`            | `t: "R"`, `result?`, `error?`    | Success or error payload                           |
+| RPC notification envelope  | `RpcNotification`        | `t: "N"`, `e`, `d?`              | Fire-and-forget event                              |
+| Message handler kind       | `HandlerKind` (optional) | -                                | For internal routing (RPC, event, broadcast, etc.) |
+
+### 9. Helper API verbs (for AI assistants)
+
+| Operation              | Function name          | Notes                                      |
+| ---------------------- | ---------------------- | ------------------------------------------ |
+| Generate frame ID      | `generateFrameId`      | `() -> FrameId` (16-byte binary)           |
+| Frame ID to hex        | `frameIdToHex`         | `(FrameId) -> string` (32-char lowercase)  |
+| Frame ID from hex      | `frameIdFromHex`       | `(string) -> FrameId` (validates 32 hex)   |
+| Encode frame to bytes  | `encodeFrame`          | `Frame -> Uint8Array`                      |
+| Decode bytes to frame  | `decodeFrame`          | `ArrayBufferView -> Frame`                 |
+| Create message frame   | `createMessageFrame`   | `(subject, data, opts) -> MessageFrame`    |
+| Create ack frame       | `createAckFrame`       | `(frameId, opts) -> AckFrame`              |
+| Create error frame     | `createErrorFrame`     | `(code, message, opts) -> ErrorFrame`      |
+| Create handshake frame | `createHandshakeFrame` | `(HandshakePayload, opts) -> ControlFrame` |
+
+### AI usage hints (suitable as code comments)
+
+> * Use `Frame` / `FrameKind` / `kind` for protocol-level variants.
+> * Use `AppMessage` for application/pubsub semantics.
+> * Use `peerId` for stable peer identity; `connectionId` is per link, `sessionId` spans reconnects.
+> * Use `frameId` to identify frames; `correlationId` (or `traceId`) to link frames.
+> * Map wire fields (`t`, `id`, `peerId`, `caps`, `s`, `b`) only inside encode/decode; never expose them in public TS types.
+
+## Consequences
+
+* All packages align on shared names and wire keys with **PeerId** as the intrinsic identity, reducing ambiguity in docs, code, and AI-assisted edits.
+* Eliminates naming collision with Node.js ecosystem and aligns with libp2p/IPFS/WebRTC conventions.
+* Every frame has a `frameId` created by `generateFrameId()` at construction. This eliminates defensive `frameId === undefined` checks throughout runtime and RPC layers, improving code clarity and reducing bugs.
+* Future additions (new frame kinds, error codes, capability keys) must extend this matrix and update the ADR.
+* Tests and examples should assert the public property names while keeping wire keys scoped to codecs.
+* Adding `connectionId`/`sessionId` is optional but recommended when distinguishing links or resumable sessions; codecs should keep those out-of-band unless explicitly encoded.
+
+---
+
+---
+url: /adr/003-control-frame-invariants.md
+---
+# ADR 003: Control Frame Type Invariants
+
+* **Date**: 2025-11-23
+* **Status**: Accepted
+* **Applies to**: SBP
+* **Tags**: protocol, frames, type-safety
+* **Relates to**: ADR 002 (naming matrix)
+
+## Context
+
+The four control operations (`Handshake`, `Ping`, `Pong`, `Close`) have different data semantics: Handshake requires data, Ping/Pong forbid it, Close allows it optionally. A single generic `ControlFrame` with optional `data?: Uint8Array` allows invalid states at compile time (e.g., `{op: Ping, data: [...]}`) and invites unstructured metadata creep.
+
+## Decision
+
+Use a **discriminated union of control frame types** (discriminated by `op`) to encode data invariants at the type level:
+
+* `HandshakeControlFrame`: `data` is required.
+* `PingControlFrame` / `PongControlFrame`: `data` is forbidden (`data?: undefined`).
+* `CloseControlFrame`: `data` is optional.
+
+The `ControlFrame` type is the union of these four variants. Factory functions (`createHandshakeFrame`, `createPingFrame`, etc.) and type guards (`isHandshakeFrame`, etc.) enforce invariants at construction and narrowing.
+
+### Type Definitions
+
+Each variant is a separate interface; the union prevents invalid combinations:
+
+```ts
+export interface HandshakeControlFrame {
+  kind: FrameKind.Control;
+  op: ControlOp.Handshake;
+  data: Uint8Array; // required
+}
+
+export interface PingControlFrame {
+  kind: FrameKind.Control;
+  op: ControlOp.Ping;
+  data?: undefined; // forbidden
+}
+
+export interface PongControlFrame {
+  kind: FrameKind.Control;
+  op: ControlOp.Pong;
+  data?: undefined; // forbidden
+}
+
+export interface CloseControlFrame {
+  kind: FrameKind.Control;
+  op: ControlOp.Close;
+  data?: Uint8Array; // optional
+}
+
+export type ControlFrame =
+  | HandshakeControlFrame
+  | PingControlFrame
+  | PongControlFrame
+  | CloseControlFrame;
+```
+
+### Factory Functions and Type Guards
+
+* Factory functions (`createHandshakeFrame(data, opts)`, `createPingFrame(opts)`, `createCloseFrame(reason?, opts)`) enforce invariants at construction.
+* Type guards (`isHandshakeFrame(frame)`, `isPingFrame(frame)`, etc.) enable safe narrowing downstream.
+
+## Consequences
+
+### Benefits
+
+* **Compile-time correctness**: TypeScript prevents invalid combinations (e.g., `{op: Ping, data: [...]}`).
+* **Self-documenting**: Type invariants are explicit; no need to read codec or comments.
+* **Prevents extension creep**: Adding ad-hoc metadata to `data` is no longer tempting; new control ops require explicit enum values and types.
+* **Codec exhaustiveness**: Missing a case in encode/decode raises a compiler error.
+* **Wire-compatible**: No format changes.
+
+### Trade-offs
+
+* Four frame types instead of one (minor boilerplate).
+* Callers must use factory functions; no ad-hoc object literals.
+
+## Future Extensions
+
+New control ops must:
+
+1. Add an enum value to `ControlOp`.
+2. Define a new interface with explicit data semantics.
+3. Add the variant to the `ControlFrame` union.
+4. Update codec and add factory/type guard.
+
+Do not add unstructured data to existing control ops.
+
+---
+
+---
+url: /adr/004-binary-frameid.md
+---
+# ADR 004: Binary FrameId Representation
+
+* **Date**: 2025-11-23
+* **Status**: Accepted
+* **Applies to**: SBP
+* **Tags**: protocol, breaking-change, wire-format
+
+## Context
+
+Initial wire format treated `FrameId` as UTF-8 text with space-padding to 16 bytes. This created:
+
+* **Semantic confusion**: Random bytes as text with padding/trimming logic
+* **Interop fragility**: UTF-8 handling differs across runtimes
+* **Entropy underutilization**: Original spec used 12 bytes, encoded as 16-char hex
+* **Developer friction**: Forced string ops on opaque data; humans need hex anyway
+
+## Decision
+
+`FrameId` is 16 opaque bytes (128 bits) generated via `crypto.getRandomValues()`.
+
+**Wire:** 16 raw bytes, no encoding or padding, no semantic bits or structure.
+
+**Type:** `FrameId = Uint8Array & { __brand: "FrameId" }`
+
+**Validation:** `asFrameId()` enforces exactly 16 bytes. No bit-level validation; FrameId is treated as pure entropy.
+
+**Key distinction:** Frame header flags (byte 1) are separate from FrameId. FrameId has no semantic bits or structure.
+
+**Human representation:** Helpers for logs/JSON:
+
+* `frameIdToHex(id) → string` (32-char lowercase hex)
+* `frameIdFromHex(hex) → FrameId` (validates format)
+
+## Consequences
+
+* **Breaking wire change**: Pre-1.0, acceptable.
+* **Simpler codec**: No padding/trimming logic; just read/write 16 bytes.
+* **Collision safety**: 128-bit entropy is astronomically safe.
+* **Clarity**: No accidental string operations on random data.
+* **Consistency**: All runtimes read the same 16 bytes.
+
+---
+
+---
+url: /adr/005-transport-abi.md
+---
+# ADR 005: Transport ABI Package
+
+* **Date**: 2025-11-23
+* **Status**: Accepted
+* **Applies to**: Architecture
+* **Tags**: architecture, transport
+
+## Context
+
+The project architecture requires a `@sideband/transport` package as the ABI layer between protocol and concrete implementations. The initial architecture inadvertently mixed transport concerns into `@sideband/protocol` via a low-level callback-based `RawTransport` interface.
+
+## Decision
+
+Created `@sideband/transport` as a dedicated, transport-agnostic ABI layer:
+
+**Core interfaces:**
+
+* `Transport`: Entry point for `connect()` (client) and optional `listen()` (server)
+* `TransportConnection`: Bidirectional channel with `send()`, `close()`, and `inbound: AsyncIterable<Uint8Array>`
+* `TransportEndpoint`: Branded string for connection targets (format is transport-specific)
+
+**Dependency rule:**
+
+* `@sideband/transport` depends only on `@sideband/protocol` (imports `ConnectionId`)
+* All concrete transports (`transport-browser`, `transport-node`) depend on `@sideband/transport`
+* `@sideband/runtime` depends on `@sideband/transport`, not on concrete implementations
+
+**Key constraint:** No I/O, codec, or environment-specific logic. Transport is purely an interface contract.
+
+## Rationale
+
+* **Layered isolation**: Concrete transports depend on the ABI, not vice versa; enables swappable implementations
+* **Testability**: MemoryTransport reference implementation serves as both documentation and test harness
+* **Async iterables**: Inbound stream via `AsyncIterable<Uint8Array>` enables backpressure, composition, and natural error handling
+* **Stateless types**: `TransportEndpoint` and `ConnectionId` are transport-agnostic, avoiding implicit coupling
+
+---
+
+---
+url: /adr/006-rpc-envelope.md
+---
+# ADR 006: Canonical RPC Envelope over MessageFrame
+
+* **Date**: 2025-11-23
+* **Status**: Accepted
+* **Applies to**: RPC
+* **Tags**: rpc, protocol-usage, type-safety
+
+## Context
+
+`MessageFrame` is intentionally generic (subject + opaque bytes) to keep the protocol minimal and stable. However, RPC users currently parse subject conventions manually and re-implement correlation and error handling in userland, violating "hard to misuse APIs."
+
+The question is where to fix this: at the protocol layer (new frame kinds) or at the RPC layer (canonical envelope structure).
+
+## Decision
+
+1. **Keep `MessageFrame` unchanged** – the one and only application-level payload frame.
+
+2. **Define a canonical RPC envelope** carried in `MessageFrame.data`: Request, Success Response, Error Response, Notification. Encoded as JSON (v1) or CBOR (v2+).
+
+3. **Enforce subject namespacing**: all messages must start with `rpc/`, `event/`, `stream/`, or `app/`. Invalid subjects → `ProtocolViolation`.
+
+4. **Zero protocol wire changes.** RPC semantics live at the `@sideband/rpc` layer, not the wire.
+
+### Subject Namespace (Mandatory, Runtime-Validated)
+
+All `MessageFrame.subject` values must match one of these prefixes:
+
+| Prefix    | Purpose                       | Example                  | Allowed senders | Semantics        |
+| --------- | ----------------------------- | ------------------------ | --------------- | ---------------- |
+| `rpc/`    | RPC request/response          | `rpc/getUser`            | both            | Request/Response |
+| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      | both            | Notification     |
+| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    | reserved        | (future)         |
+| `app/`    | Vendor-specific (fallback)    | `app/com.example/mydata` | both            | Custom semantics |
+
+Subjects outside these prefixes are rejected at runtime with `ProtocolViolation`.
+
+### Envelope Schema
+
+Request (`t: "r"`): method name + optional params.
+Success Response (`t: "R"`): optional result.
+Error Response (`t: "E"`): code + message + optional data.
+Notification (`t: "N"`): event name + optional data.
+
+Correlation is explicit: responses copy the request's `cid` (correlation ID) field.
+The `cid` field is set to the request frame's own `frameId` and copied unchanged by the server into all response envelopes.
+
+See ADR-010 for the complete correlation design rationale.
+
+Full schema at `docs/protocols/rpc/envelope.md`.
+
+## Consequences
+
+* **Zero wire changes**: protocol stays minimal and stable.
+* **Type-safe RPC**: branded types + runtime validation enforce correctness.
+* **Predictable, hard-to-misuse**: subjects and envelopes validated at runtime.
+* **Respects layering**: RPC semantics belong above the protocol, not in it.
+* **Future-proof**: envelope extensible for v2 (CBOR, streaming, etc.) without protocol bumps.
+
+## Rationale for Rejection of Alternatives
+
+**New frame kinds (Request/Response/Notification)**: Pushes RPC semantics into the protocol, violating the minimal charter and hardening patterns that should remain flexible.
+
+**JSON-RPC 2.0**: Verbose, opaque to the protocol, no benefit over a canonical envelope at the RPC layer.
+
+---
+
+---
+url: /adr/007-immutable-frame-types.md
+---
+# ADR 007: Immutable Decoded Frame Types
+
+* **Date**: 2025-11-23
+* **Status**: Accepted
+* **Applies to**: SBP
+* **Tags**: protocol, frames, type-safety
+* **Relates to**: ADR 002, ADR 003
+
+## Context
+
+Decoded `Frame` types are currently mutable, allowing downstream code to reassign `kind`, `subject`, `data` after `decodeFrame()`. This violates "predictable, hard-to-misuse APIs" and "correctness first" principles—frame mutation can corrupt RPC correlation, routing, and middleware state.
+
+The protocol library is the single source of truth for wire values; decoded frames must be immutable facts.
+
+## Decision
+
+All public frame types and their decoded instances are deeply readonly via TypeScript's `readonly` keyword on all properties and `Readonly<Uint8Array>` for binary data. Factory functions and `decodeFrame()` return immutable variants. Internal codec may use mutable temporaries during construction.
+
+## Consequences
+
+* **Eliminates mutation bugs**: TypeScript prevents reassignment of any frame property or binary data at compile time.
+* **Guarantees referential stability**: Middleware, RPC handlers, and routing logic can safely pass frames without fear of corruption.
+* **Zero runtime cost**: `readonly` is TS-only; no performance overhead.
+* **Breaking change for mutating code**: Code that reassigns frame properties will fail type check. This is intentional—correct usage never mutates decoded frames.
+
+## Rationale
+
+Immutability is the standard for protocol message structures across Protocol Buffers, WebRTC, and similar systems. Decoded frames represent facts from the wire and should not be reassigned downstream. This change prevents subtle bugs while maintaining full expressivity: callers that need mutable state can explicitly copy via `new Uint8Array(frame.data)`.
+
+---
+
+---
+url: /adr/008-subject-namespace-validation.md
+---
+# ADR 008: Enforce Reserved Subject Namespace at the Protocol Layer
+
+* **Date**: 2025-11-23
+* **Status**: Accepted
+* **Applies to**: SBP
+* **Tags**: protocol, validation, correctness, conformance
+
+## Context
+
+ADR-006 mandates that all `MessageFrame.subject` values start with one of four reserved prefixes: `rpc/`, `event/`, `stream/`, or `app/`.
+
+The protocol layer did not enforce this contract. The wire codec accepted any string; validation only existed in `@sideband/rpc` (optional). This violated ADR-006 and the principle of correctness-first design.
+
+## Decision
+
+Move subject validation into `@sideband/protocol` — the only package owning the wire-format contract.
+
+1. **Add branded `Subject` type**: Prevents accidental misuse at the TypeScript level.
+
+2. **Add `asSubject()` validator**: Runtime validation enforcing:
+   * 1–256 UTF-8 bytes (measured correctly, not code units)
+   * Reserved prefix (`rpc/`, `event/`, `stream/`, or `app/`)
+   * No null bytes or empty strings
+   * Throws `ProtocolError(ProtocolViolation)` on violation
+
+3. **Update `MessageFrame.subject`**: Change from `string` to `Subject` type.
+
+4. **Add `createMessageFrame()` factory**: User-facing API that validates subject at construction.
+
+5. **Update `decodeFrame()`**: Validate subject on wire decode. Invalid subjects → fatal protocol violation → connection close.
+
+6. **Update RPC layer**: Re-export protocol validator as `asRpcSubject()`. Remove duplicate validation. Keep `ProtocolViolation` class for backwards compatibility (extends `ProtocolError`).
+
+## Technical Details
+
+**UTF-8 byte length**: Validator measures via `TextEncoder` (not JavaScript `.length`, which counts code units). Correctly handles multi-byte characters.
+
+**Prefix list extensibility**: Stored as const array, enabling future extensions (e.g., `signal/`) without API breakage. Update `RESERVED_SUBJECT_PREFIXES`, release minor version.
+
+**Error semantics**: Invalid subjects are fatal. On send: synchronous throw. On receive: `ProtocolError(ProtocolViolation)` → `ErrorFrame` → close connection.
+
+## Consequences
+
+| Area                | Impact                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| **Correctness**     | Every frame on the wire provably conforms to ADR-006. No bypass paths.             |
+| **API safety**      | Invalid subjects rejected at construction time, not silently sent or received.     |
+| **Breaking change** | Pre-1.0 acceptable. Raw `MessageFrame` construction will fail type-check or throw. |
+| **Performance**     | Negligible: one `TextEncoder` + prefix check per message.                          |
+
+## Alternatives Considered and Rejected
+
+* **Validate only in RPC**: Higher layers bypass; transports/tools emit invalid frames.
+* **Validate only on send**: Malicious peers can flood with invalid subjects (DoS).
+* **Validate only on decode**: Invalid frames constructed internally; bugs in middlewares.
+* **Configurable prefix set**: Foot-gun; violates "one obvious way" principle.
+
+---
+
+---
+url: /adr/010-rpc-correlation-cid.md
+---
+# ADR 010: Explicit RPC Correlation via `cid` in the Envelope
+
+* **Date**: 2025-11-23
+* **Status**: Accepted
+* **Applies to**: RPC
+* **Tags**: rpc, correctness, future-proofing, layering
+* **Supersedes**: Incorrect correlation text in `docs/protocols/rpc/envelope.md`
+
+## Context
+
+The RPC envelope spec incorrectly referenced a non-existent `MessageFrame.ackFrameId` field for correlation. The attempted fix—reusing the request's `frameId` on the response—violates the invariant that **`frameId` is sender-local unique**, making multi-hop and observability impossible.
+
+We need explicit correlation that works in single-hop, streaming, fan-out, relay, and offline scenarios.
+
+## Decision
+
+1. **`frameId` semantics remain pure**: sender-local unique per wire format spec. No reuse by receivers.
+
+2. **Add explicit `cid` (correlation ID) field to the RPC envelope payload**.
+
+   Envelope schema (inside `MessageFrame.data`):
+
+   ```ts
+   interface RpcRequest {
+     t: "r";
+     m: string;
+     p?: unknown;
+     cid: FrameId;
+   }
+   interface RpcSuccess {
+     t: "R";
+     cid: FrameId;
+     result?: unknown;
+   }
+   interface RpcError {
+     t: "E";
+     cid: FrameId;
+     code: number;
+     message: string;
+     data?: unknown;
+   }
+   interface RpcNotification {
+     t: "N";
+     e: string;
+     d?: unknown;
+   } // no cid
+   ```
+
+3. **Correlation model**: Requests set `cid` to their request frame's `frameId`. Responses copy that `cid` unchanged. Runtime matches on `cid`, not `frameId`.
+
+4. **No wire format changes.** Envelope payload only; backward compatible.
+
+## Updated Specification
+
+See updated `docs/protocols/rpc/envelope.md` for the complete envelope specification with corrected correlation section.
+
+## Consequences
+
+* **Streaming RPC**: Multiple responses per request (same `cid`, different `frameId`s)
+* **Multi-hop / relays**: `cid` end-to-end; `frameId` hop-local
+* **Observability**: `frameId` uniqueness invariant preserved
+* **Future evolution**: Envelope payload can evolve independently of wire format
+
+## Rationale
+
+* **Layering**: Correlation is explicit in RPC envelope; `frameId` stays pure at wire layer
+* **Industry-standard**: Used by NATS, CloudEvents, Kafka, gRPC
+* **Minimal cost**: 16 bytes per RPC request/response
+* **Minimal surface**: No new fields on frames; existing invariants preserved
+
+## Alternatives Considered
+
+| Alternative                         | Why Rejected                                                    |
+| ----------------------------------- | --------------------------------------------------------------- |
+| Reuse request `frameId` on response | Breaks sender-local uniqueness; impossible for multi-hop/relays |
+| Use `AckFrame` for RPC responses    | Conflates transport ACK with app semantics                      |
+| Embed correlation in subject        | Brittle; limited length; creates awkward subject names          |
+
+## References
+
+* `docs/protocols/rpc/envelope.md` (correlation model)
+* ADR-006 (RPC envelope – correlation section updated)
+* ADR-002 (naming matrix)
+
+---
+
+---
+url: /adr/000-template.md
+---
+# ADR-NNN: \[Short Title]
+
+* **Date**: YYYY-MM-DD
+* **Status**: \[Proposed | Accepted | Deprecated | Superseded]
+* **Tags**: \[Relevant tags, e.g., architecture, performance]
+
+## Context
+
+\[Describe the problem or situation requiring a decision. Be concise: What is the issue? Why now? Include relevant facts, constraints, or requirements.]
+
+## Decision
+
+\[State the chosen solution clearly. Explain why this option was selected. Include any key trade-offs.]
+
+## Alternatives Considered
+
+\[Optional: Briefly list other options evaluated, with pros/cons if relevant.]
+
+## Consequences
+
+\[Outline expected impacts: Benefits, risks, costs. How does this affect code, maintenance, or future decisions?]
+
+## References
+
+\[Links to related docs, code, or external resources.]
+
+---
+
+---
+url: /guide.md
+---
+# Getting Started
+
+Sideband is a secure communication stack for TypeScript applications.
+
+## Installation
+
+```bash
+bun add @sideband/peer
+```
+
+## Quick Example
+
+```typescript
+import { createPeer } from "@sideband/peer";
+
+const peer = createPeer({
+  peerId: "my-peer",
+});
+
+// Subscribe to messages
+peer.subscribe("chat/*", (msg) => {
+  console.log("Received:", msg.data);
+});
+
+// Publish a message
+peer.publish("chat/general", { text: "Hello!" });
+```
+
+## Packages
+
+| Package                  | Description                              |
+| ------------------------ | ---------------------------------------- |
+| `@sideband/protocol`     | Wire format, frame types, encode/decode  |
+| `@sideband/transport`    | Transport interface and shared utilities |
+| `@sideband/runtime`      | Peer lifecycle, routing, subscriptions   |
+| `@sideband/rpc`          | Typed RPC layer                          |
+| `@sideband/peer`         | High-level SDK                           |
+| `@sideband/secure-relay` | E2EE relay protocol                      |
+
+---
+
+---
+url: /architecture/package-architecture.md
+---
+# Package Architecture
+
+Final architecture supporting relay (SBRP) now and P2P later.
+
+## Design Principles
+
+1. **Neutral core** — protocol, transport, runtime know nothing about topology
+2. **Layered protocols** — SBP for application frames, SBRP/SBDP for session layers
+3. **Clear boundaries** — each package has one job
+4. **No premature abstraction** — P2P designed when needed, not before
+
+## Terminology
+
+| Term                  | Context        | Meaning                               |
+| --------------------- | -------------- | ------------------------------------- |
+| Cryptographic session | `secure-relay` | Key agreement state + encryption keys |
+| Connection            | `runtime`      | Logical peer-to-peer link             |
+| Peer session          | `peer` SDK     | User-facing connection abstraction    |
+
+## Protocol Layers
+
+Sideband uses a layered protocol architecture:
+
+| Layer          | Protocol                            | Package                     | Purpose                                      |
+| -------------- | ----------------------------------- | --------------------------- | -------------------------------------------- |
+| App Framing    | **SBP** (Sideband Protocol)         | `@sideband/protocol`        | Application-level frames (topology-agnostic) |
+| Relay Session  | **SBRP** (Sideband Relay Protocol)  | `@sideband/secure-relay`    | E2EE tunnel via relay server                 |
+| Direct Session | **SBDP** (Sideband Direct Protocol) | `@sideband/direct` (future) | P2P session via DTLS or similar              |
+
+**Relay mode:** SBRP wraps SBP. DATA frames contain encrypted SBP frames.
+
+```
+┌─────────────────────────────────────────┐
+│  SBRP Frame (DATA)                      │
+│  ┌───────────────────────────────────┐  │
+│  │  Encrypted SBP Frame (Message)    │  │
+│  │  ┌─────────────────────────────┐  │  │
+│  │  │  RPC Envelope / App Data    │  │  │
+│  │  └─────────────────────────────┘  │  │
+│  └───────────────────────────────────┘  │
+└─────────────────────────────────────────┘
+```
+
+**P2P mode (future):** SBP frames secured via SBDP session layer (DTLS or application-layer auth).
+
+## Layer Model
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Layer 4: SDK                                           │
+│  @sideband/peer                                         │
+│  Composes runtime + session + transports                │
+└─────────────────────────────────────────────────────────┘
+                            │
+          ┌─────────────────┴─────────────────┐
+          ▼                                   ▼
+┌───────────────────────┐       ┌───────────────────────┐
+│  Layer 3: Session     │       │  Layer 2: Coord       │
+│  @sideband/           │       │  @sideband/runtime    │
+│    secure-relay       │       │  @sideband/rpc        │
+│  (future: p2p)        │       │                       │
+└───────────────────────┘       └───────────┬───────────┘
+          │                                 │
+          │                     ┌───────────┴───────────┐
+          │                     ▼                       ▼
+          │           ┌───────────────┐       ┌───────────────┐
+          │           │  Layer 1: I/O │       │  Layer 0      │
+          │           │  @sideband/   │       │  @sideband/   │
+          │           │    transport  │       │    protocol   │
+          │           └───────────────┘       └───────────────┘
+          │                     │
+          │               ┌─────┴─────┐
+          │               ▼           ▼
+          │         ┌─────────┐ ┌─────────┐
+          │         │ browser │ │  node   │
+          │         └─────────┘ └─────────┘
+          │
+    (standalone: @noble/*)
+```
+
+Key insight: **Session layer and runtime are siblings.** Peer composes them; neither depends on the other.
+
+## Package Reference
+
+### Layer 0: Application Wire Contract
+
+#### `@sideband/protocol` — Sideband Protocol (SBP)
+
+Application-level framing. The "inner" protocol.
+
+| Provides                                  | Does NOT provide   |
+| ----------------------------------------- | ------------------ |
+| Frame types: Control, Message, Ack, Error | I/O                |
+| ControlOp: Handshake, Ping, Pong, Close   | Crypto             |
+| Codecs: `encodeFrame()`, `decodeFrame()`  | Session management |
+| Type guards                               | Tunnel framing     |
+
+**Depends on:** none
+
+### Layer 1: I/O
+
+#### `@sideband/transport`
+
+Abstract transport interface.
+
+| Provides                        | Does NOT provide |
+| ------------------------------- | ---------------- |
+| `Transport` interface           | WebSocket impl   |
+| `TransportConnection` interface | Crypto           |
+| `MemoryTransport` (testing)     | Session logic    |
+
+**Depends on:** protocol
+
+#### `@sideband/transport-browser`
+
+Browser WebSocket transport.
+
+**Depends on:** protocol, transport
+
+#### `@sideband/transport-node`
+
+Node/Bun WebSocket transport.
+
+**Depends on:** protocol, transport
+
+### Layer 2: Coordination
+
+#### `@sideband/runtime`
+
+Transport-agnostic execution engine.
+
+| Provides             | Does NOT provide       |
+| -------------------- | ---------------------- |
+| Peer lifecycle       | Concrete transports    |
+| Transport attachment | Crypto                 |
+| Message routing      | Topology knowledge     |
+| Middleware hooks     | Session-specific logic |
+
+**Depends on:** protocol, transport
+
+#### `@sideband/rpc`
+
+Request/response semantics.
+
+| Provides           | Does NOT provide   |
+| ------------------ | ------------------ |
+| RPC envelope types | Delivery mechanism |
+| Correlation IDs    | Encryption         |
+| Subject namespaces |                    |
+
+**Depends on:** protocol
+
+### Layer 3: Session
+
+#### `@sideband/secure-relay` — Sideband Relay Protocol (SBRP)
+
+E2EE session layer for relay topology. Standalone — no runtime dependency.
+
+| Provides                      | Does NOT provide  |
+| ----------------------------- | ----------------- |
+| Ed25519/X25519 key generation | WebSocket I/O     |
+| Signed ephemeral key exchange | Transport logic   |
+| ChaCha20-Poly1305 encryption  | Token issuance    |
+| TOFU identity pinning         | Relay server impl |
+| Replay protection             |                   |
+| SBRP frame codecs             |                   |
+
+Frame types: DATA, CONTROL, HANDSHAKE\_INIT, HANDSHAKE\_ACCEPT, PING, PONG, SIGNAL
+
+**Depends on:** @noble/\* (crypto only)
+
+> **Why standalone?** Pure crypto with no I/O deps improves testability, portability, and allows use outside Sideband.
+
+#### Future: `@sideband/direct` — Sideband Direct Protocol (SBDP)
+
+When P2P is needed, a separate session package with different primitives:
+
+* ICE/STUN/TURN
+* Signaling
+* Direct peer auth (DTLS or application-layer)
+
+Will wrap or directly use SBP frames, similar to how SBRP wraps SBP.
+
+### Layer 4: SDK
+
+#### `@sideband/peer`
+
+User-facing API. Composes session + runtime + transport.
+
+```ts
+// Relay mode
+const peer = new Peer({
+  transport: browserTransport(),
+  session: sbrpSession({ daemonId, pinnedKey }),
+});
+
+// P2P mode (future)
+const peer = new Peer({
+  transport: webrtcTransport(),
+  session: directSession({ ... }),
+});
+```
+
+| Provides                  | Does NOT provide    |
+| ------------------------- | ------------------- |
+| Simple connect/disconnect | Wire format details |
+| Pub/sub helpers           | Crypto primitives   |
+| RPC client                | Transport internals |
+
+**Depends on:** runtime, rpc, transport-\*, secure-relay
+
+### Tooling
+
+#### `@sideband/cli`
+
+Developer tools: key generation, inspection, debugging.
+
+#### `@sideband/testing`
+
+Test utilities: fakes, loopback transports, fixtures.
+
+## Dependency Graph
+
+```
+@sideband/protocol (SBP)           @noble/* (crypto)
+        │                                │
+   ┌────┴────┬────────────┐              │
+   ▼         ▼            ▼              │
+transport  runtime     (used by)         │
+   │         │            │              │
+   └────►────┤            ▼              │
+             ▼     secure-relay (SBRP) ◄─┘
+            rpc           │
+             │            │
+             └─────┬──────┘
+                   ▼
+                  peer
+                   │
+             ┌─────┴─────┐
+             ▼           ▼
+            cli       testing
+```
+
+**Critical constraint:** `runtime` and `secure-relay` are **siblings**. Neither depends on the other. `peer` composes both.
+
+## Integration: How Relay Mode Works
+
+```
+Browser                    Relay Server                   Daemon
+   │                            │                            │
+   │◄─── WebSocket (TLS) ──────►│◄─── WebSocket (TLS) ──────►│
+   │                            │                            │
+   │         SBRP frames        │        SBRP frames         │
+   │◄──────────────────────────►│◄──────────────────────────►│
+   │                            │                            │
+   └────────────────────────────┼────────────────────────────┘
+              E2EE tunnel (secure-relay)
+
+   Inside DATA frames: encrypted SBP frames (protocol)
+```
+
+1. Transport layer: `transport-browser` / `transport-node` handle WebSocket
+2. Session layer: `secure-relay` encrypts/decrypts, manages handshake
+3. Application layer: `protocol` frames (Message, Control, etc.)
+4. RPC layer: `rpc` envelopes inside Message frames
+5. SDK layer: `peer` orchestrates everything
+
+## Package List
+
+### Ship now (10 packages)
+
+| #   | Package                       | Layer | Description                                  |
+| --- | ----------------------------- | ----- | -------------------------------------------- |
+| 1   | `@sideband/protocol`          | 0     | Application framing & wire contract (SBP)    |
+| 2   | `@sideband/transport`         | 1     | Abstract I/O interfaces                      |
+| 3   | `@sideband/transport-browser` | 1     | Browser WebSocket adapter                    |
+| 4   | `@sideband/transport-node`    | 1     | Node/Bun WebSocket adapter                   |
+| 5   | `@sideband/rpc`               | 2     | RPC envelope & correlation                   |
+| 6   | `@sideband/runtime`           | 2     | Coordination engine (routing, lifecycle)     |
+| 7   | `@sideband/secure-relay`      | 3     | Cryptographic session layer for relay (SBRP) |
+| 8   | `@sideband/peer`              | 4     | User-facing SDK                              |
+| 9   | `@sideband/cli`               | Tool  | Developer tooling                            |
+| 10  | `@sideband/testing`           | Tool  | Test utilities & fixtures                    |
+
+### Add later (when P2P needed)
+
+| Package                      | Description                |
+| ---------------------------- | -------------------------- |
+| `@sideband/transport-webrtc` | WebRTC DataChannel adapter |
+| `@sideband/direct`           | P2P session layer (SBDP)   |
+
+## Summary
+
+* **SBP** (`protocol`) = application framing, topology-agnostic
+* **SBRP** (`secure-relay`) = relay session layer, wraps SBP with E2EE
+* **SBDP** (`direct`, future) = direct session layer for P2P
+* **runtime** and session layers are siblings, composed by **peer**
+
+---
+
+---
+url: /architecture/project-structure.md
+---
+# Project Structure
+
+What lives where, who depends on whom, and where to start.
+
+## Layout
+
+```text
+.
+├─ docs/                   # ADRs, specs, architecture notes
+├─ examples/               # Usage samples (when present)
+├─ packages/               # Implementation code
+│  ├─ protocol/
+│  ├─ transport/
+│  ├─ runtime/
+│  ├─ rpc/
+│  ├─ peer/
+│  ├─ secure-relay/        # E2EE relay protocol (SBRP)
+│  ├─ testing/             # Test helpers (when added)
+│  ├─ transport-browser/
+│  ├─ transport-node/
+│  └─ cli/
+├─ README.md               # Top-level overview
+├─ package.json            # Workspace root
+├─ tsconfig.base.json      # Shared TS options
+└─ tsconfig.json           # Root project config
+```
+
+Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.lock`), lint/format configs.
+
+## Package roles and boundaries
+
+`@sideband/protocol` — Sideband Protocol (SBP)
+• Canonical message/frame types, constants, error codes; light encode/decode helpers.
+• No I/O or runtime logic. Topology-agnostic (used by both relay and direct modes).
+• Depends on: none. Used by: all.
+
+`@sideband/transport` — Transport ABI + shared utilities\
+• Defines the `Transport` interface and common transport types/utilities (e.g., reconnect/backoff helpers, optional loopback transport).\
+• No environment-specific code.\
+• Depends on: protocol. Used by: runtime, testing, all concrete transports.
+
+`@sideband/runtime` — Transport-agnostic runtime
+• Manages peers, attaches transports, decodes frames, routes messages, correlates requests/responses, middleware hooks.
+• No concrete transport or UI/framework code.
+• Depends on: protocol, transport. Must not depend on concrete transports/cli.
+
+`@sideband/rpc` — Typed RPC on top of runtime
+• Maps method names to input/output shapes; client/server helpers; reuses runtime correlation/timeouts.
+• Depends on: protocol, runtime. No transport coupling.
+
+`@sideband/peer` — Peer SDK
+• Friendly API over runtime + injected or default transport; lifecycle utilities; convenience pub/sub/RPC helpers.
+• Depends on: protocol, runtime, transport-\* (as chosen). No protocol definitions or low-level routing.
+
+`@sideband/transport-browser` — Browser transport\
+• Implements the Transport interface via browser primitives (e.g., WebSocket); may handle reconnects/errors.\
+• Depends on: protocol, transport. Must not depend on runtime/rpc/peer.
+
+`@sideband/transport-node` — Node/Bun transport
+• Transport interface via Node/Bun networking (e.g., ws/Bun WS); server/client wiring.
+• Depends on: protocol, transport. Must not depend on runtime/rpc/peer.
+
+`@sideband/secure-relay` — Sideband Relay Protocol (SBRP)
+• E2EE handshake, session encryption/decryption, TOFU identity pinning, replay protection.
+• Enables secure browser↔daemon communication via untrusted relay servers.
+• Standalone cryptographic layer; no I/O or transport code.
+• Depends on: none (uses @noble/\* for crypto). Used by: relay implementations, browser/daemon apps.
+
+`@sideband/cli` — Developer tooling\
+• Commands for scaffolding, inspection, debugging, admin. Logic should reuse existing packages.\
+• Depends on: any package as needed; does not define protocol/runtime behavior itself.
+
+`@sideband/testing` — Test scaffolding (planned)\
+• Central place for fakes, loopback transports, peer fixtures, and shared test helpers.\
+• Keeps test utilities out of runtime packages; avoids circular devDeps.\
+• Depends on: protocol, transport, and runtime packages as needed. Only imported from tests (never production paths).
+
+Dependency flow (allowed edges only):
+
+```mermaid
+graph TD
+  protocol --> runtime
+  protocol --> transport
+  transport --> runtime
+  protocol --> transport_browser
+  protocol --> transport_node
+  transport --> transport_browser
+  transport --> transport_node
+  runtime --> rpc
+  runtime --> peer
+  transport_browser --> peer
+  transport_node --> peer
+  secure_relay --> peer
+  peer --> cli
+  rpc --> cli
+```
+
+## Conventions
+
+* Language: TypeScript; ESM (`type: "module"`).
+* Each package has its own `package.json` and `tsconfig.json` extending `tsconfig.base.json`.
+* Tests/config/docs live with the package they describe.
+* Keep new code within the package that owns the responsibility above; update this file when roles or dependencies change.
+
+---
+
+---
+url: /protocols.md
+---
+# Protocols
+
+Sideband is a layered communication stack for browser-to-daemon communication, designed to work reliably behind NAT with end-to-end encryption.
+
+> These specifications are implementation-neutral. You may implement them in any language or runtime, including proprietary systems, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) terms.
+
+## Architecture
+
+| Layer          | Component | Purpose                                |
+| -------------- | --------- | -------------------------------------- |
+| App Framing    | SBP       | Framing, multiplexing, message routing |
+| Relay Session  | SBRP      | Encrypted sessions over relay          |
+| Direct Session | SBDP      | P2P session (future)                   |
+| Semantic       | RPC       | Typed request/response patterns        |
+
+::: info
+RPC is a semantic layer built on top of SBP message frames, not a transport or session protocol.
+:::
+
+## SBP (Sideband Protocol)
+
+Topology-agnostic framing used by all session layers. Defines frame types, message routing, and wire format.
+
+[Read the SBP specification →](./sbp/)
+
+## SBRP (Sideband Relay Protocol)
+
+Default transport: secure, relay-based sessions with E2EE. The relay never sees plaintext.
+
+[Read the SBRP specification →](./sbrp/)
+
+## SBDP (Sideband Direct Protocol)
+
+Future: direct P2P when both peers can establish a connection without relay.
+
+[Read the SBDP specification →](./sbdp/)
+
+## RPC
+
+Typed request/response/notification semantics inside SBP message frames.
+
+[Read the RPC specification →](./rpc/)
+
+---
+
+---
+url: /protocols/rpc/envelope.md
+---
+# RPC Envelope Specification
+
+**Date**: 2025-11-23
+**References**: ADR-010 (correlation), ADR-006, ADR-002
+
+## Overview
+
+The RPC envelope is a canonical structure carried inside `MessageFrame.data`. It provides type-safe semantics for requests, responses, notifications, and errors without adding new frame kinds to the protocol.
+
+Encoded as JSON (v1) or CBOR (v2+).
+
+## Subject Namespace
+
+All `MessageFrame.subject` values must match one of these reserved prefixes (validated at runtime):
+
+| Prefix    | Purpose                       | Example                  |
+| --------- | ----------------------------- | ------------------------ |
+| `rpc/`    | RPC request/response          | `rpc/getUser`            |
+| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      |
+| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    |
+| `app/`    | Vendor-specific               | `app/com.example/mydata` |
+
+Subjects: 1–256 UTF-8 characters, no null bytes.
+
+## Envelope Structure
+
+```ts
+interface RpcRequest {
+  t: "r";
+  m: string; // method name
+  p?: unknown; // params
+  cid: FrameId; // request's frameId
+}
+
+interface RpcSuccess {
+  t: "R";
+  cid: FrameId; // matches request.cid
+  result?: unknown;
+}
+
+interface RpcError {
+  t: "E";
+  cid: FrameId; // matches request.cid
+  code: number;
+  message: string;
+  data?: unknown; // error details
+}
+
+interface RpcNotification {
+  t: "N";
+  e: string; // event name
+  d?: unknown; // no cid (fire-and-forget)
+}
+```
+
+Error code ranges:
+
+* `1000–1999`: Protocol errors (framework reserved)
+* `2000+`: Application errors (user-defined)
+
+## Encoding
+
+**JSON (v1)**: UTF-8 text, undefined fields omitted.
+
+**CBOR (v2+)**: Negotiated via handshake capability `"encoding/cbor"`; use if both peers support it, else JSON.
+
+## Correlation
+
+Every frame's `frameId` is sender-local unique and MUST NOT be reused by receivers.
+
+RPC correlation is explicit in the envelope:
+
+* Requests set `cid` to their request frame's `frameId`
+* Responses copy that `cid` unchanged
+* Runtime matches on `cid`, not `frameId`
+
+This preserves the `frameId` invariant and enables relays, proxies, and fan-out without changes to the wire format. See ADR-010.
+
+## Validation Rules
+
+* **Subject**: Reserved prefix (`rpc/`, `event/`, `stream/`, `app/`), 1–256 UTF-8, no nulls
+* **Request**: `t: "r"`, `m` and `cid` required
+* **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
+* **Notification**: `t: "N"`, `e` required
+
+Invalid envelopes raise `ProtocolViolation`.
+
+---
+
+---
+url: /protocols/rpc.md
+---
+# RPC Layer
+
+RPC is a **semantic layer** carried inside SBP Message frames. It does not
+define framing, transport, or security—those are handled by SBP and the
+session layer (SBRP/SBDP).
+
+## Relationship to SBP
+
+RPC envelopes are encoded in `MessageFrame.data` with subjects prefixed `rpc/`.
+The frame ID provides request/response correlation.
+
+## Documents
+
+| Document                  | Status    |
+| ------------------------- | --------- |
+| [Envelope](./envelope.md) | Normative |
+
+## Related ADRs
+
+* ADR-006: RPC envelope
+* ADR-010: RPC correlation (cid)
+
+---
+
+---
+url: /protocols/sbp/behavior.md
+---
+# SBP Behavior & Ordering (v1)
+
+Semantic guarantees and expectations that sit above the raw frame format. Applies across transports; transport-specific notes call out deviations.
+
+## Lifecycle
+
+* Handshake first: each peer MUST send a Handshake control frame before any Message/Ack/Error. Receiving non-handshake frames before handshake → `ProtocolViolation` then close.
+* Liveness: peers MAY send `Ping`; receivers SHOULD respond with `Pong` promptly. Unanswered pings can drive transport-level timeouts.
+* Close: either side MAY send `Control:Close` and then terminate the transport.
+
+## Ordering and delivery
+
+* Within a single transport stream (WebSocket or loopback), frames are delivered in send order (reliable, ordered). Transports must preserve order.
+* No cross-stream ordering: when multiple transports are used concurrently, ordering is per-transport only.
+* Duplicate tolerance: the protocol does not promise global exactly-once. Implementations MAY resend on reconnect; consumers SHOULD treat `Message` with the same `id` as idempotent or deduplicate at a higher layer.
+* Ack semantics: `Ack.ackId` confirms receipt (not processing) of the frame whose `id` matches `ackId`. No cumulative or windowed ACKs defined in v1.
+* Timestamp: informational; does not affect ordering or validity.
+
+## Delivery expectations by transport
+
+* Browser WS: ordered, reliable delivery; disconnects may drop in-flight frames. No backpressure signals beyond close/error.
+* Node/Bun WS: same as browser; server implementations SHOULD cap message size and enforce idle timeouts.
+* Memory/loopback: ordered, reliable; optional loss simulation MUST be documented by the implementation.
+
+## State and idempotency
+
+* Requests/responses/events share the `Message` frame; correlation (`id`) is the only built-in state tracker.
+* Consumers SHOULD make request handlers idempotent per `id` when possible; retries may occur after transport drops.
+* Acks are advisory; higher layers decide whether to retry or treat missing ACKs as failures.
+
+## Security and safety
+
+* Size limits: peers SHOULD enforce max frame size (see wire spec) and reject oversize frames with `ProtocolViolation`.
+* Rate limits: implementations MAY throttle handshakes/pings/error floods; exceeding limits SHOULD close the transport.
+* Integrity: no built-in MAC; rely on transport security (TLS) and higher-layer auth. Do not trust `peerId` without external verification.
+* Cross-origin (browser): host apps must configure allowed origins and reject unauthorized WS upgrades; protocol itself is origin-agnostic.
+
+## Observability
+
+* Errors: prefer sending `ErrorFrame` before closing when feasible; log both `code` and `message`.
+* Metrics: count frames by type, error codes, ping/pong latency, handshake failures.
+
+---
+
+---
+url: /protocols/sbp/conformance.md
+---
+# SBP Conformance Tests (v0.1 plan)
+
+Lightweight checklist for cross-implementation compatibility. Use deterministic fixtures; avoid network in golden tests.
+
+## Fixtures
+
+* Frame vectors: encode/decode golden cases for each frame kind (with fixed 16-byte `frameId` values), using fixed inputs for `subject`, `body`, `message`, `ackId`, `code`.
+* Handshake payloads: valid base case; invalid protocol/version; missing `peerId`; oversized metadata.
+* Error cases: malformed headers (short buffer, bad lengths), invalid frameId length (not 16 bytes), reserved flag bits set, unknown frame kind, incomplete payload for each frame kind.
+
+## Invariants to assert
+
+* Round-trip encoding: `decode(encode(frame))` yields the same structure for all supported frames.
+* Frame ID validity: `frameId` MUST be exactly 16 bytes (opaque binary). Equality checked by byte-wise comparison.
+* Reserved bits: any non-zero reserved flag bit MUST throw `InvalidFrame`.
+* Length guards: subject length mismatch and message length mismatch MUST throw `InvalidFrame`.
+* Handshake validation: wrong protocol/version MUST throw `UnsupportedVersion`; missing required fields MUST throw `InvalidFrame`.
+* Ack frame ID: must reference exactly 16 bytes from another frame's `frameId`.
+
+## Negative fuzzing
+
+* Feed random/oversized buffers into `decodeFrame`; expect bounded error handling (no crashes/hangs) and `InvalidFrame`.
+* Bound `ErrorFrame.message` length to implementation limit; ensure rejection path is consistent.
+
+## Transport-shared expectations
+
+* Ordering: encoded frame sequences preserve order after decode.
+* Unicode: subjects/messages are UTF-8; invalid UTF-8 MUST be rejected when decoded to string fields.
+* Limits: frames exceeding configured size caps MUST yield `ProtocolViolation` and closure.
+
+---
+
+---
+url: /protocols/sbp/errors.md
+---
+# SBP Error Model (v1)
+
+Defines canonical error semantics for `@sideband/protocol`, independent of transport. Error frames are part of the public contract; transports MAY also surface transport-native errors (e.g. WebSocket close codes) but must map protocol failures to `ErrorFrame`.
+
+## Error taxonomy
+
+* Protocol errors (1000–1999): `ProtocolViolation`, `UnsupportedVersion`, `InvalidFrame`.
+* Application errors (2000+): `ApplicationError` (catch‑all; higher-level layers may define stable subcodes via metadata or payload).
+
+## Error frame shape (binary)
+
+* `ErrorFrame` (`t=3`): `code:uint16 LE`, `msgLen:uint32 LE`, `message:UTF-8`, optional opaque `details` (e.g. JSON/CBOR details).
+* `id` SHOULD mirror the failing frame's `id` when correlating to a request/response; absent otherwise.
+* `ts` OPTIONAL for diagnostics.
+
+## Contract for senders
+
+* Use the narrowest code available; avoid overloading `ApplicationError` for protocol faults.
+* Message text SHOULD be short and stable enough for logs; do not leak secrets.
+* On version mismatch during handshake: send `UnsupportedVersion` then close.
+* On malformed input: send `InvalidFrame` with context in `message`; `details` MAY include a structured schema error.
+* When closing after a fatal error, prefer sending an `ErrorFrame` before `Control:Close` unless the transport is already unusable.
+
+## Contract for receivers
+
+* Treat `ProtocolViolation` and `UnsupportedVersion` as fatal; close the transport after emitting diagnostics.
+* `InvalidFrame` MAY be fatal or MAY trigger best-effort recovery if the frame boundary is intact; if recovery is unsafe, close.
+* `ApplicationError` is non-fatal to the transport; the caller decides whether to retry.
+* If `id` is present, route the error to the correlated request/stream; otherwise emit as connection-level fault.
+
+## Retryability and mapping
+
+* Retryable: typically `ApplicationError` with explicit higher-level hint; protocol spec itself is neutral.
+* Non-retryable: `UnsupportedVersion`, repeated `ProtocolViolation`, structurally invalid frames.
+* WebSocket mapping (guidance):
+  * Close with `1002` (protocol error) for `ProtocolViolation`/`InvalidFrame`.
+  * Close with `1003` (unsupported data) for `UnsupportedVersion`.
+  * Preserve `ErrorFrame.message` in close reason when size allows; otherwise emit to logs only.
+
+## Security considerations
+
+* Size: receivers MAY cap `ErrorFrame.details` (e.g. ≤ 16 KiB) to prevent abuse.
+* Untrusted text: treat `message` as untrusted; escape before surfacing in UIs.
+* Rate limit: throttle repeated errors from a peer to avoid log/CPU DoS.
+
+---
+
+---
+url: /protocols/sbp/wire-format.md
+---
+# SBP Wire Format (v1)
+
+Canonical on-wire contract for `@sideband/protocol`. Applies to all transports that carry SBP frames (WS, loopback, future TCP). Values are little-endian unless stated otherwise.
+
+**Note**: All v1 implementations MUST support the timestamp flag bit (bit 0), even if unused. Frames with bit 0 set include an 8-byte timestamp after the frame ID.
+
+## Envelope
+
+* Version tag: `sideband/1` (see `PROTOCOL_ID`). All frames belong to this version; negotiation happens via the handshake payload, not per-frame.
+* **Header (fixed 2 bytes)**: `t` (1 byte, `FrameKind`), `flags` (1 byte).
+  * **Important**: Flags are part of the frame header, **not** part of the FrameId.
+  * **Bit 0** (`ts`): timestamp present (1) or absent (0). When set, an 8-byte timestamp follows the frame header before the payload.
+  * **Bits 1–7**: reserved and must be zero in v1. Non-zero reserved bits close the connection.
+* **Frame ID (`id`)**: **16 raw bytes (128 bits) of opaque entropy. Always present.** Generated via cryptographic randomness. Used for request/response correlation and ACK linkage; auto-generated to simplify runtime logic. No padding, no string encoding, no trimming, no semantic bits.
+  * Decoders MUST treat FrameId as raw binary.
+  * Decoders MUST NOT interpret any bits within FrameId.
+  * Validation is length-only: must be exactly 16 bytes.
+* **Optional timestamp** (if `flags` bit 0 is set): 8-byte signed int (milliseconds since Unix epoch).
+* **Payload**: type-specific body (below).
+
+## Frame kinds
+
+* Control (`t=0`): first byte `c` (`ControlOp`), rest `data` (opaque).
+  * Handshake (`c=0`): `data` is UTF-8 JSON of `HandshakePayload` (see below). MUST be first frame both peers send.
+  * Ping (`c=1`), Pong (`c=2`): no `data`. Timestamp via `flags` bit 0 is optional and recommended for keepalive latency measurement.
+  * Close (`c=3`): optional UTF-8 reason in `data`.
+* Message (`t=1`): **A routable, identity-bearing unit of application data.** Structure: `subjectLen` (uint32 LE) + `subject` (UTF-8, routing key) + `data` (opaque bytes). `frameId` always present for correlation; timestamp optional (via `flags` bit 0). Called "Message" (not "Data") because each frame is a distinct, routable entity with optional acknowledgement support—semantically closer to messaging systems than byte streams. Wire keys: `s` (subject), `b` (data).
+  * **Important**: `frameId` is sender-local unique and MUST NOT be reused or copied by the receiver into outbound frames. Each peer generates its own unique `frameId` for every frame it emits. For RPC correlation, see ADR-010 (uses explicit `cid` field in the envelope payload, not `frameId`).
+* Ack (`t=2`): 16-byte `ackFrameId` (opaque binary, matching a prior frame's `frameId`). No payload data.
+* Error (`t=3`): `code` (uint16 LE `ErrorCode`) + `msgLen` (uint32 LE) + `message` (UTF-8) + optional `details` (opaque bytes). SHOULD set `frameId` to the failing frame's `frameId` when available.
+
+## Handshake payload (JSON, UTF-8)
+
+* Fields (all strings unless noted):
+  * `protocol` (required) = `"sideband"`
+  * `version` (required) = `"1"`
+  * `peerId` (required) unique per peer
+  * `caps?` string\[] of advertised capabilities (e.g. `["rpc", "stream", "compression:gzip"]`)
+  * `metadata?` record of extra hints; keys MUST be namespaced (`"tracing:..."`, `"vendor:..."`).
+* Rules:
+  * Both sides MUST send a handshake before any Message/Ack/Error frames.
+  * On mismatch of `protocol` or `version`, respond with `ErrorFrame{code=UnsupportedVersion}` then close.
+  * Unknown `caps`/`metadata` keys are ignored (forward-compatible).
+
+## Required vs optional fields (v1)
+
+* Required: header bytes, `id` (frameId, always present), frame-specific payload fields; handshake `protocol`, `version`, `peerId`, Message `subject`, Error `code` + `message`.
+* Optional: `ts`, `caps`, `metadata`, message `data`, error `details`, Close reason.
+* Reserved: Control ops >3, future frame kinds >3. For flags: bit 0 has defined semantics (timestamp); bits 1–7 are reserved and MUST be zero.
+
+## Size & limits
+
+* Recommended maximum frame size: 1 MiB; peers MAY advertise stricter caps via `caps` or out-of-band config. Frames exceeding a peer’s limit SHOULD elicit `ErrorFrame{code=ProtocolViolation}` then close.
+* Handshake payload SHOULD be ≤ 8 KiB.
+* Subjects SHOULD be ≤ 256 bytes UTF-8; longer subjects are allowed but may be rejected by implementations.
+
+## Stream semantics on the wire
+
+* Requests/responses/events all reuse `Message` frames (`t=1`). RPC correlation is defined at the envelope layer (see RPC envelope spec): `cid` inside `MessageFrame.data` is used for request/response matching. `frameId` remains sender-local unique and is *not* reused by receivers. See ADR-010.
+* Acks (`t=2`) confirm receipt of the frame whose `frameId` matches `ackFrameId`; no cumulative acking.
+* Timestamp is advisory and not part of ordering guarantees.
+
+## Extensibility
+
+* Additive changes (new optional fields, new `ControlOp`, new `caps` keys) are forward-compatible for v1. New mandatory fields require a new major version.
+* Future alternative encodings (e.g. CBOR) must still fit this framing; `caps` SHOULD advertise `encoding:cbor` before use.
+
+## Compatibility matrix (v1)
+
+* Accept frames where: `t` ∈ \[0..3], reserved flag bits (1–7) are zero, required fields present, `frameId` is exactly 16 bytes.
+  * Bit 0 of flags can be 0 or 1 (controls timestamp presence).
+  * Bits 1–7 MUST be zero.
+* Ignore: unknown `caps`/`metadata` keys, extra bytes in Error `details`.
+* Reject/close: unsupported `protocol`/`version`, malformed lengths, unknown frame kind, non-zero reserved flag bits (1–7), frames before handshake, invalid `frameId` length.
+  * **Flag validation**: If any bit 1–7 is set in the flags byte, send `ErrorFrame{code=InvalidFrame}` and close.
+
+---
+
+---
+url: /protocols/sbdp.md
+---
+# Sideband Direct Protocol (SBDP)
+
+SBDP is the planned direct (peer-to-peer) session protocol for Sideband.
+It will provide secure SBP transport without a relay, using direct connectivity
+mechanisms such as WebRTC or DTLS-based channels.
+
+## Status
+
+**Status:** Not yet specified
+
+SBDP is intentionally not specified yet to avoid premature abstraction.
+The current architecture ensures SBDP can be added without changes to SBP
+or higher layers.
+
+## Relationship to Other Protocols
+
+| Protocol | Role                                  |
+| -------- | ------------------------------------- |
+| SBP      | Application framing (used unchanged)  |
+| SBRP     | Relay-based secure session            |
+| SBDP     | Direct secure session (this protocol) |
+
+## Design Principles (Preview)
+
+* No relay dependency
+* Secure session establishment (likely DTLS or Noise)
+* Reuse SBP framing unchanged
+* Pluggable transport (WebRTC, raw UDP, etc.)
+
+*No normative specification exists at this time.*
+
+---
+
+---
+url: /protocols/sbp.md
+---
+# Sideband Protocol (SBP)
+
+SBP defines application-level framing for Sideband. It is topology-agnostic
+and can be carried over relay (SBRP) or direct (SBDP) session layers.
+
+## Scope
+
+* Frame types and wire encoding
+* Handshake, message, ack, error semantics
+* Ordering and delivery guarantees
+
+## Not Included
+
+* Transport (see @sideband/transport)
+* Encryption (see SBRP or SBDP)
+* Authentication
+
+## Documents
+
+| Document                        | Status     |
+| ------------------------------- | ---------- |
+| [Wire Format](./wire-format.md) | Normative  |
+| [Behavior](./behavior.md)       | Normative  |
+| [Errors](./errors.md)           | Normative  |
+| [Conformance](./conformance.md) | Supporting |
+
+## Related ADRs
+
+* ADR-001: Protocol versioning
+* ADR-002: Naming matrix
+* ADR-003: Control frame invariants
+* ADR-004: Binary frame ID
+* ADR-007: Immutable frame types
+
+---
+
+---
+url: /protocols/sbrp.md
+---
+# Sideband Relay Protocol (SBRP)
+
+**Version:** 0.1.0
+**Status:** Draft
+**Last Updated:** 2025-01-09
+
+## Documents
+
+| Document                            | Status     |
+| ----------------------------------- | ---------- |
+| This document                       | Normative  |
+| [State Machine](./state-machine.md) | Supporting |
+| [Compliance](./compliance.md)       | Supporting |
+
+## Related ADRs
+
+* ADR-002: Naming matrix (SBRP abbreviation)
+
+## 1. Overview
+
+SBRP enables secure communication between local daemons (background services, agents, or processes) and browser-based UIs via a relay server. The protocol uses a hybrid trust model:
+
+* **Relay is trusted** for token validation, access enforcement, and routing
+* **Relay cannot decrypt** application payloads (end-to-end encrypted)
+* **Relay cannot perform undetectable MITM on established TOFU pins** (key substitution is detected)
+
+This provides persistent multi-device access while ensuring message confidentiality.
+
+::: warning TOFU Limitation
+As with SSH-style TOFU systems, the first connection trusts the control plane to provide the correct daemon identity key. Subsequent connections are cryptographically protected against key substitution.
+:::
+
+### 1.1 Architecture
+
+```text
+┌─────────┐         ┌─────────┐         ┌─────────┐
+│ Browser │◄──TLS──►│  Relay  │◄──TLS──►│ Daemon  │
+│         │  auth   │ Server  │  auth   │         │
+└─────────┘         └─────────┘         └─────────┘
+     │                   │                   │
+     │      [auth, routing, presence]        │
+     │                   │                   │
+     └────────── E2EE encrypted ─────────────┘
+           [signed handshake, encrypted payloads]
+```
+
+### 1.2 Design Goals
+
+* Persistent access from any device
+* Multi-device support (mobile, desktop, multiple browsers)
+* End-to-end encryption for application data
+* Cryptographic MITM protection (not just trust-based)
+* Standard OAuth/session authentication
+* Zero local TLS/certificate configuration
+
+### 1.3 Non-Goals
+
+* Protecting against compromised relay (auth/routing layer)
+* Transport-level anonymity
+* Hiding metadata (timing, message size, which daemon you're connecting to)
+
+## 2. Terminology
+
+**Client**: Session initiator authenticated via control plane. Generates ephemeral X25519 keys per session. No persistent *cryptographic* identity (no long-lived signing key; authentication identity like user ID is managed by control plane). Verifies daemon via TOFU. May be a browser, CLI, native app, or any non-daemon participant.
+
+**Daemon**: Long-lived agent with Ed25519 identity keypair. Registers with control plane via API key; connects to relay using presence tokens. Reachable only through relay.
+
+**Relay**: Routing authority and token validator. Not an encryption endpoint. Does not authenticate directly; validates tokens issued by control plane.
+
+## 3. Trust Model
+
+### 3.1 What Relay Can Do
+
+* Validate tokens issued by control plane (users and daemons)
+* Route connections between them
+* See metadata (timing, size, frequency)
+* Drop or delay messages (DoS)
+* Route session establishment when a client presents a valid session token (relay does not autonomously initiate sessions; it acts on control-plane-issued tokens)
+
+### 3.2 What Relay Cannot Do
+
+* Decrypt message content (E2EE)
+* Perform undetectable MITM after initial TOFU trust establishment (daemon signs ephemeral keys, client pins identity)
+* Forge daemon identity (Ed25519 signatures)
+
+::: info Authentication Scope
+SBRP authenticates the daemon to the client, but does not cryptographically authenticate the client to the daemon. This is an accepted trade-off to enable standard web authentication models without client key management.
+:::
+
+::: warning Daemon Trust Boundary
+From the daemon's perspective, all relay-authenticated clients are equivalent. The relay can initiate sessions on behalf of any authenticated user. Daemon implementations MUST treat all client input as untrusted and implement application-level authorization within encrypted messages if needed (e.g., signed user claims, application tokens).
+:::
+
+### 3.3 Identity Key Trust (TOFU)
+
+The client **MUST** persist daemon identity public keys locally using Trust On First Use:
+
+1. **First connection:** Client verifies signature using control-plane-provided key; on successful handshake, stores `identityPublicKey` locally
+2. **Subsequent connections:** Client compares control-plane-provided key against stored key before handshake
+3. **Key mismatch:** Abort with `identity_key_changed` error, require user approval to accept new key
+
+```typescript
+// Client storage (IndexedDB recommended over localStorage for browsers)
+interface PinnedIdentity {
+  daemonId: string;
+  identityPublicKey: string; // base64 Ed25519 public key
+  firstSeen: string; // ISO timestamp
+  lastSeen: string; // ISO timestamp
+}
+```
+
+**Persistence requirements:**
+
+* Implementations MUST persist pins across page reloads (for browser clients)
+* Implementations SHOULD survive application restarts (durable storage such as IndexedDB, localStorage, or platform key store)
+* If storage is unavailable or cleared, treat as first-time connection and SHOULD warn user
+* Incognito/private mode reduces security guarantees (no persistence across sessions); implementations MAY warn in ephemeral contexts (browser clients)
+
+**Multi-device behavior:**
+
+* Identity pinning is per client/device storage
+* Different clients independently establish trust with the same daemon
+* Pins are NOT synced via relay (doing so would defeat TOFU security)
+* Not syncing pins is intentional: syncing via relay would reintroduce a trusted key distribution authority
+
+**Key rotation:**
+
+* Daemon identity keys are long-lived; rotation is a manual, user-approved operation
+* The protocol does not support silent key rotation
+* Control plane MUST return exactly one identity key per daemon (the active key)
+* Daemon MUST sign with the key currently registered as active at the control plane
+* Rotation flow (when needed, e.g., key compromise):
+  1. Daemon generates new Ed25519 keypair
+  2. Daemon registers new public key with control plane, atomically replacing the old key
+  3. Daemon starts signing handshakes with the new key
+  4. Clients connecting see `identity_key_changed` error (pinned key differs from control-plane-provided key)
+  5. Client MUST present both fingerprints and require explicit user approval
+  6. Upon approval, client updates pinned key and proceeds with handshake
+
+::: danger Key Mismatch = Possible MITM
+On mismatch, client MUST abort and present clear warning before allowing user to accept new key.
+:::
+
+**Security properties:**
+
+* First connection: Trusts control-plane-provided key (inherent TOFU limitation)
+* Subsequent connections: Key substitution detected via pinned key comparison
+
+::: tip First-Connection Mitigation
+For security-sensitive deployments, implementations SHOULD encourage out-of-band fingerprint verification on first connection. Display a clear "first connection" indicator and provide easy access to the daemon's fingerprint for manual verification via a second channel (CLI output, documentation, QR code).
+:::
+
+::: details Optional: Out-of-band fingerprint verification
+Daemon CLI can display identity fingerprint for manual verification:
+
+```text
+$ myapp daemon status
+Daemon ID:    d_abc123
+Fingerprint:  SHA256:AB:CD:EF:12:34:56:78:9A:BC:DE:F0:12:34:56:78:9A
+```
+
+Format: `SHA256:` + hex-encoded SHA-256 hash of identity public key (colon-separated). Implementations MAY also display base64url for QR/URL workflows.
+:::
+
+### 3.4 Trust Boundaries
+
+| Component       | Trust Level        | Compromise Impact                              |
+| --------------- | ------------------ | ---------------------------------------------- |
+| Relay auth      | Trusted            | Can deny service, can't decrypt                |
+| Relay transport | Honest-but-curious | Sees encrypted blobs only                      |
+| Client runtime  | Trusted            | Full compromise (inherent to web for browsers) |
+| Daemon          | Trusted            | Full compromise                                |
+
+## 4. Cryptographic Primitives
+
+| Purpose              | Primitive         | Notes                    |
+| -------------------- | ----------------- | ------------------------ |
+| Identity signing     | Ed25519           | Long-lived daemon key    |
+| Key exchange         | X25519            | Ephemeral per session    |
+| Symmetric encryption | ChaCha20-Poly1305 | All message payloads     |
+| Key derivation       | HKDF-SHA256       | Session key derivation   |
+| Hashing              | SHA-256           | Signature payloads, salt |
+
+::: tip Why Ed25519 for identity?
+X25519 is for key exchange only. Without signatures, the relay could substitute keys during handshake and perform MITM. Ed25519 signatures ensure the client can cryptographically verify it's talking to the real daemon, not a relay-in-the-middle.
+:::
+
+## 5. Actors and Authentication
+
+SBRP uses two-tier authentication: the **control plane** handles user/daemon registration and session brokering; the **data plane** (relay) validates tokens for WebSocket connections. Two token types exist: short-lived **session tokens** for clients and long-lived **presence tokens** for daemons. See Appendix C for relay token details.
+
+### 5.1 User
+
+* Authenticates to control plane via OAuth, passkeys, or session-based auth
+* Obtains relay tokens from control plane for WebSocket connections
+* Can register multiple daemons
+* Can connect from multiple devices
+
+### 5.2 Daemon
+
+* Registers with control plane via API key (issued per daemon)
+* Has Ed25519 identity keypair (signs handshakes)
+* Identity public key is registered with control plane; clients fetch it from there
+* Connects to relay with presence token (see Appendix C.7)
+
+### 5.3 Client
+
+* Authenticates to control plane via user session
+* Obtains relay token from control plane, connects to relay
+* Generates ephemeral X25519 keys per connection
+* Verifies daemon signatures using locally pinned identity key (TOFU)
+* Can connect to any daemon the user owns
+
+## 6. Protocol Flow
+
+### 6.1 Daemon Registration (One-Time)
+
+Daemon generates identity keypair on first run and registers with control plane.
+
+```text
+Daemon                           Control Plane                    Relay
+   │                                  │                              │
+   │── POST /api/daemons/register ───►│                              │
+   │   {                              │                              │
+   │     "apiKey": "dk_xxx",          │                              │
+   │     "name": "macbook-pro",       │                              │
+   │     "identityPublicKey": "..."   │  ← Ed25519 public key        │
+   │   }                              │                              │
+   │◄─── 200 OK ──────────────────────│                              │
+   │   {                              │                              │
+   │     "daemonId": "d_abc123",      │                              │
+   │     "relayUrl": "wss://...",     │                              │
+   │     "presenceToken": "<jwt>"     │  ← Long-lived presence token │
+   │   }                              │                              │
+   │                                  │                              │
+   │── WSS /relay?token=<jwt> ────────┼─────────────────────────────►│
+   │                                  │                              │
+```
+
+**Daemon key storage:** Application-specific path (e.g., `~/.config/<app>/identity.json`)
+
+```json
+{
+  "daemonId": "d_abc123",
+  "identityPublicKey": "<base64-ed25519-public>",
+  "identityPrivateKey": "<base64-ed25519-private>"
+}
+```
+
+File permissions: `0600` (owner read/write only).
+
+### 6.2 Client Connection
+
+Client lists available daemons via control plane, obtains relay token, and connects.
+
+```text
+Client                           Control Plane                    Relay
+   │                                  │                              │
+   │── GET /api/daemons ─────────────►│                              │
+   │   Cookie: session=xxx            │                              │
+   │                                  │                              │
+   │◄─── 200 OK ──────────────────────│                              │
+   │   [{                             │                              │
+   │     "id": "d_abc123",            │                              │
+   │     "name": "macbook-pro",       │                              │
+   │     "status": "online",          │                              │
+   │     "identityPublicKey": "..."   │  ← Ed25519 public key        │
+   │   }]                             │                              │
+   │                                  │                              │
+   │── POST /api/sessions ───────────►│                              │
+   │   { "daemonId": "d_abc123" }     │                              │
+   │                                  │                              │
+   │◄─── 200 OK ──────────────────────│                              │
+   │   {                              │                              │
+   │     "relayUrl": "wss://...",     │                              │
+   │     "token": "<jwt>"             │  ← Short-lived session token │
+   │   }                              │                              │
+   │                                  │                              │
+   │── WSS /relay?token=<jwt> ────────┼─────────────────────────────►│
+   │                                  │                              │
+```
+
+**Session ID:** The session token (JWT) contains a `sid` claim with the SessionID as a base64url-encoded 8-byte big-endian uint64. Decode this value and use it in the `SessionID` field of all session-bound frames (see §13.1 for wire format, §C.6 for token binding details).
+
+Client caches `identityPublicKey` for signature verification (TOFU).
+
+### 6.3 E2EE Handshake
+
+After WebSocket connection, client and daemon perform authenticated key exchange using binary frames (see §13 for wire format).
+
+```text
+Client                     Relay                    Daemon
+   │                         │                         │
+   │                    [WebSocket connected]          │
+   │                         │                         │
+   │── HandshakeInit (0x01) ►│── forward ─────────────►│
+   │   [32B X25519 key]      │                         │  ← clientEphemeralPublicKey
+   │                         │                         │
+   │                         │                         │  Daemon:
+   │                         │                         │  1. Generate X25519 ephemeral
+   │                         │                         │  2. Sign ephemeral with Ed25519
+   │                         │                         │
+   │◄───────────────────────────── HandshakeAccept (0x02)
+   │                         │   [32B X25519 key]      │  ← daemonEphemeralPublicKey
+   │                         │   [64B signature]       │  ← Ed25519 signature
+   │                         │                         │
+   │  Client:                │                         │
+   │  1. Verify signature    │                         │
+   │  2. Derive shared secret│                         │
+   │                         │                         │
+   │◄══════════ Encrypted frames (0x03) ══════════════►│
+   │   (relay sees opaque binary only)                 │
+```
+
+Future versions MAY support client-held identity keys for cryptographic user authentication; SBRP v1 does not require this.
+
+### 6.4 Signature Verification
+
+Daemon signs its ephemeral public key with context binding:
+
+```text
+signaturePayload = SHA256(
+  "sbrp-v1-handshake" ||
+  daemonId ||
+  clientEphemeralPublicKey ||
+  daemonEphemeralPublicKey
+)
+
+signature = Ed25519.sign(identityPrivateKey, signaturePayload)
+```
+
+**String encoding:** Context strings (`"sbrp-v1-handshake"`, `"sbrp-v1-transcript"`) and `daemonId` MUST be UTF-8 encoded with no BOM or length prefix before concatenation.
+
+Client verifies using **pinned** identity key (see §3.3):
+
+```text
+valid = Ed25519.verify(pinnedIdentityPublicKey, signaturePayload, signature)
+```
+
+If verification fails → abort handshake immediately.
+
+**Handshake timeout:** Handshake SHOULD complete within 30 seconds. Client measures from WebSocket open; daemon measures from receiving `HandshakeInit`. Implementations MUST abort with `handshake_failed` if the timeout expires.
+
+**Why this prevents MITM:**
+
+1. Client uses locally-pinned identity key (TOFU), not freshly-fetched key
+2. Relay doesn't have the daemon's Ed25519 private key
+3. Signature binds to specific daemonId, preventing cross-daemon confusion
+4. Signature binds to specific clientEphemeralPublicKey, preventing replay
+
+**Design note:** The relay origin is not included in the signature payload because daemonId is globally unique within the control plane's namespace. Token claims (`did`, optional `region`) bind sessions to specific daemons and relays. Cross-region replay is prevented by the `region` claim validation at token verification time, not at the cryptographic layer.
+
+### 6.5 Key Derivation
+
+Both parties compute:
+
+```text
+sharedSecret = X25519(myEphemeralPrivate, peerEphemeralPublic)
+
+// Transcript hash binds session keys to the authenticated handshake
+transcriptHash = SHA256(
+  "sbrp-v1-transcript" ||
+  daemonId ||
+  clientEphemeralPublicKey ||
+  daemonEphemeralPublicKey ||
+  signature
+)
+
+sessionKeys = HKDF-SHA256(
+  ikm:  sharedSecret,
+  salt: transcriptHash,
+  info: "sbrp-session-keys",
+  len:  64
+)
+
+clientToDaemon = sessionKeys[0:32]
+daemonToClient = sessionKeys[32:64]
+```
+
+**Design rationale:**
+
+* HKDF info parameter MUST be the protocol-defined constant "sbrp-session-keys"
+* Transcript hash as salt binds keys to this specific authenticated session
+* Including signature ensures derived keys are tied to verified identity
+* Directional keys prevent reflection attacks
+* Transcript context string provides domain separation
+
+### 6.6 Encrypted Messages
+
+All application messages after handshake use binary `Encrypted` frames (type `0x03`, see §13). The encrypted payload structure:
+
+```text
+nonce (12 bytes) || ciphertext || authTag (16 bytes)
+```
+
+**Nonce construction:**
+
+* Bytes 0-3: Direction (`0x00000001` = client→daemon, `0x00000002` = daemon→client)
+* Bytes 4-11: Sequence number (big-endian uint64)
+
+**Additional Authenticated Data (AAD):**
+
+* AAD MUST be empty (zero-length byte array)
+* Context binding is achieved via nonce (direction + sequence) and key derivation (transcript hash includes handshake data)
+* Implementations MUST NOT use non-empty AAD
+
+**Sequence numbers:**
+
+* Start at 0, increment per message per direction
+* Sequence number space is 64-bit; replay window is an implementation-defined sliding subset
+* Receiver MUST use bitmap-based sliding window of at least 64 messages
+* Receiver SHOULD use window size at least 128
+* Receiver MAY use 256 or larger for high-latency or bursty traffic
+* Messages outside window are rejected
+* Bitmap approach prevents memory exhaustion from attacker-controlled sequence numbers
+* Large sequence jumps (beyond window size) MUST be handled in O(1) by resetting the bitmap rather than iterating; failure to do so enables CPU exhaustion attacks
+
+```typescript
+// Bitmap-based sliding window (prevents memory DoS)
+// NOTE: This example shows the algorithm with a minimal 64-message window.
+// Production implementations SHOULD use ≥128 (e.g., two 64-bit words or Uint8Array).
+interface ReplayWindow {
+  maxSeen: bigint; // highest accepted sequence
+  bitmap: bigint; // bit i set = (maxSeen - i) was seen
+}
+
+function checkReplay(seq: bigint, window: ReplayWindow): boolean {
+  if (seq > window.maxSeen) {
+    // New high sequence - shift window
+    const shift = seq - window.maxSeen;
+    window.bitmap = shift >= 64n ? 0n : window.bitmap << shift;
+    window.bitmap |= 1n; // mark current as seen
+    window.maxSeen = seq;
+    return true;
+  }
+  const diff = window.maxSeen - seq;
+  if (diff >= 64n) return false; // too old
+  const mask = 1n << diff;
+  if (window.bitmap & mask) return false; // replay
+  window.bitmap |= mask;
+  return true;
+}
+```
+
+## 7. Message Categories
+
+This section describes semantic message categories. See §13 for binary wire encoding.
+
+SBRP uses three message classes with clear authority boundaries:
+
+1. **Endpoint frames** (forwarded, E2EE): `HandshakeInit`, `HandshakeAccept`, `Data`
+2. **Signal frames** (daemon → relay): `Signal` with ready/close codes
+3. **Control frames** (relay → endpoint): Unified errors and state notifications
+
+### 7.1 Endpoint Frames (Forwarded)
+
+These frames participate in E2EE and are forwarded by the relay without inspection.
+
+| Type            | Hex    | Direction       | Purpose                         |
+| --------------- | ------ | --------------- | ------------------------------- |
+| HandshakeInit   | `0x01` | Client → Daemon | Client's ephemeral X25519 key   |
+| HandshakeAccept | `0x02` | Daemon → Client | Daemon's signed ephemeral key   |
+| Data            | `0x03` | Either          | E2EE encrypted application data |
+
+### 7.2 Signal Frames (Daemon → Relay)
+
+Session lifecycle commands from daemon to relay. Never forwarded.
+
+| Type   | Hex    | Direction      | Purpose                   |
+| ------ | ------ | -------------- | ------------------------- |
+| Signal | `0x04` | Daemon → Relay | Session lifecycle command |
+
+Signal codes:
+
+* `0x00` ready: Session state retained, ready to resume
+* `0x01` close: Session terminated
+
+### 7.3 Control Frames (Relay → Endpoint)
+
+Unified relay-to-endpoint notifications. Replaces separate Error and SessionNotify frames.
+
+| Type    | Hex    | Direction    | Purpose                        |
+| ------- | ------ | ------------ | ------------------------------ |
+| Control | `0x20` | Relay → Peer | Errors and state notifications |
+
+Control codes use ranges to categorize error types; terminality is defined per code (see §14).
+
+### 7.4 Keepalive Frames (Connection-Scoped)
+
+Connection liveness detection. Handled locally, never forwarded.
+
+| Type | Hex    | Direction | Purpose            |
+| ---- | ------ | --------- | ------------------ |
+| Ping | `0x10` | Either    | Keepalive request  |
+| Pong | `0x11` | Either    | Keepalive response |
+
+::: info Why Protocol-Level Ping/Pong?
+Browser clients cannot send WebSocket ping frames (RFC 6455 restriction). Protocol-level Ping enables browser-to-relay keepalive and works before E2EE sessions are established.
+:::
+
+## 8. Relay Server Responsibilities
+
+### 8.1 Token Validation
+
+* Validate relay tokens issued by the control plane (see Appendix C)
+* Enforce token claims: role, daemonId, sessionId, expiration
+* Enforce user → daemon ownership via token claims
+
+### 8.2 Key Distribution
+
+* Relay does NOT distribute or receive daemon identity keys; clients obtain keys from control plane
+* Relay has no access to private or public identity keys and does not verify signatures
+
+### 8.3 Routing
+
+* Maintain WebSocket connections for daemons and clients
+* Route messages between paired connections
+* Handle multiple clients per daemon
+
+### 8.4 Presence
+
+* Track daemon online/offline status
+* Send `Control(session_paused)` to clients when daemon disconnects
+* On daemon reconnect within grace window:
+  * **Non-resumable daemons** (`res: false`): immediately send `Control(session_expired)` to all paired clients
+  * **Resumable daemons** (default): send `Control(session_pending)` to client, wait for daemon to send `Signal(ready)` or `Signal(close)` per session
+* On `Signal(ready)` from daemon: send `Control(session_resumed)` to client, resume routing
+* On `Signal(close)` from daemon: send `Control(session_expired)` to client, close session pairing
+* Send `Control(session_expired)` and close client WebSocket if grace window expires (daemon didn't reconnect, or reconnected but didn't signal within grace period)
+* Send `Control(session_ended)` to daemon when client disconnects, if daemon is connected (enables per-session cleanup); if daemon is offline, silently tear down pairing
+
+### 8.5 Keepalive Handling
+
+* Ping/Pong frames are **connection-scoped** (SessionID MUST be 0)
+* Ping/Pong frames are **never forwarded**
+* Relay MUST respond to incoming Ping with Pong, copying payload
+* Relay MAY send Ping to endpoints to detect dead connections
+* Ping payload is optional (0-8 bytes), used for RTT measurement
+
+### 8.6 Rate Limiting
+
+* Max 100 messages/second per connection
+* Max 64 KB per message (frame payload, excluding 13-byte header)
+* Max 10 daemons per user (configurable)
+* Max 5 concurrent client connections per daemon
+
+## 9. Quick Connect (Optional)
+
+For scenarios without account (local dev, demos), support ephemeral connect codes via control plane:
+
+```text
+Daemon                           Control Plane                    Relay
+   │                                  │                              │
+   │── POST /api/connect/code ───────►│                              │
+   │   Authorization: Bearer dk_xxx   │                              │
+   │                                  │                              │
+   │◄─── 200 OK ──────────────────────│                              │
+   │   {                              │                              │
+   │     "code": "A7F3-KQP9",         │                              │
+   │     "expiresAt": "...",          │                              │
+   │     "url": "https://app.example  │                              │
+   │            /connect/A7F3-KQP9"   │                              │
+   │   }                              │                              │
+   │                                  │                              │
+```
+
+Client navigating to URL gets temporary access without login. Code expires in 5 minutes. E2EE handshake (with signature verification) proceeds normally.
+
+**Security requirements** (control plane responsibility):
+
+* Quick Connect MUST NOT be enabled by default; require explicit operator opt-in
+* Control plane MUST enforce code expiry server-side; stale codes MUST be rejected
+* Control plane MUST rate-limit code generation (e.g., max 10 per minute per daemon)
+* Codes MUST use high-entropy random values (≥128 bits)
+* Control plane MUST enforce TTL eviction and SHOULD enforce one-time use; MAY use durable storage with TTL for HA deployments
+
+::: danger Reduced Security
+Quick Connect bypasses standard user authentication. MUST be disabled by default in production deployments. Enable only for local development, demos, or with explicit operator opt-in and audit logging.
+:::
+
+## 10. Security Properties
+
+### 10.1 Guarantees
+
+| Property                | Mechanism                    |
+| ----------------------- | ---------------------------- |
+| Message confidentiality | ChaCha20-Poly1305 E2EE       |
+| Message integrity       | Poly1305 auth tag            |
+| Daemon authenticity     | Ed25519 identity signatures  |
+| Forward secrecy         | Ephemeral X25519 per session |
+| Replay protection       | Sequence numbers in nonce    |
+
+### 10.2 Attack Resistance
+
+| Attack               | Mitigation                                                                    |
+| -------------------- | ----------------------------------------------------------------------------- |
+| Relay reads messages | E2EE encryption                                                               |
+| Relay MITM           | Ed25519 signatures on ephemeral keys                                          |
+| Replay attack        | Sequence numbers, sliding window                                              |
+| Reflection attack    | Directional keys                                                              |
+| Key substitution     | Signature binds ephemeral to identity                                         |
+| Session hijacking    | Token-based auth; relay acts on tokens, cannot verify user intent (see §10.3) |
+
+### 10.3 Limitations
+
+| Attack                         | Status                                                                                                           |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Compromised relay auth         | Can deny service, can't decrypt or MITM                                                                          |
+| Compromised client runtime     | Full compromise (inherent to web apps for browsers)                                                              |
+| Traffic analysis               | Relay sees timing, size, frequency; may infer high-level usage patterns                                          |
+| Daemon identity key compromise | Must rotate key, re-register                                                                                     |
+| Relay user impersonation       | Relay cannot verify user actually requested the session; client is not cryptographically authenticated to daemon |
+
+### 10.4 Optional Privacy Enhancements (Non-Normative)
+
+Implementations MAY pad encrypted payloads or batch messages to reduce traffic analysis, depending on application needs.
+
+## 11. Reconnection
+
+### 11.1 Daemon Reconnection
+
+If daemon WebSocket disconnects:
+
+1. Daemon reconnects with valid presence token (refresh from control plane if expired)
+2. **Non-resumable daemons** (`res: false` in token): Relay automatically sends `Control(session_expired)` to all paired clients; no further daemon action required. See §C.7.
+3. **Resumable daemons** (default): Relay restores daemon's connection state; clients remain in pending state. Daemon MUST check retained state for each session and explicitly signal readiness:
+4. **If state is retained** (within 30s grace period AND daemon retains **ALL** of):
+   * Session keys (`clientToDaemon`, `daemonToClient`)
+   * Send sequence counters (both directions)
+   * Replay window state (bitmap + maxSeen, both directions)
+   * → Daemon sends `Signal(ready)` for the session
+   * → Relay sends `Control(session_resumed)` to client
+   * → Resume normally; sequence numbers MUST continue monotonically per direction
+5. **If state is lost** (process restart, memory loss, or ANY state component missing):
+   * Daemon MUST send `Signal(close, reason=state_lost)` for each affected session
+   * Relay sends `Control(session_expired)` to client and closes session pairing
+   * Client initiates full reconnect with new handshake (existing behavior)
+
+::: tip Simple Daemons
+For v1 implementations that don't need session resumption, request a presence token with `res: false`. The relay handles session cleanup automatically on reconnect—no need to track session IDs or send Signal frames.
+:::
+
+::: warning State Loss = Signal(close) Required
+For resumable daemons: partial state loss (e.g., replay window cleared but keys retained) is catastrophic. Implementations MUST send `Signal(close)` for any session with incomplete state. Attempting to resume with partial state will cause decrypt failures.
+:::
+
+### 11.2 Client Reconnection
+
+If client WebSocket disconnects:
+
+1. Client obtains a new session token from control plane (new `sid`)
+2. Client connects to relay with the new token
+3. Full E2EE handshake required (new ephemeral keys)
+4. Application should handle state resync
+
+::: info No Client Session Resumption
+Unlike daemons, clients do not support session resumption. Each client reconnection is a fresh start: new session token, new ephemeral keys, new sequence counters. Session tokens are short-lived (≤300s) by design.
+:::
+
+## 12. Multi-Device Support
+
+### 12.1 Multiple Clients
+
+* Each client has independent E2EE session with daemon
+* Daemon maintains separate key state per client
+* Messages are not broadcast (each client gets its own responses)
+
+### 12.2 Implementation
+
+```typescript
+// Per-direction crypto state (traffic key, counters, replay window)
+interface ChannelState {
+  trafficKey: Uint8Array; // 32 bytes
+  sendSeq: bigint;
+  recvWindow: ReplayWindow; // bitmap-based (see §6.6)
+}
+
+// Daemon session state per client connection
+interface ClientSession {
+  clientToDaemon: ChannelState;
+  daemonToClient: ChannelState;
+}
+
+// Sessions keyed by SessionID from frame header (see §13.1, §C.7)
+const sessions = new Map<bigint, ClientSession>();
+```
+
+## 13. Wire Format (Binary Framing)
+
+All relay communication uses binary frames over WebSocket (binary message type). The relay inspects ONLY the frame header for routing decisions; payload content is opaque bytes that the relay MUST NOT interpret.
+
+### 13.1 Frame Structure
+
+```text
+┌───────────┬──────────────┬────────────────┬─────────────────────┐
+│ Type (1B) │ Length (4B)  │ SessionID (8B) │ Payload (0..64KB)   │
+└───────────┴──────────────┴────────────────┴─────────────────────┘
+     │            │               │                  │
+     │            │               │                  └─ Opaque bytes (handshake or encrypted)
+     │            │               └─ Session ID (big-endian uint64)
+     │            └─ Payload length in bytes (big-endian uint32, excludes header)
+     └─ Frame type (see §13.2)
+```
+
+* **Header size:** 13 bytes (fixed)
+* **Max payload:** 65536 bytes (64 KB, per §8.5)
+* **Byte order:** Big-endian for all multi-byte integers
+
+### 13.2 Frame Types
+
+| Type            | Hex    | Direction       | SessionID | Description                            |
+| --------------- | ------ | --------------- | --------- | -------------------------------------- |
+| HandshakeInit   | `0x01` | Client → Daemon | Required  | Client's ephemeral X25519 key          |
+| HandshakeAccept | `0x02` | Daemon → Client | Required  | Daemon's signed ephemeral key          |
+| Data            | `0x03` | Either          | Required  | E2EE application payload               |
+| Signal          | `0x04` | Daemon → Relay  | Required  | Session lifecycle command              |
+| Ping            | `0x10` | Either          | Zero      | Keepalive request (connection-scoped)  |
+| Pong            | `0x11` | Either          | Zero      | Keepalive response (connection-scoped) |
+| Control         | `0x20` | Relay → Peer    | Varies    | Errors and state notifications         |
+
+**Reserved frame type ranges:**
+
+| Range       | Purpose                        | Status              |
+| ----------- | ------------------------------ | ------------------- |
+| `0x00`      | Invalid (undefined)            | Reserved            |
+| `0x01–0x0F` | Session-bound endpoint frames  | 0x01–0x04 allocated |
+| `0x10–0x1F` | Connection-scoped frames       | 0x10–0x11 allocated |
+| `0x20–0x2F` | Relay-generated frames         | 0x20 allocated      |
+| `0x30–0x7F` | Future protocol extensions     | Reserved            |
+| `0x80–0xFF` | Experimental/vendor extensions | Reserved            |
+
+**SessionID requirements:**
+
+* Session-bound frames (`0x01`, `0x02`, `0x03`, `0x04`) MUST have non-zero SessionID
+* Keepalive frames (`0x10`, `0x11`) MUST have SessionID = 0 (connection-scoped, never forwarded)
+* Control frames (`0x20`) use non-zero SessionID for session events, zero for connection errors
+
+**SessionID scope by Control code:** See §14.1 for the authoritative per-code SID column. Connection-level errors (SID=0) have no valid session context; session-specific events (SID=S) use the relevant non-zero SessionID.
+
+**Authority boundaries:**
+
+* Clients MUST NOT send Signal (`0x04`) or Control (`0x20`) frames
+* Endpoints MUST NOT send Control (`0x20`) frames
+* Relay MUST reject disallowed frames with `Control(disallowed_sender)` if header is parseable; if header is malformed or truncated, close WebSocket immediately with `Control(malformed_frame, SessionID=0)`
+
+### 13.3 Relay Behavior
+
+The relay MUST:
+
+* Parse frame header (13 bytes) to extract type, length, and session ID
+* Route endpoint frames (`0x01`, `0x02`, `0x03`) by session ID to the paired connection
+* Handle `Signal` (`0x04`) from daemon:
+  * `Signal(ready)`: send `Control(session_resumed)` to client, resume routing
+  * `Signal(close)`: send `Control(session_expired)` to client, close session pairing
+* Handle `Ping` (`0x10`) locally: respond with `Pong` copying payload; NEVER forward
+* Handle `Pong` (`0x11`) locally: update liveness state; NEVER forward
+* Reject `Control` (`0x20`) received from peers as `disallowed_sender`
+* Reject `Signal` (`0x04`) received from clients as `disallowed_sender`
+* Generate `Control` frames as needed (see §8.4, §14)
+* Forward payload bytes of routed frames without modification
+* Reject frames exceeding max payload size with `Control(payload_too_large)`
+
+The relay MUST NOT:
+
+* Interpret payload contents of endpoint frames
+* Parse any structure within encrypted payloads
+* Buffer, reassemble, or coalesce frames beyond transport requirements
+* Modify frame bytes in transit
+* Generate Control messages that leak information derived from encrypted payloads
+* Include identifiers (daemonId, clientId, sessionId, tokens) in Control message text
+
+::: warning Relay is a Frame Router
+The relay operates on opaque binary frames. It has no knowledge of handshake semantics, encryption, or application protocols. This separation is intentional and MUST be preserved.
+:::
+
+**Frame validation order:** When multiple errors apply, relay MUST check in this order and return the first matching error:
+
+1. **Header parse** — If header is malformed or truncated → `malformed_frame`, SID=0
+2. **Payload size** — If length exceeds limit → `payload_too_large`, SID=0
+3. **Frame type** — If type byte unknown → `invalid_frame_type`, SID=0
+4. **SessionID validity** — If session-bound frame has SessionID=0, or Ping/Pong has non-zero SessionID → `invalid_session_id`, SID=0
+5. **Frame direction** — If sender not allowed for frame type → `disallowed_sender`, SID=header's SessionID (now validated non-zero for session-bound frames)
+
+This order ensures deterministic error selection and correct SID in responses.
+
+### 13.4 Payload Formats
+
+Payload structure is defined per frame type. These formats are parsed by endpoints, never by relay.
+
+**HandshakeInit (`0x01`)** — 32 bytes:
+
+```text
+┌─────────────────────────┐
+│ initPublicKey (32B)     │  X25519 ephemeral public key
+└─────────────────────────┘
+```
+
+**HandshakeAccept (`0x02`)** — 96 bytes:
+
+```text
+┌─────────────────────────┐
+│ acceptPublicKey (32B)   │  X25519 ephemeral public key
+├─────────────────────────┤
+│ signature (64B)         │  Ed25519 signature (see §6.4)
+└─────────────────────────┘
+```
+
+**Data (`0x03`)** — variable length:
+
+```text
+┌─────────────────────────┐
+│ nonce (12B)             │  See §6.6 for nonce construction
+├─────────────────────────┤
+│ ciphertext (N bytes)    │  ChaCha20-Poly1305 encrypted payload
+├─────────────────────────┤
+│ authTag (16B)           │  Poly1305 authentication tag
+└─────────────────────────┘
+```
+
+Total payload size: 28 + plaintext length. Max plaintext: 65508 bytes (64 KB payload limit − 28 bytes overhead).
+
+**Signal (`0x04`)** — 2 bytes (daemon-originated only):
+
+```text
+┌─────────────────────────┐
+│ signal (1B)             │  Signal code (see below)
+├─────────────────────────┤
+│ reason (1B)             │  Reason code (for extensibility)
+└─────────────────────────┘
+```
+
+Signal codes:
+
+| Signal  | Value  | Meaning                                 |
+| ------- | ------ | --------------------------------------- |
+| `ready` | `0x00` | Session state retained, ready to resume |
+| `close` | `0x01` | Session terminated                      |
+
+Reason codes (universal across all signals):
+
+| Reason       | Value  | Meaning                         |
+| ------------ | ------ | ------------------------------- |
+| `none`       | `0x00` | No specific reason (default)    |
+| `state_lost` | `0x01` | Process restart, memory cleared |
+| `shutdown`   | `0x02` | Graceful daemon shutdown        |
+| `policy`     | `0x03` | Internal policy denial          |
+| `error`      | `0x04` | Internal daemon error           |
+
+For `ready` signal, reason SHOULD be `0x00` (`none`). For `close` signal, use the appropriate reason. Unknown reason codes MUST be treated as `none` by relay.
+
+**Ping (`0x10`)** — 0-8 bytes:
+
+```text
+┌─────────────────────────┐
+│ payload (0..8B)         │  Optional nonce/timestamp for RTT
+└─────────────────────────┘
+```
+
+Ping is connection-scoped (SessionID = 0). Payload is opaque; recipient copies it to Pong response.
+
+**Pong (`0x11`)** — 0-8 bytes:
+
+```text
+┌─────────────────────────┐
+│ payload (0..8B)         │  Copied from corresponding Ping
+└─────────────────────────┘
+```
+
+Pong is connection-scoped (SessionID = 0). Payload MUST match the triggering Ping.
+
+**Control (`0x20`)** — variable length (relay-originated only):
+
+```text
+┌─────────────────────────┐
+│ code (2B)               │  Control code (big-endian uint16, see §14)
+├─────────────────────────┤
+│ message (0..N bytes)    │  UTF-8 diagnostic message (optional)
+└─────────────────────────┘
+```
+
+::: warning Control Message Constraints
+The `message` field is for diagnostic/logging purposes only. Relay implementations:
+
+* MUST NOT include identifiers (daemonId, clientId, sessionId, tokens) in message
+* SHOULD leave message empty in production
+* MAY include generic error descriptions for debugging
+
+Clients MUST NOT parse message content for behavioral decisions; use only the `code` field.
+:::
+
+### 13.5 Control Code Mapping
+
+Control frames (`0x20`) are relay-originated only. Endpoint-detected errors (cryptographic failures) are not transmitted as Control frames; endpoints close the connection and log the error locally.
+
+Control codes use **ranges** to categorize error types and session states. Ranges enable **category discrimination only**—do not infer terminality or SessionID scope from the range; consult the per-code table in §14.1.
+
+| Range           | Category       | Description                    |
+| --------------- | -------------- | ------------------------------ |
+| `0x01xx`        | Authentication | Token and authorization errors |
+| `0x02xx`        | Routing        | Daemon discovery and presence  |
+| `0x03xx`        | Session        | Session lifecycle errors       |
+| `0x04xx`        | Wire format    | Protocol violations            |
+| `0x05xx`        | Reserved       | Future use                     |
+| `0x06xx`        | Internal       | Relay internal errors          |
+| `0x07xx–0x08xx` | Reserved       | Future use                     |
+| `0x09xx`        | Rate limiting  | Throttling (recoverable)       |
+| `0x0Axx–0x0Fxx` | Reserved       | Future use                     |
+| `0x10xx`        | Session state  | Non-terminal state transitions |
+| `0x11xx–0x1Fxx` | Reserved       | Future state notifications     |
+| `0xE0xx`        | SDK-only       | Never transmitted on wire      |
+
+**Terminality is per-code, not per-range.** See §14 for the complete code table with terminal/non-terminal annotations per code. Terminal codes result in relay closing the WebSocket; non-terminal codes allow the connection to remain open.
+
+### 13.6 Example: Complete Handshake
+
+```text
+Client → Relay → Daemon:
+  Frame: 01 00000020 0000000000000001 <32 bytes initPublicKey>
+         │  │        │                └─ Payload
+         │  │        └─ SessionID = 1
+         │  └─ Length = 32
+         └─ Type = HandshakeInit
+
+Daemon → Relay → Client:
+  Frame: 02 00000060 0000000000000001 <32 bytes acceptPublicKey><64 bytes signature>
+         │  │        │                └─ Payload (96 bytes)
+         │  │        └─ SessionID = 1
+         │  └─ Length = 96
+         └─ Type = HandshakeAccept
+
+Client → Relay → Daemon (first encrypted message):
+  Frame: 03 0000003C 0000000000000001 <12 bytes nonce><32 bytes ciphertext><16 bytes tag>
+         │  │        │                └─ Payload (60 bytes)
+         │  │        └─ SessionID = 1
+         │  └─ Length = 60
+         └─ Type = Data
+
+Keepalive (connection-scoped):
+  Frame: 10 00000008 0000000000000000 <8 bytes timestamp>
+         │  │        │                └─ Payload (optional RTT nonce)
+         │  │        └─ SessionID = 0 (connection-scoped)
+         │  └─ Length = 8
+         └─ Type = Ping
+
+Daemon → Relay (session resumption):
+  Frame: 04 00000002 0000000000000001 00 00
+         │  │        │                │  └─ reason = 0x00 (none)
+         │  │        │                └─ signal = ready (0x00)
+         │  │        └─ SessionID = 1
+         │  └─ Length = 2
+         └─ Type = Signal
+```
+
+## 14. Control Codes
+
+This section defines the complete Control code space. Codes are transmitted in Control frames (`0x20`) from relay to endpoint. See §13.5 for code range semantics.
+
+### 14.1 Wire Codes (Relay → Endpoint)
+
+Each code specifies its terminality (T=terminal, closes WebSocket; N=non-terminal, connection stays open) and SessionID scope (0=zero/connection-level, S=session-specific non-zero).
+
+**Authentication (0x01xx)**
+
+| Code   | Name           | T/N | SID | Meaning                    | When Emitted             |
+| ------ | -------------- | --- | --- | -------------------------- | ------------------------ |
+| 0x0101 | `unauthorized` | T   | 0   | Invalid or expired token   | Token validation failure |
+| 0x0102 | `forbidden`    | T   | 0   | Valid token, access denied | User doesn't own daemon  |
+
+**Routing (0x02xx)**
+
+| Code   | Name               | T/N | SID | Meaning              | When Emitted                    |
+| ------ | ------------------ | --- | --- | -------------------- | ------------------------------- |
+| 0x0201 | `daemon_not_found` | T   | S   | Unknown daemon ID    | Daemon doesn't exist            |
+| 0x0202 | `daemon_offline`   | N   | S   | Daemon not connected | Client connects, daemon offline |
+
+**Session (0x03xx)**
+
+| Code   | Name                | T/N | SID | Meaning            | When Emitted                            |
+| ------ | ------------------- | --- | --- | ------------------ | --------------------------------------- |
+| 0x0301 | `session_not_found` | T   | S   | Unknown session ID | Frame references invalid session        |
+| 0x0302 | `session_expired`   | T   | S   | Session terminated | Grace expired, Signal(close), or policy |
+
+**Wire Format (0x04xx)**
+
+| Code   | Name                 | T/N | SID | Meaning                     | When Emitted                               |
+| ------ | -------------------- | --- | --- | --------------------------- | ------------------------------------------ |
+| 0x0401 | `malformed_frame`    | T   | 0   | Invalid header structure    | Header parse failure, truncated frame      |
+| 0x0402 | `payload_too_large`  | T   | 0   | Exceeds 64KB limit          | Payload length > MAX\_PAYLOAD\_SIZE          |
+| 0x0403 | `invalid_frame_type` | T   | 0   | Unknown type byte           | Type byte not in defined set               |
+| 0x0404 | `invalid_session_id` | T   | 0   | SessionID invalid for frame | Session-bound with 0, or Ping/Pong with >0 |
+| 0x0405 | `disallowed_sender`  | T   | S   | Wrong direction for frame   | Client sends Signal, peer sends Control    |
+
+**Internal (0x06xx)**
+
+| Code   | Name             | T/N | SID | Meaning                | When Emitted                                         |
+| ------ | ---------------- | --- | --- | ---------------------- | ---------------------------------------------------- |
+| 0x0601 | `internal_error` | T   | 0   | Relay internal failure | Unrecoverable relay error (bug, resource exhaustion) |
+
+**Rate Limiting (0x09xx)**
+
+| Code   | Name           | T/N | SID | Meaning           | When Emitted          |
+| ------ | -------------- | --- | --- | ----------------- | --------------------- |
+| 0x0901 | `rate_limited` | N   | 0   | Too many requests | Message rate exceeded |
+
+Rate limiting is connection-level per §8.6, so SID=0 regardless of which session triggered the limit.
+
+**Session State (0x10xx)**
+
+| Code   | Name              | T/N | SID | Direction      | Meaning                                   |
+| ------ | ----------------- | --- | --- | -------------- | ----------------------------------------- |
+| 0x1001 | `session_paused`  | N   | S   | Relay → Client | Daemon disconnected; traffic suspended    |
+| 0x1002 | `session_resumed` | N   | S   | Relay → Client | Daemon reconnected and ready              |
+| 0x1003 | `session_ended`   | N   | S   | Relay → Daemon | Client disconnected; cleanup session      |
+| 0x1004 | `session_pending` | N   | S   | Relay → Client | Daemon reconnected; awaiting ready signal |
+
+### 14.2 Endpoint Codes (SDK Only, Never on Wire)
+
+These codes exist for SDK error handling and logging. They are never transmitted in Control frames.
+
+| Code   | Name                   | Detected by | Meaning                               |
+| ------ | ---------------------- | ----------- | ------------------------------------- |
+| 0xE001 | `identity_key_changed` | Client      | TOFU key mismatch; possible MITM      |
+| 0xE002 | `handshake_failed`     | Client      | Signature verification failed         |
+| 0xE003 | `handshake_timeout`    | Either      | 30s handshake deadline exceeded       |
+| 0xE004 | `decrypt_failed`       | Either      | ChaCha20-Poly1305 decrypt/auth failed |
+| 0xE005 | `sequence_error`       | Either      | Sequence outside replay window        |
+
+Endpoint codes use the `0xExxx` range to clearly distinguish them from wire codes.
+
+**Reserved ranges for endpoint codes:**
+
+* `0xE0xx`: SBRP v1 SDK codes (allocated above)
+* `0xE1xx–0xEFxx`: Reserved for future SDK versions
+* `0xF0xx–0xFFxx`: Reserved for vendor/application-specific SDK codes
+
+::: danger identity\_key\_changed
+When `identity_key_changed` is detected, client UX MUST:
+
+1. Abort the connection immediately
+2. Present both stored and new fingerprints prominently
+3. Require explicit user confirmation before accepting new key
+4. Log the event with both fingerprints for audit
+   :::
+
+### 14.3 Interpreting T/N and SID Columns
+
+**Terminality (T/N):**
+
+* **T (Terminal):** Relay sends Control frame then closes WebSocket. Client should not retry on same connection.
+* **N (Non-terminal):** Connection remains open. Client may wait, retry, or take appropriate action.
+
+**SessionID scope (SID):**
+
+* **0:** Connection-level error; use SessionID=0 in frame header.
+* **S:** Session-specific; use the relevant non-zero SessionID in frame header.
+
+## 15. Implementation Notes
+
+::: code-group
+
+```typescript [Daemon (Bun/Node)]
+import { ed25519, x25519 } from "@noble/curves/ed25519";
+import { chacha20poly1305 } from "@noble/ciphers/chacha";
+import { hkdf } from "@noble/hashes/hkdf";
+import { sha256 } from "@noble/hashes/sha256";
+import { concatBytes } from "@noble/hashes/utils";
+
+// Identity key (generated once, stored with 0600 permissions)
+const identityPrivate = ed25519.utils.randomPrivateKey();
+const identityPublic = ed25519.getPublicKey(identityPrivate);
+
+// Session key (generated per handshake)
+const ephemeralPrivate = x25519.utils.randomPrivateKey();
+const ephemeralPublic = x25519.getPublicKey(ephemeralPrivate);
+
+// Sign ephemeral key with context binding
+const signaturePayload = sha256(
+  concatBytes(
+    new TextEncoder().encode("sbrp-v1-handshake"),
+    new TextEncoder().encode(daemonId),
+    clientEphemeralPublicKey,
+    ephemeralPublic,
+  ),
+);
+const signature = ed25519.sign(signaturePayload, identityPrivate); // [!code focus]
+
+// Derive session keys using transcript hash
+const shared = x25519.getSharedSecret(
+  ephemeralPrivate,
+  clientEphemeralPublicKey,
+);
+const transcriptHash = sha256(
+  concatBytes(
+    new TextEncoder().encode("sbrp-v1-transcript"),
+    new TextEncoder().encode(daemonId),
+    clientEphemeralPublicKey,
+    ephemeralPublic,
+    signature,
+  ),
+);
+const keys = hkdf(sha256, shared, transcriptHash, "sbrp-session-keys", 64); // [!code focus]
+const clientToDaemonKey = keys.slice(0, 32);
+const daemonToClientKey = keys.slice(32, 64);
+
+// Best-effort zeroization (JS/GC limitations apply)
+ephemeralPrivate.fill(0);
+shared.fill(0);
+```
+
+```typescript [Client (Browser)]
+import { ed25519, x25519 } from "@noble/curves/ed25519";
+import { chacha20poly1305 } from "@noble/ciphers/chacha";
+import { hkdf } from "@noble/hashes/hkdf";
+import { sha256 } from "@noble/hashes/sha256";
+import { concatBytes } from "@noble/hashes/utils";
+
+// TOFU: Load pinned identity key or store on first connection
+// NOTE: Production implementations SHOULD use IndexedDB for durability;
+// localStorage shown here for simplicity. See §3.3 for storage requirements.
+const storageKey = `sbrp.daemon.${daemonId}.identityKey`;
+const pinnedKey = localStorage.getItem(storageKey); // [!code focus]
+if (pinnedKey && pinnedKey !== base64Encode(daemonIdentityPublic)) {
+  // [!code focus]
+  throw new Error("identity_key_changed: Daemon key mismatch - possible MITM"); // [!code focus]
+} // [!code focus]
+if (!pinnedKey) {
+  localStorage.setItem(storageKey, base64Encode(daemonIdentityPublic));
+}
+
+// Verify daemon signature using PINNED key
+const signaturePayload = sha256(
+  concatBytes(
+    new TextEncoder().encode("sbrp-v1-handshake"),
+    new TextEncoder().encode(daemonId),
+    myEphemeralPublic,
+    daemonEphemeralPublic,
+  ),
+);
+const valid = ed25519.verify(signature, signaturePayload, daemonIdentityPublic); // [!code focus]
+if (!valid) throw new Error("Signature verification failed"); // [!code focus]
+
+// Derive session keys using same transcript hash as daemon
+const shared = x25519.getSharedSecret(
+  myEphemeralPrivate,
+  daemonEphemeralPublic,
+);
+const transcriptHash = sha256(
+  concatBytes(
+    new TextEncoder().encode("sbrp-v1-transcript"),
+    new TextEncoder().encode(daemonId),
+    myEphemeralPublic,
+    daemonEphemeralPublic,
+    signature,
+  ),
+);
+const keys = hkdf(sha256, shared, transcriptHash, "sbrp-session-keys", 64); // [!code focus]
+const clientToDaemonKey = keys.slice(0, 32);
+const daemonToClientKey = keys.slice(32, 64);
+```
+
+:::
+
+### 15.1 Relay (Cloudflare Workers)
+
+```typescript
+// Relay only handles routing and auth, no crypto
+// Use Durable Objects for connection state
+export class RelayDO implements DurableObject {
+  connections: Map<string, WebSocket>;
+
+  async handleMessage(from: string, frame: ArrayBuffer) {
+    // Parse header only (13 bytes): type, length, sessionId
+    const header = new DataView(frame, 0, 13);
+    const type = header.getUint8(0);
+
+    // Control frames (Ping/Pong/Error) are handled locally, not forwarded
+    if (type === 0x10 || type === 0x11 || type === 0x20) {
+      this.handleControlFrame(from, type, frame);
+      return;
+    }
+
+    // Forward session-bound frames (HandshakeInit, HandshakeAccept, Encrypted)
+    const sessionId = header.getBigUint64(5);
+    const target = this.getTargetBySession(sessionId);
+    target.send(frame);
+  }
+}
+```
+
+## Appendix A. Threat Model Summary
+
+| Threat                 | Attacker | Mitigation                        | Result                                |
+| ---------------------- | -------- | --------------------------------- | ------------------------------------- |
+| Read messages          | Relay    | ChaCha20-Poly1305                 | Cannot decrypt                        |
+| MITM handshake         | Relay    | Ed25519 signatures + TOFU pinning | Cannot forge (after first connection) |
+| Key substitution       | Relay    | TOFU identity pinning             | Detected on subsequent connections    |
+| Replay messages        | Network  | Bitmap sequence window            | Rejected                              |
+| Impersonate daemon     | Relay    | No private key access             | Cannot sign                           |
+| Cross-daemon confusion | Relay    | daemonId in signature payload     | Rejected                              |
+| Deny service           | Relay    | N/A                               | Accepted risk                         |
+
+## Appendix B. Security Checklist
+
+**Daemon:**
+
+* \[ ] Generate Ed25519 identity key on first run
+* \[ ] Store identity private key with 0600 permissions
+* \[ ] Include daemonId in signature payload (context binding)
+* \[ ] Sign every ephemeral key with identity key
+* \[ ] Use transcript hash as HKDF salt
+* \[ ] Generate fresh X25519 ephemeral per session
+* \[ ] Use directional keys (prevent reflection)
+* \[ ] Implement bitmap-based sliding window (≥64 messages)
+* \[ ] Send `Signal(ready)` for sessions with retained state after reconnect
+* \[ ] Send `Signal(close)` for sessions with lost state after reconnect
+* \[ ] Best-effort zero ephemeral keys and shared secrets after derivation
+* \[ ] Best-effort clear all key material on session close
+
+**Client:**
+
+* \[ ] Pin identity key on first connection (TOFU)
+* \[ ] Reject connections if identity key changes
+* \[ ] Verify signature using pinned key, not freshly-fetched key
+* \[ ] Include daemonId in signature verification payload
+* \[ ] Use same transcript hash derivation as daemon
+* \[ ] Handle `Control(session_paused/resumed/pending)` state transitions
+* \[ ] Handle `Control(session_expired)` by initiating full reconnect
+
+**Relay:**
+
+* \[ ] Implement rate limiting
+* \[ ] Validate daemon ownership before routing
+* \[ ] Wait for `Signal(ready)` from daemon before sending `Control(session_resumed)` to client
+* \[ ] Send `Control(session_pending)` to client when daemon reconnects
+* \[ ] Never log or inspect encrypted message payloads
+* \[ ] Never include identifiers in Control message text
+* \[ ] Respond to Ping with Pong, copying payload; never forward Ping/Pong
+
+## Appendix C. Relay Authentication
+
+This appendix defines the token-based authentication contract between the control plane and relay data plane.
+
+### C.1 Architecture Separation
+
+SBRP separates concerns between two planes:
+
+| Plane             | Responsibility                                                | Example Endpoint            |
+| ----------------- | ------------------------------------------------------------- | --------------------------- |
+| **Control Plane** | User auth, daemon registry, session brokering, token issuance | `api.sideband.cloud`        |
+| **Data Plane**    | Frame routing, presence, token validation                     | `eu-1.relay.sideband.cloud` |
+
+The control plane issues tokens that grant relay access: short-lived **session tokens** for clients and long-lived **presence tokens** for daemons. The relay validates tokens but NEVER issues them.
+
+### C.2 Token Claims
+
+Tokens are JWTs signed by the control plane. The relay MUST validate these claims:
+
+```typescript
+interface RelayTokenClaims {
+  // Standard JWT claims
+  iss: string; // MUST match configured issuer (e.g., "https://sideband.cloud")
+  aud: string; // MUST be "sideband-relay"
+  exp: number; // Unix timestamp; session tokens SHOULD use TTL ≤ 120s (MUST NOT exceed 300s); presence tokens SHOULD use TTL ≥ 1h
+  iat: number; // Issued-at timestamp
+  jti: string; // Unique token ID (for audit logging)
+
+  // SBRP-specific claims
+  sid?: string; // Session ID (base64url of uint64); REQUIRED for clients, omitted for daemons
+  role: "daemon" | "client";
+  did: string; // Daemon ID (REQUIRED for both roles)
+  cid?: string; // Client ID (REQUIRED if role === "client")
+
+  // Optional claims
+  region?: string; // Relay region binding (hard fail if mismatch)
+  res?: boolean; // Resumable (daemon only); false disables session resumption (default: true)
+  scp?: string[]; // Scopes (reserved for future use, ignored in v1)
+}
+```
+
+### C.3 Validation Rules
+
+The relay MUST:
+
+1. Verify JWT signature using JWKS from control plane
+2. Reject tokens where `iss` doesn't match configured issuer
+3. Reject tokens where `aud` !== `"sideband-relay"`
+4. Reject tokens where `exp` < current time (with ≤30s clock skew tolerance)
+5. Reject tokens where `role` is missing or invalid
+6. Reject tokens where `did` is missing
+7. Reject tokens where `role === "client"` and `cid` is missing
+8. Reject tokens where `role === "client"` and `sid` is missing
+9. If `region` claim is present, reject if it doesn't match relay's configured region
+
+The relay MUST NOT:
+
+* Track `jti` values for revocation or deduplication (expiration handles token lifetime; audit logging per §C.8 is permitted)
+* Accept session tokens with TTL > 300 seconds
+* Issue tokens under any circumstances
+* Disconnect established WebSocket connections due to token expiry (tokens are validated at connection time only; session lifetime is managed by application-level mechanisms)
+
+### C.4 Key Rotation
+
+The control plane publishes signing keys via JWKS endpoint:
+
+```text
+GET https://sideband.cloud/.well-known/jwks.json
+```
+
+The relay SHOULD:
+
+* Cache JWKS for up to 5 minutes
+* Refresh JWKS when encountering unknown `kid` (key ID)
+* Support at least 2 concurrent keys for rotation
+
+### C.5 Connection Flow
+
+```text
+┌─────────┐         ┌─────────────┐         ┌─────────┐
+│ Client  │         │Control Plane│         │  Relay  │
+└────┬────┘         └──────┬──────┘         └────┬────┘
+     │                     │                     │
+     │ POST /sessions      │                     │
+     │ {daemonId}          │                     │
+     ├────────────────────►│                     │
+     │                     │                     │
+     │ {relay_url, token}  │                     │
+     │◄────────────────────┤                     │
+     │                     │                     │
+     │ WSS /relay?token=...│                     │
+     ├─────────────────────┼────────────────────►│
+     │                     │                     │
+     │                     │      validate token │
+     │                     │      pair by sid    │
+     │                     │                     │
+     │◄════════════════════ E2EE frames ════════►│
+```
+
+Tokens are passed either:
+
+* Query parameter: `wss://eu-1.relay.../relay?token=<jwt>`
+* Authorization header: `Authorization: Bearer <jwt>`
+
+### C.6 Session Binding
+
+For client connections, the `sid` (session ID) in the token MUST match the `SessionID` field in session-bound frames sent by the client (`0x01`, `0x03`). Note: `0x02` is daemon→client only; `0x04` (Signal) from clients is rejected as `disallowed_sender` per §13.3. Daemon presence connections (sid omitted) are exempt—they handle multiple sessions via relay-managed pairing. Relay-generated Control frames (`0x20`) and connection-scoped frames (`0x10`, `0x11`) are not subject to token sid matching.
+
+**Session ID format:**
+
+* Wire format: 64-bit unsigned integer (big-endian in frame header)
+* JWT `sid` claim: base64url encoding of the 8-byte big-endian uint64 (no padding)
+
+```text
+Token claims: { sid: "AAALOnPOL_I", role: "client", did: "d_xyz" }
+                    │
+                    ▼ base64url decode → 8 bytes → uint64
+Frame header: SessionID = 0x00000B3A73CE2FF2
+```
+
+Session IDs MUST be non-zero for session-bound frames (HandshakeInit, HandshakeAccept, Data, Signal per §13.2). Control frames use non-zero SessionID for session events, zero for connection errors. Ping and Pong frames MUST use SessionID = 0 (connection-scoped).
+
+### C.7 Daemon Presence Tokens
+
+Daemons connect with a long-lived presence token that has additional constraints:
+
+* `role` = `"daemon"`
+* `sid` is omitted (presence-only connection)
+* `res` (optional): `false` to disable session resumption (default: `true`)
+* Daemon accepts incoming sessions routed by relay
+
+**Non-resumable daemons**: When `res: false`, the relay automatically sends `Control(session_expired)` to all paired clients upon daemon reconnect, without waiting for `Signal(ready)` or `Signal(close)`. This simplifies v1 implementations that don't need resumption—the daemon doesn't need to track session IDs or send per-session Signal frames on reconnect.
+
+When a client initiates a session, the relay validates the client's session token and routes the `HandshakeInit` frame to the daemon. The daemon identifies the session via the `SessionID` field in the frame header (§13.1) and uses this to key per-client state (§12.2). The daemon trusts the relay to have validated the client's authorization; it does not receive or verify the client's JWT token directly.
+
+### C.8 Audit Requirements
+
+For SOC2/compliance, implementations SHOULD:
+
+* Log `jti` for all token validations (success and failure)
+* Log session creation/termination with `sid`, `did`, `cid`
+* Retain logs for configured retention period
+* Never log token values or session content
+
+---
+
+---
+url: /protocols/sbrp/compliance.md
+---
+# Sideband Relay Protocol Compliance Checklist
+
+Use this checklist to verify conformance with the [main SBRP spec](./index.md). Items tagged MUST/SHOULD mirror normative requirements.
+
+## Common Crypto (Client + Daemon)
+
+* \[ ] MUST use Ed25519 for daemon identity and X25519 for ephemeral key exchange.
+* \[ ] MUST UTF-8 encode context strings and `daemonId` (no BOM, no length prefix) before concatenation in signature/transcript payloads.
+* \[ ] MUST sign handshake payload `SHA256("sbrp-v1-handshake" || daemonId || clientEphemeralPublicKey || daemonEphemeralPublicKey)`.
+* \[ ] MUST compute transcript hash `SHA256("sbrp-v1-transcript" || daemonId || clientEphemeralPublicKey || daemonEphemeralPublicKey || signature)` and use it as HKDF-SHA256 salt.
+* \[ ] MUST set HKDF `info` to the constant `"sbrp-session-keys"` and `len = 64`.
+* \[ ] MUST derive directional keys `clientToDaemon` and `daemonToClient`.
+* \[ ] MUST build nonce as 12 bytes: 4-byte direction constant + 8-byte big-endian seq.
+* \[ ] MUST use empty AAD for ChaCha20-Poly1305 encryption.
+* \[ ] MUST start sequence numbers at 0 and increment per message per direction.
+* \[ ] MUST reject messages outside the replay window; MUST use bitmap window >= 64 and SHOULD use >= 128.
+* \[ ] MUST handle large sequence jumps in O(1) by resetting the bitmap rather than iterating.
+* \[ ] MUST preserve sequence state on resume without handshake; if lost, MUST force full handshake.
+
+## Client (UI)
+
+* \[ ] MUST pin daemon identity public key on first successful handshake (TOFU); do not pin before signature verification succeeds.
+* \[ ] MUST persist pins across page reloads (for browser clients); SHOULD survive application restarts.
+* \[ ] MUST abort on identity mismatch with `identity_key_changed` and require explicit user approval to accept new key.
+* \[ ] MUST present both stored and new fingerprints on `identity_key_changed`.
+* \[ ] MUST verify daemon signature using pinned identity key, not relay-provided key.
+* \[ ] MUST obtain a new session token (new `sid`) on client reconnect; no session resumption.
+* \[ ] MUST perform a full handshake on client reconnect (new ephemeral keys).
+* \[ ] MUST handle `Control(session_paused)` by suspending encrypted sends.
+* \[ ] MUST handle `Control(session_pending)` to indicate daemon reconnected, awaiting readiness.
+* \[ ] MUST handle `Control(session_resumed)` by resuming with retained session state.
+* \[ ] MUST handle `Control(session_expired)` by initiating full reconnect with new handshake.
+* \[ ] SHOULD complete handshake within 30 seconds of WebSocket open; MUST abort with `handshake_failed` on timeout.
+* \[ ] SHOULD warn when storage is unavailable or ephemeral (private/incognito).
+* \[ ] MUST NOT parse Control message text for behavioral decisions; use only the code.
+
+## Daemon (Agent)
+
+* \[ ] MUST generate and persist a long-lived Ed25519 identity keypair; register public key with control plane.
+* \[ ] MUST sign its ephemeral X25519 public key in `HandshakeAccept`.
+* \[ ] MUST sign with the identity key currently registered as active at the control plane.
+* \[ ] MUST maintain per-client session state (keys, seq, replay window) independently.
+* \[ ] MUST handle `Control(session_ended)` by cleaning up per-session state (keys, seq counters, replay window).
+* \[ ] SHOULD complete handshake within 30 seconds of receiving `HandshakeInit`; MUST abort with `handshake_failed` on timeout.
+* \[ ] SHOULD store identity keys with restrictive permissions (e.g., 0600).
+* \[ ] SHOULD best-effort zeroize ephemeral key material after use.
+
+### Session Resumption (resumable daemons only)
+
+Daemons with `res: false` in their presence token skip this section—the relay handles session cleanup automatically on reconnect.
+
+* \[ ] MUST resume with the same keys and sequence state if relay session is resumed.
+* \[ ] MUST send `Signal(ready)` for sessions with retained state after reconnect.
+* \[ ] MUST send `Signal(close, reason=state_lost)` for sessions with lost state before processing any frames.
+* \[ ] MUST send `Signal(close)` for all sessions after process restart or loss of volatile memory.
+
+### Signal Frame Requirements
+
+* \[ ] MUST use 2-byte payload: signal code (1B) + reason code (1B).
+* \[ ] MUST use signal code `0x00` for ready, `0x01` for close.
+* \[ ] SHOULD use reason code `0x00` (`none`) for ready signal.
+* \[ ] MUST use appropriate reason code for close: `0x00` none, `0x01` state\_lost, `0x02` shutdown, `0x03` policy, `0x04` error.
+
+## Relay
+
+* \[ ] MUST validate relay tokens issued by the control plane (not authenticate directly).
+* \[ ] MUST enforce token claims: role, daemonId, expiration; sessionId required for client tokens only.
+* \[ ] MUST enforce user → daemon ownership via token claims.
+* \[ ] MUST forward endpoint frames (`0x01`, `0x02`, `0x03`) without modification or inspection.
+* \[ ] MUST handle `Signal(ready)` from daemon: send `Control(session_resumed)` to client, resume routing.
+* \[ ] MUST handle `Signal(close)` from daemon: send `Control(session_expired)` to client, close session pairing.
+* \[ ] MUST reject `Signal` (`0x04`) received from clients as `disallowed_sender` if header is parseable.
+* \[ ] MUST reject `Control` (`0x20`) received from peers as `disallowed_sender` if header is parseable.
+* \[ ] MUST close WebSocket with `Control(malformed_frame, SessionID=0)` if frame header is malformed or truncated.
+* \[ ] MUST rate-limit connections and message throughput per §8.6.
+* \[ ] MUST send `Control(session_paused)` to client when daemon disconnects.
+* \[ ] MUST send `Control(session_pending)` to client when resumable daemon reconnects within grace period.
+* \[ ] MUST NOT send `Control(session_resumed)` until receiving `Signal(ready)` from daemon (resumable daemons only).
+* \[ ] MUST send `Control(session_expired)` to client and close WebSocket when grace window expires.
+* \[ ] MUST send `Control(session_ended)` to daemon when client disconnects, if daemon is connected; silently tear down pairing if daemon is offline.
+* \[ ] MUST validate JWT tokens: issuer, audience (`sideband-relay`), expiration, and role/daemon/client claims per Appendix C.
+* \[ ] MUST verify `sid` in token (base64url-decoded to uint64) matches frame header SessionID for client connections.
+* \[ ] MUST NOT generate Control frames that leak information derived from encrypted payloads.
+* \[ ] MUST NOT include identifiers (daemonId, clientId, sessionId, tokens) in Control message text.
+* \[ ] MUST send `Control(session_expired)` to all paired clients immediately when non-resumable daemon (`res: false`) reconnects.
+* \[ ] SHOULD send `Control(internal_error, SessionID=0)` and close WebSocket on unrecoverable internal failures.
+
+### Frame Validation Order
+
+* \[ ] MUST validate frames in order per §13.3: header parse → payload size → frame type → SessionID validity → frame direction.
+* \[ ] MUST use `invalid_session_id` (SID=0) if session-bound frame has SessionID=0 or Ping/Pong has non-zero SessionID.
+* \[ ] MUST use `disallowed_sender` with header's SessionID only after SessionID validity passes.
+* \[ ] MUST use `rate_limited` with SID=0 (connection-level per §8.6).
+
+### Keepalive (Ping/Pong)
+
+* \[ ] MUST handle Ping (`0x10`) locally: respond with Pong (`0x11`) copying payload.
+* \[ ] MUST NOT forward Ping or Pong frames.
+* \[ ] Ping/Pong frames MUST have SessionID = 0 (connection-scoped).
+* \[ ] Ping payload MUST be 0-8 bytes; relay MUST reject larger payloads.
+* \[ ] MAY send Ping to endpoints to detect dead connections.
+
+## Control Code Compliance
+
+### Wire Codes (Relay → Endpoint)
+
+* \[ ] MUST use code ranges per §14.1: 0x01xx auth, 0x02xx routing, 0x03xx session, 0x04xx wire, 0x06xx internal, 0x09xx rate, 0x10xx state.
+* \[ ] MUST use correct SessionID scope per §14.1 SID column: 0 for connection-level errors, non-zero for session-specific events.
+* \[ ] Terminal codes (T in §14.1) MUST close WebSocket after sending.
+* \[ ] Non-terminal codes (N in §14.1) MUST NOT close WebSocket.
+
+### Endpoint Codes (SDK Only)
+
+* \[ ] MUST use 0xExxx range for SDK-only codes (never transmitted on wire).
+* \[ ] `identity_key_changed` (0xE001) MUST trigger abort and user confirmation flow.
+* \[ ] `handshake_failed` (0xE002) MUST trigger connection close.
+* \[ ] `handshake_timeout` (0xE003) MUST trigger connection close after 30s.
+* \[ ] `decrypt_failed` (0xE004) MUST trigger connection close.
+* \[ ] `sequence_error` (0xE005) MUST reject message; MAY trigger connection close.
+
+## Optional: Quick Connect (Control Plane)
+
+* \[ ] MUST be disabled by default; require explicit operator opt-in for production deployments.
+* \[ ] MUST issue time-limited codes (≤5 minutes) and enforce expiry server-side.
+* \[ ] MUST rate-limit code generation (e.g., max 10 per minute per daemon).
+* \[ ] MUST enforce TTL eviction; SHOULD enforce one-time use; MAY use durable storage with TTL for HA.
+* \[ ] MUST issue standard relay session token after code validation; relay sees no difference.
+* \[ ] Client MUST perform normal E2EE handshake with signature verification.
+* \[ ] SHOULD warn that Quick Connect provides reduced authentication guarantees.
+
+---
+
+---
+url: /protocols/sbrp/state-machine.md
+---
+# Sideband Relay Protocol State Machine
+
+Concise state models for Client, Daemon, and Relay sessions. Intended to complement the [main SBRP spec](./index.md) with implementer-facing control flow.
+
+## Notation
+
+* Event names are in `code` format.
+* Transitions list the next state and key requirements.
+* Error transitions terminate the session unless otherwise noted.
+* Control codes reference §14 of the main spec.
+
+## Client (UI)
+
+States focus on a single daemon connection.
+
+| State          | Event                      | Next           | Notes                                                                    |
+| -------------- | -------------------------- | -------------- | ------------------------------------------------------------------------ |
+| `Idle`         | `connect`                  | `Connecting`   | Open WebSocket to relay with session token.                              |
+| `Connecting`   | `ws_open`                  | `Handshaking`  | Send `HandshakeInit` with client ephemeral key.                          |
+| `Connecting`   | `ws_error`                 | `Closed`       | Surface transport error.                                                 |
+| `Handshaking`  | `HandshakeAccept`          | `Active`       | Verify Ed25519 signature using pinned identity key; derive session keys. |
+| `Handshaking`  | `identity_key_changed`     | `Closed`       | MUST abort; require explicit user confirmation to accept new key.        |
+| `Handshaking`  | `handshake_failed`         | `Closed`       | Abort; discard ephemeral key material.                                   |
+| `Active`       | `Control(session_paused)`  | `Paused`       | Keep WebSocket open; suspend encrypted sends.                            |
+| `Active`       | `Control(session_expired)` | `Reconnecting` | Session ended (state lost or grace expired); trigger full handshake.     |
+| `Active`       | `ws_close`                 | `Reconnecting` | Client reconnect always requires full handshake.                         |
+| `Paused`       | `Control(session_pending)` | `Pending`      | Daemon reconnected; await Signal(ready) or Signal(close).                |
+| `Paused`       | `Control(session_expired)` | `Reconnecting` | Trigger full handshake (new ephemeral keys).                             |
+| `Pending`      | `Control(session_resumed)` | `Active`       | Resume with same session keys and sequence state.                        |
+| `Pending`      | `Control(session_expired)` | `Reconnecting` | Daemon sent Signal(close); trigger full handshake.                       |
+| `Reconnecting` | `ws_open`                  | `Handshaking`  | New session token required (new `sid`); generate new ephemeral keys.     |
+| `Reconnecting` | `ws_error`                 | `Closed`       | Surface transport error.                                                 |
+| `Active`       | `close`                    | `Closed`       | User-initiated disconnect.                                               |
+
+## Daemon (Agent)
+
+States focus on a single client session; daemons may have many in parallel.
+
+| State          | Event                    | Next           | Notes                                                                                        |
+| -------------- | ------------------------ | -------------- | -------------------------------------------------------------------------------------------- |
+| `Idle`         | `register`               | `Registered`   | Create identity keypair; register via control plane.                                         |
+| `Registered`   | `connect`                | `Connected`    | Open persistent WebSocket to relay with presence token.                                      |
+| `Connected`    | `HandshakeInit`          | `Handshaking`  | Generate ephemeral X25519 and sign with identity key.                                        |
+| `Handshaking`  | `HandshakeAccept_sent`   | `Active`       | Derive session keys; init sequence state.                                                    |
+| `Active`       | `Control(session_ended)` | `Idle`         | Per-session cleanup only; relay signals client disconnect.                                   |
+| `Active`       | `ws_close`               | `Reconnecting` | Attempt reconnect using presence token.                                                      |
+| `Reconnecting` | `ws_open_within_grace`   | `Connected`    | Check state for each session; send `Signal(ready)` or `Signal(close)` per session.           |
+| `Reconnecting` | `ws_open_after_grace`    | `Connected`    | Start new sessions; old session state is dropped.                                            |
+| `Connected`    | `state_retained`         | `Active`       | Per-session: send `Signal(ready)`; resume with retained keys, seq counters, replay window.   |
+| `Connected`    | `state_lost`             | `Connected`    | Per-session: send `Signal(close, reason=state_lost)`; await new `HandshakeInit` from client. |
+| `Connected`    | `close`                  | `Closed`       | Tear down relay connection.                                                                  |
+
+## Relay (Per-Session Pair)
+
+A relay tracks the pairing between one client connection and one daemon connection.
+
+| State        | Event                         | Next         | Notes                                                                                  |
+| ------------ | ----------------------------- | ------------ | -------------------------------------------------------------------------------------- |
+| `None`       | `client_ws_open`              | `ClientOnly` | Validate session token; await pairing.                                                 |
+| `None`       | `daemon_ws_open`              | `DaemonOnly` | Validate presence token; mark daemon online.                                           |
+| `ClientOnly` | `daemon_ws_open`              | `Paired`     | Bind client to daemon; forward handshake messages.                                     |
+| `DaemonOnly` | `client_ws_open`              | `Paired`     | Bind client to daemon; forward handshake messages.                                     |
+| `Paired`     | `daemon_ws_close`             | `Paused`     | Send `Control(session_paused)` to client; pause routing.                               |
+| `Paired`     | `Signal(close)`               | `Closed`     | Daemon lost state; send `Control(session_expired)` to client; close pairing.           |
+| `Paused`     | `daemon_ws_open(res=false)`   | `Closed`     | Non-resumable daemon; send `Control(session_expired)` to client immediately.           |
+| `Paused`     | `daemon_ws_open_within_grace` | `Pending`    | Resumable daemon reconnected; send `Control(session_pending)` to client; await Signal. |
+| `Paused`     | `client_ws_close`             | `Closed`     | Client disconnected while paused; tear down pairing (no notification).                 |
+| `Paused`     | `grace_expired`               | `Closed`     | Send `Control(session_expired)` to client; close WebSocket.                            |
+| `Pending`    | `Signal(ready)`               | `Paired`     | Send `Control(session_resumed)` to client; resume routing.                             |
+| `Pending`    | `Signal(close)`               | `Closed`     | Daemon lost state; send `Control(session_expired)` to client; close pairing.           |
+| `Pending`    | `client_ws_close`             | `Closed`     | Client disconnected; send `Control(session_ended)` to daemon.                          |
+| `Pending`    | `grace_expired`               | `Closed`     | Timeout waiting for daemon signal; send `Control(session_expired)`.                    |
+| `Paired`     | `client_ws_close`             | `Closed`     | Send `Control(session_ended)` to daemon; tear down pairing.                            |
+
+## Required Invariants
+
+* No encrypted traffic before `Active` is reached.
+* Client MUST obtain a new session token (new `sid`) on reconnect; no client-side session resumption.
+* Handshake SHOULD complete within 30 seconds; timeout triggers `handshake_failed`.
+* Ping/Pong frames are connection-scoped (SessionID = 0) and never forwarded.
+* Relay MUST respond to Ping with Pong, copying payload.
+
+### Resumable Daemons (default, `res` claim absent or `true`)
+
+* A resumed session MUST reuse the same session keys and sequence state.
+* After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close)` for sessions with lost state.
+* Relay MUST send `Control(session_pending)` to client when daemon reconnects.
+* Relay MUST NOT send `Control(session_resumed)` until daemon sends `Signal(ready)`.
+* If sequence state is lost (even partially), daemon MUST send `Signal(close)` for that session before processing frames.
+* If the daemon process restarts or loses volatile memory, it MUST send `Signal(close)` for all sessions.
+
+### Non-Resumable Daemons (`res: false`)
+
+* Relay MUST send `Control(session_expired)` to all paired clients immediately upon daemon reconnect.
+* Daemon need not track session IDs or send Signal frames.
+
+### Relay Routing Rules (Frame Authority)
+
+| Frame Type      | Client Can Send | Daemon Can Send | Relay Action              |
+| --------------- | --------------- | --------------- | ------------------------- |
+| HandshakeInit   | ✓               | ✗               | Forward to daemon         |
+| HandshakeAccept | ✗               | ✓               | Forward to client         |
+| Data            | ✓               | ✓               | Forward to peer           |
+| Signal          | ✗               | ✓               | Process (ready/close)     |
+| Ping            | ✓               | ✓               | Respond with Pong locally |
+| Pong            | ✓               | ✓               | Process locally           |
+| Control         | ✗               | ✗               | Relay generates only      |
+
+Relay MUST validate frames in order per §13.3 (header parse → payload size → frame type → SessionID validity → direction) and return the first matching error.
+
+---
+
+---
+url: /why-sideband.md
+---
+# Why Sideband?
+
+Building browser ↔ local daemon communication is harder than it looks. What starts as "just WebSockets" becomes a months-long detour through reconnection state machines, NAT traversal, and TLS certificate management.
+
+Sideband handles the hard parts so you can focus on your app.
+
+**Sideband in one sentence:**
+
+> Browser ↔ local daemon communication — without WebSocket code.
+
+## The Problem
+
+You have a local daemon (AI agent, dev tool, background service) and need a browser UI. Sounds simple:
+
+```
+Browser → WebSocket → localhost:3000 → Daemon
+```
+
+Then users arrive.
+
+* First, reconnect bugs you cannot reproduce
+* Then NATs and corporate firewalls
+* Then HTTPS + localhost certificate hacks
+* Then security reviews flag DNS rebinding
+* Then support tickets say "it just hangs"
+
+Each issue is solvable. Together, they turn networking into your product.
+
+## Why This Keeps Happening
+
+Browser ↔ daemon networking combines every hard thing at once: TCP state across sleep/wake, user networks you do not control, and security constraints around localhost. By the time it works for real users, you have rebuilt a small transport stack.
+
+## Common Alternatives (and Their Limits)
+
+### DIY WebSockets
+
+* Reconnect logic is a state machine, not a retry loop
+* Mixed-content and CORS lead to self-signed cert management
+* Every release risks regression in edge cases
+
+**Why Sideband wins:** Delete your WebSocket code. Reconnects, multiplexing, and correlation are handled.
+
+### ngrok / Cloudflare Quick Tunnels
+
+* ngrok injects an interstitial page that breaks API clients
+* Cloudflare Quick Tunnels have no SSE support and aggressive phishing detection
+* TLS terminates at their edge, so they can inspect traffic
+
+**Why Sideband wins:** End-to-end encryption by default. No interstitials, no PKI ceremony.
+
+### Tailscale / Mesh VPNs
+
+* Requires VPN client install for every user
+* Funnel needs account setup, ACL config, and port restrictions (443/8443/10000)
+* Bundling `tsnet` bloats binary size and memory
+
+**Why Sideband wins:** Browser-to-daemon access without VPN clients or admin console configuration.
+
+### WebRTC DataChannels
+
+* You still need a signaling channel (usually WebSockets)
+* Hole-punching fails on symmetric NATs; TURN becomes mandatory
+* Mobile carriers aggressively timeout UDP mappings
+
+**Why Sideband wins:** Predictable relay-based sessions without signaling servers or TURN.
+
+### Firebase / Supabase Realtime
+
+* Broadcast is at-most-once (lossy); Postgres Changes hammers WAL
+* Fan-out billing: 1 message to 100 subscribers = 101 billable messages
+* Not designed for local daemon patterns
+
+**Why Sideband wins:** Local-first RPC without cloud gravity or write amplification.
+
+## What Sideband Does
+
+Sideband replaces your browser ↔ daemon networking layer.
+
+You do not manage:
+
+* WebSocket lifecycles and reconnection state
+* TLS certificates for localhost
+* NAT traversal or port forwarding
+* Multi-client coordination
+* Request/response correlation
+
+You get a single abstraction that works across networks and devices.
+
+| Feature                | Benefit                                                |
+| ---------------------- | ------------------------------------------------------ |
+| E2EE by default        | Relay cannot decrypt your payloads                     |
+| NAT traversal          | Works behind firewalls without port forwarding         |
+| Automatic reconnection | Handles network changes, sleep/wake, flaky connections |
+| Multiplexed streams    | Multiple concurrent requests over one connection       |
+| Typed RPC              | Request/response correlation with TypeScript types     |
+
+## How It Works
+
+Sideband is a layered stack ([protocols](/protocols/)) with two session modes:
+
+* **SBRP (relay-based)** — available today; secure sessions with end-to-end encryption
+* **SBDP (direct/P2P)** — specified and planned for when peers can connect directly
+
+```
+┌─────────┐         ┌─────────┐         ┌─────────┐
+│ Browser │◄─TLS───►│  Relay  │◄─TLS───►│ Daemon  │
+└─────────┘         └─────────┘         └─────────┘
+     │                   │                   │
+     └────────── E2EE encrypted ─────────────┘
+```
+
+The relay validates tokens, routes connections, and sees metadata (timing/size), but cannot decrypt payloads. Endpoints authenticate daemons via Ed25519 signatures and establish session keys with X25519 + ChaCha20-Poly1305 (TOFU pinning on first connection).
+
+## When Teams Switch to Sideband
+
+* Localhost-only is blocking growth or demos
+* Users want remote access from another device
+* Reconnect bugs keep resurfacing
+* Security reviews flag local endpoints
+* You are tired of debugging networking instead of your product
+
+If any of these sound familiar, you are past the point where DIY is cheap.
+
+## When Sideband Is Not a Fit
+
+* Cloud-native SaaS (you already have backend infra)
+* Apps without a browser component
+* Compliance-first environments (early-stage)
+
+## Get Started
+
+See the [Getting Started](/guide/) guide to add Sideband to your project.

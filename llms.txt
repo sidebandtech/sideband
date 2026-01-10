@@ -1,0 +1,42 @@
+# Sideband
+
+> Browser ↔ local daemon without WebSocket code.
+
+A drop-in SDK that lets browsers talk to local daemons reliably – no reconnect logic, no NAT hacks, no exposed ports. E2EE by default.
+
+## Table of Contents
+
+### Guide
+
+- [Getting Started](/guide.md)
+
+### Protocols
+
+- [Protocols](/protocols.md)
+- [Sideband Protocol (SBP)](/protocols/sbp.md)
+- [Sideband Relay Protocol (SBRP)](/protocols/sbrp.md)
+- [RPC Layer](/protocols/rpc.md)
+
+### Other
+
+- [ADR 001: Protocol Versioning & Compatibility](/adr/001-protocol-versioning-and-compatibility.md)
+- [ADR 002: Naming Matrix for Protocol Types](/adr/002-naming-matrix.md)
+- [ADR 003: Control Frame Type Invariants](/adr/003-control-frame-invariants.md)
+- [ADR 004: Binary FrameId Representation](/adr/004-binary-frameid.md)
+- [ADR 005: Transport ABI Package](/adr/005-transport-abi.md)
+- [ADR 006: Canonical RPC Envelope over MessageFrame](/adr/006-rpc-envelope.md)
+- [ADR 007: Immutable Decoded Frame Types](/adr/007-immutable-frame-types.md)
+- [ADR 008: Enforce Reserved Subject Namespace at the Protocol Layer](/adr/008-subject-namespace-validation.md)
+- [ADR 010: Explicit RPC Correlation via `cid` in the Envelope](/adr/010-rpc-correlation-cid.md)
+- [ADR-NNN: \[Short Title]](/adr/000-template.md)
+- [Package Architecture](/architecture/package-architecture.md)
+- [Project Structure](/architecture/project-structure.md)
+- [RPC Envelope Specification](/protocols/rpc/envelope.md)
+- [SBP Behavior & Ordering (v1)](/protocols/sbp/behavior.md)
+- [SBP Conformance Tests (v0.1 plan)](/protocols/sbp/conformance.md)
+- [SBP Error Model (v1)](/protocols/sbp/errors.md)
+- [SBP Wire Format (v1)](/protocols/sbp/wire-format.md)
+- [Sideband Direct Protocol (SBDP)](/protocols/sbdp.md)
+- [Sideband Relay Protocol Compliance Checklist](/protocols/sbrp/compliance.md)
+- [Sideband Relay Protocol State Machine](/protocols/sbrp/state-machine.md)
+- [Why Sideband?](/why-sideband.md)
