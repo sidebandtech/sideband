@@ -2,8 +2,9 @@
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
+- **Applies to**: RPC
 - **Tags**: rpc, correctness, future-proofing, layering
-- **Supersedes**: Incorrect correlation text in `docs/specs/rpc-envelope.md`
+- **Supersedes**: Incorrect correlation text in `docs/protocols/rpc/envelope.md`
 
 ## Context
 
@@ -51,7 +52,7 @@ We need explicit correlation that works in single-hop, streaming, fan-out, relay
 
 ## Updated Specification
 
-See updated `docs/specs/rpc-envelope.md` for the complete envelope specification with corrected correlation section.
+See updated `docs/protocols/rpc/envelope.md` for the complete envelope specification with corrected correlation section.
 
 ## Consequences
 
@@ -77,6 +78,6 @@ See updated `docs/specs/rpc-envelope.md` for the complete envelope specification
 
 ## References
 
-- `docs/specs/rpc-envelope.md` (correlation model)
+- `docs/protocols/rpc/envelope.md` (correlation model)
 - ADR-006 (RPC envelope – correlation section updated)
 - ADR-002 (naming matrix)

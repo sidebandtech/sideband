@@ -1,0 +1,26 @@
+// Connection state machine
+let ws: WebSocket | null = null;
+let reconnectAttempts = 0;
+const pendingMessages: Message[] = [];
+
+function connect() {
+  ws = new WebSocket(url);
+  ws.onopen = () => {
+    reconnectAttempts = 0;
+    flushPendingMessages();
+  };
+  ws.onclose = (e) => {
+    if (e.code !== 1000) {
+      const delay = Math.min(
+        1000 * 2 ** reconnectAttempts, 30000
+      );
+      setTimeout(connect, delay + Math.random() * 1000);
+      reconnectAttempts++;
+    }
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    // Correlation, routing, error handling...
+  };
+}
+// + CORS, heartbeats, message buffering...

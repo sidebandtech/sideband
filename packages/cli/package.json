@@ -2,7 +2,7 @@
   "name": "@sideband/cli",
   "version": "0.0.0",
   "description": "Developer CLI for Sideband: scaffold peers, inspect frames, debug transports/RPC/runtime flows, and run admin helpers for p2p stacks.",
-  "license": "AGPL-3.0-or-later",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sidebandtech/sideband.git",

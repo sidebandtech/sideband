@@ -1,5 +1,4 @@
-// SPDX-FileCopyrightText: 2025-present Sideband
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import type { PeerId } from "./types.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "./constants.js";

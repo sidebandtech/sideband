@@ -2,6 +2,7 @@
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
+- **Applies to**: Architecture
 - **Tags**: architecture, transport
 
 ## Context

@@ -6,7 +6,7 @@ protocol → core runtime → RPC → client SDK → browser/node transports →
 ## Documentation
 
 **ADRs** (`docs/adr/NNN-slug.md`): Architectural decisions (reference as ADR-NNN)  
-**SPECs** (`docs/specs/slug.md`): Component specifications (reference as docs/specs/slug.md)
+**SPECs** (`docs/protocols/protocol-name/slug.md`): Protocol specifications (reference as docs/protocols/protocol-name/slug.md)
 
 ## Constraints
 

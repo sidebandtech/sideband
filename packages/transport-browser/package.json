@@ -2,7 +2,7 @@
   "name": "@sideband/transport-browser",
   "version": "0.0.1",
   "description": "Browser transport implementation of the Sideband Transport interface using WebSocket primitives with reconnect/error handling for real-time apps.",
-  "license": "AGPL-3.0-or-later",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sidebandtech/sideband.git",

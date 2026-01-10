@@ -2,7 +2,7 @@
   "name": "@sideband/transport-node",
   "version": "0.0.1",
   "description": "Node/Bun transport implementation of the Sideband Transport interface using ws/TCP primitives with server/client wiring for services and workers.",
-  "license": "AGPL-3.0-or-later",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sidebandtech/sideband.git",

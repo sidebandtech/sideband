@@ -39,7 +39,7 @@ const envelopeBytes = encodeRpcEnvelope(request);
 
 // Wrap in a MessageFrame with rpc/ subject
 const subject = asSubject(`${SUBJECT_PREFIXES.RPC}${methodName}`); // "rpc/echo"
-const messageFrame = createMessageFrame({ subject, data: envelopeBytes });
+const messageFrame = createMessageFrame(subject, envelopeBytes);
 const frameBytes = encodeFrame(messageFrame);
 
 // ...send frameBytes over transport...
@@ -71,6 +71,10 @@ const validSubject = asRpcSubject(`${SUBJECT_PREFIXES.RPC}echo`);
 - JSON encoder/decoder that handles FrameId ↔ hex, emits protocol errors on malformed input
 - Integrates with runtime correlation ([`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)) and any transport carrying MessageFrames
 
+## Specification
+
+See the [RPC protocol specification](https://sideband.tech/protocols/rpc/) for envelope format details.
+
 ## License
 
-Code: AGPL-3.0-or-later. Commercial licensing available via hello@sideband.tech.
+Apache-2.0

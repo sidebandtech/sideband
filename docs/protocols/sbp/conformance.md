@@ -1,4 +1,4 @@
-# Protocol Conformance Tests (v0.1 plan)
+# SBP Conformance Tests (v0.1 plan)
 
 Lightweight checklist for cross-implementation compatibility. Use deterministic fixtures; avoid network in golden tests.
 

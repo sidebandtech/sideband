@@ -136,3 +136,68 @@
 .DocSearch {
   --docsearch-primary-color: var(--vp-c-brand-1) !important;
 }
+
+/**
+ * Landing Page Overrides
+ * -------------------------------------------------------------------------- */
+
+/* Reduce the massive gap between hero and features */
+.VPHomeHero {
+  padding-bottom: 0 !important;
+}
+
+@media (min-width: 640px) {
+  .VPHomeHero {
+    padding-bottom: 0 !important;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHomeHero {
+    padding-bottom: 0 !important;
+  }
+}
+
+/* Adjust Hero Text Sizes */
+.VPHomeHero .text {
+  font-size: 32px !important;
+  line-height: 1.25 !important;
+  font-weight: 700 !important;
+}
+
+@media (min-width: 640px) {
+  .VPHomeHero .text {
+    font-size: 42px !important;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHomeHero .text {
+    font-size: 48px !important;
+  }
+}
+
+.VPHomeHero .tagline {
+  font-size: 18px !important;
+  line-height: 1.6 !important;
+  color: var(--vp-c-text-2) !important;
+  max-width: 640px !important;
+  margin-top: 12px !important;
+  font-weight: 400 !important;
+}
+
+@media (min-width: 640px) {
+  .VPHomeHero .tagline {
+    font-size: 20px !important;
+  }
+}
+
+/* Tweak Feature Cards */
+.VPFeature .title {
+  font-size: 16px !important;
+  line-height: 24px !important;
+}
+
+.VPFeature .details {
+  font-size: 14px !important;
+}

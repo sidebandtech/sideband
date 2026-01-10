@@ -1,11 +1,44 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { codeToHtml } from "shiki";
+import type { Plugin } from "vite";
 import { defineConfig } from "vitepress";
+import llmstxt, {
+  copyOrDownloadAsMarkdownButtons,
+} from "vitepress-plugin-llms";
+
+async function highlightCode(code: string, lang = "ts") {
+  return codeToHtml(code, {
+    lang,
+    themes: { light: "github-light", dark: "github-dark" },
+    defaultColor: false,
+  });
+}
+
+function shikiInlinePlugin(): Plugin {
+  return {
+    name: "vitepress-shiki-inline",
+    enforce: "pre",
+    async load(id) {
+      if (!id.includes("?")) return;
+      const [filepath, query] = id.split("?", 2);
+      const params = new URLSearchParams(query);
+      if (!params.has("shiki")) return;
+      const lang =
+        params.get("lang") || path.extname(filepath).slice(1) || "text";
+      const code = await fs.readFile(filepath, "utf8");
+      const html = await highlightCode(code, lang);
+      return `export default ${JSON.stringify(html)};`;
+    },
+  };
+}
 
 export default defineConfig({
   srcDir: "docs",
 
   title: "Sideband",
   description:
-    "Secure communication stack for TypeScript — protocol, runtime, RPC, transports, and end-to-end encrypted relays.",
+    "Drop-in SDK for browser-to-daemon communication. Works behind NAT. E2EE by default.",
 
   lastUpdated: true,
   cleanUrls: true,
@@ -18,37 +51,83 @@ export default defineConfig({
     ["meta", { name: "theme-color", content: "#5f67ee" }],
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:site_name", content: "Sideband" }],
+    [
+      "meta",
+      {
+        property: "og:title",
+        content: "Sideband — Browser-to-daemon communication SDK",
+      },
+    ],
+    [
+      "meta",
+      {
+        property: "og:description",
+        content:
+          "Drop-in SDK for browser-to-daemon communication. Works behind NAT. E2EE by default.",
+      },
+    ],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    ["meta", { name: "twitter:site", content: "@sidebandtech" }],
   ],
+
+  markdown: {
+    config(md) {
+      md.use(copyOrDownloadAsMarkdownButtons);
+    },
+  },
 
   themeConfig: {
     nav: [
-      { text: "Home", link: "/" },
       { text: "Guide", link: "/guide/" },
+      { text: "Protocols", link: "/protocols/" },
     ],
 
     sidebar: [
+      { text: "Why Sideband?", link: "/why-sideband" },
       {
         text: "Guide",
         items: [{ text: "Getting Started", link: "/guide/" }],
       },
       {
-        text: "Specs",
+        text: "Protocols",
         items: [
-          {
-            text: "Secure Relay Protocol",
-            link: "/specs/secure-relay-protocol",
-          },
-          {
-            text: "SBRP State Machine",
-            link: "/specs/secure-relay-protocol-state-machine",
-          },
-          {
-            text: "SBRP Compliance",
-            link: "/specs/secure-relay-protocol-compliance",
-          },
+          { text: "Overview", link: "/protocols/" },
+          { text: "SBP", link: "/protocols/sbp/" },
+          { text: "SBRP", link: "/protocols/sbrp/" },
+          { text: "RPC", link: "/protocols/rpc/" },
         ],
       },
     ],
+
+    outline: {
+      level: [2, 3],
+      label: "On this page",
+    },
+
+    search: {
+      provider: "local",
+    },
+
+    editLink: {
+      pattern: "https://github.com/sidebandtech/sideband/edit/main/docs/:path",
+      text: "Edit this page",
+    },
+
+    lastUpdated: {
+      text: "Last updated",
+      formatOptions: {
+        dateStyle: "short",
+      },
+    },
+
+    externalLinkIcon: true,
+
+    footer: {
+      message:
+        'Released under the <a href="https://github.com/sidebandtech/sideband/blob/main/LICENSE">Apache 2.0 License</a>.',
+      copyright:
+        'Copyright © 2025-present <a href="https://github.com/sidebandtech">Sideband</a>',
+    },
 
     socialLinks: [
       { icon: "github", link: "https://github.com/sidebandtech/sideband" },
@@ -62,5 +141,9 @@ export default defineConfig({
         ariaLabel: "Sponsor",
       },
     ],
+  },
+
+  vite: {
+    plugins: [shikiInlinePlugin(), llmstxt()],
   },
 });

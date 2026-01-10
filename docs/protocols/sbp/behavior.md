@@ -1,4 +1,4 @@
-# Protocol Behavior & Ordering (v1)
+# SBP Behavior & Ordering (v1)
 
 Semantic guarantees and expectations that sit above the raw frame format. Applies across transports; transport-specific notes call out deviations.
 

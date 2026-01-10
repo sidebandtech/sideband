@@ -2,6 +2,7 @@
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
+- **Applies to**: RPC
 - **Tags**: rpc, protocol-usage, type-safety
 
 ## Context
@@ -45,7 +46,7 @@ The `cid` field is set to the request frame's own `frameId` and copied unchanged
 
 See ADR-010 for the complete correlation design rationale.
 
-Full schema at `docs/specs/rpc-envelope.md`.
+Full schema at `docs/protocols/rpc/envelope.md`.
 
 ## Consequences
 

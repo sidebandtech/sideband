@@ -2,6 +2,7 @@
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
+- **Applies to**: SBP
 - **Tags**: protocol, frames, type-safety
 - **Relates to**: ADR 002, ADR 003
 

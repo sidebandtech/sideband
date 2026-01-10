@@ -1,4 +1,4 @@
-# Protocol Error Model (v1)
+# SBP Error Model (v1)
 
 Defines canonical error semantics for `@sideband/protocol`, independent of transport. Error frames are part of the public contract; transports MAY also surface transport-native errors (e.g. WebSocket close codes) but must map protocol failures to `ErrorFrame`.
 

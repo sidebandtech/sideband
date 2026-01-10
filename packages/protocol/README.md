@@ -15,13 +15,11 @@ import {
   FrameKind,
   createHandshakeFrame,
   createMessageFrame,
-  createAckFrame,
   encodeFrame,
   decodeFrame,
   encodeHandshake,
   asPeerId,
   asSubject,
-  generateFrameId,
 } from "@sideband/protocol";
 
 // Build a handshake frame
@@ -42,32 +40,29 @@ if (frame.kind === FrameKind.Control) {
 }
 
 // Send an application message
-const msg = createMessageFrame({
-  subject: asSubject("rpc/echo"),
-  data: new TextEncoder().encode("hello"),
-});
+const msg = createMessageFrame(
+  asSubject("rpc/echo"),
+  new TextEncoder().encode("hello"),
+);
 const msgBytes = encodeFrame(msg);
-
-// Acknowledge a frame (references an existing frame's frameId)
-const incoming = decodeFrame(bytes);
-if (incoming.kind === FrameKind.Message) {
-  const ack = createAckFrame(incoming.frameId);
-  const ackBytes = encodeFrame(ack);
-}
 ```
 
 ## What it provides
 
-- **Branded types**: `PeerId`, `FrameId`, `Subject` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`) for wire-safe validation
+- **Branded types**: `PeerId`, `FrameId`, `Subject`, `ConnectionId`, `CorrelationId`, `StreamId` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`, etc.) for wire-safe validation
 - **Frame codec**: `encodeFrame` / `decodeFrame` with invariant enforcement (validates subject compliance with reserved namespaces per ADR-008)
-- **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createAckFrame`, `createErrorFrame`
+- **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createPingFrame`, `createPongFrame`, `createCloseFrame`
 - **FrameId helpers**: `generateFrameId`, `frameIdToHex`, `frameIdFromHex` for correlation and logging
 - **Handshake encode/decode**: `encodeHandshake` / `decodeHandshake` with validation
-- **Protocol constants**: `PROTOCOL_NAME`, `FrameKind` enum, `ControlOp` enum, error code ranges
-- **Type guards**: `isControlFrame`, `isMessageFrame`, `isAckFrame`, etc. for discriminated unions
+- **Protocol constants**: `PROTOCOL_NAME`, `PROTOCOL_ID`, `PROTOCOL_VERSION`, `FrameKind` enum, `ControlOp` enum, `ErrorCode` enum
+- **Type guards**: `isControlFrame`, `isMessageFrame`, `isAckFrame`, `isErrorFrame`, `isValidFrameId`, etc.
 
 For transport implementations, see [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport) (defines the Transport interface). For request correlation and RPC semantics, see [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc). Keep state machines, retries, and routing in [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)—this package only defines the wire contract.
 
+## Specification
+
+See the [SBP protocol specification](https://sideband.tech/protocols/sbp/) for wire format details.
+
 ## License
 
-Code: AGPL-3.0-or-later. Commercial licensing available via hello@sideband.tech.
+Apache-2.0

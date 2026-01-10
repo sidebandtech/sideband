@@ -1,0 +1,10 @@
+import { createPeer } from "@sideband/peer";
+
+const peer = createPeer({
+  relay: "wss://relay.sideband.cloud"
+});
+
+// Reconnects, NAT traversal, E2EE - handled.
+const response = await peer.request("daemon", {
+  method: "getStatus"
+});
