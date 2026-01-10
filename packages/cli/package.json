@@ -1,6 +1,6 @@
 {
   "name": "@sideband/cli",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Developer CLI for Sideband: scaffold peers, inspect frames, debug transports/RPC/runtime flows, and run admin helpers for p2p stacks.",
   "license": "Apache-2.0",
   "repository": {
