@@ -38,9 +38,6 @@
   "dependencies": {
     "@sideband/protocol": "workspace:^"
   },
-  "devDependencies": {
-    "@types/bun": "^1.3.3"
-  },
   "files": [
     "dist"
   ],
