@@ -16,31 +16,34 @@
 
 // Envelope types and helpers
 export type {
-  RpcEnvelopeType,
-  RpcRequest,
-  RpcSuccessResponse,
-  RpcErrorResponse,
-  RpcResponse,
-  RpcNotification,
   RpcEnvelope,
+  RpcEnvelopeType,
+  RpcErrorResponse,
+  RpcNotification,
+  RpcRequest,
+  RpcResponse,
+  RpcSuccessResponse,
 } from "./envelope.js";
 
 export {
-  createRpcRequest,
-  createRpcSuccessResponse,
   createRpcErrorResponse,
   createRpcNotification,
+  createRpcRequest,
+  createRpcSuccessResponse,
+  isRpcErrorResponse,
+  isRpcNotification,
   isRpcRequest,
   isRpcResponse,
   isRpcSuccessResponse,
-  isRpcErrorResponse,
-  isRpcNotification,
 } from "./envelope.js";
 
 // Subject validation
+export { asRpcSubject, SUBJECT_PREFIXES } from "./subject.js";
 export type { RpcSubject } from "./subject.js";
-export { SUBJECT_PREFIXES, asRpcSubject } from "./subject.js";
 
 // Codec
+export { decodeRpcEnvelope, encodeRpcEnvelope } from "./codec.js";
 export type { EncodingFormat } from "./codec.js";
-export { encodeRpcEnvelope, decodeRpcEnvelope } from "./codec.js";
+
+// Error codes (RPC-owned range: 1100–1199)
+export { RpcErrorCode } from "./errors.js";

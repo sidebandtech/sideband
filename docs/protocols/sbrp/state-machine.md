@@ -1,5 +1,8 @@
 # Sideband Relay Protocol State Machine
 
+> **Authority**: Primary (Normative)  
+> **Purpose**: State transitions, lifecycle semantics, and control code behavioral definitions.
+
 Concise state models for Client, Daemon, and Relay sessions. Intended to complement the [main SBRP spec](./index.md) with implementer-facing control flow.
 
 ## Notation
@@ -8,6 +11,30 @@ Concise state models for Client, Daemon, and Relay sessions. Intended to complem
 - Transitions list the next state and key requirements.
 - Error transitions terminate the session unless otherwise noted.
 - Control codes reference §14 of the main spec.
+
+## Control Code Quick Reference
+
+> **Note**: This table is a non-authoritative snapshot for quick reference. For canonical code values, see [control-codes.md](./control-codes.md).
+
+|   Code | Name               | T/N | SID | Meaning                |
+| -----: | ------------------ | --- | --- | ---------------------- |
+| 0x0101 | unauthorized       | T   | 0   | Invalid/expired token  |
+| 0x0102 | forbidden          | T   | 0   | Access denied          |
+| 0x0201 | daemon_not_found   | T   | S   | Unknown daemon ID      |
+| 0x0202 | daemon_offline     | N   | S   | Daemon not connected   |
+| 0x0301 | session_not_found  | T   | S   | Unknown session ID     |
+| 0x0302 | session_expired    | T   | S   | Session terminated     |
+| 0x0401 | malformed_frame    | T   | 0   | Invalid header         |
+| 0x0402 | payload_too_large  | T   | 0   | Exceeds 64KB           |
+| 0x0403 | invalid_frame_type | T   | 0   | Unknown type byte      |
+| 0x0404 | invalid_session_id | T   | 0   | SessionID invalid      |
+| 0x0405 | disallowed_sender  | T   | S   | Wrong direction        |
+| 0x0601 | internal_error     | T   | 0   | Relay internal failure |
+| 0x0901 | rate_limited       | N   | 0   | Too many requests      |
+| 0x1001 | session_paused     | N   | S   | Daemon disconnected    |
+| 0x1002 | session_resumed    | N   | S   | Daemon ready           |
+| 0x1003 | session_ended      | N   | S   | Client disconnected    |
+| 0x1004 | session_pending    | N   | S   | Awaiting daemon ready  |
 
 ## Client (UI)
 
@@ -83,11 +110,45 @@ A relay tracks the pairing between one client connection and one daemon connecti
 ### Resumable Daemons (default, `res` claim absent or `true`)
 
 - A resumed session MUST reuse the same session keys and sequence state.
-- After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close)` for sessions with lost state.
+- After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close, reason=state_lost)` for sessions with lost state.
 - Relay MUST send `Control(session_pending)` to client when daemon reconnects.
 - Relay MUST NOT send `Control(session_resumed)` until daemon sends `Signal(ready)`.
-- If sequence state is lost (even partially), daemon MUST send `Signal(close)` for that session before processing frames.
-- If the daemon process restarts or loses volatile memory, it MUST send `Signal(close)` for all sessions.
+- If sequence state is lost (even partially), daemon MUST send `Signal(close, reason=state_lost)` for that session before processing frames.
+- If the daemon process restarts or loses volatile memory, it MUST send `Signal(close, reason=state_lost)` for all sessions.
+
+### State Integrity Verification
+
+Before sending `Signal(ready)` for a session, the daemon MUST verify that all required per-session state is present, well-formed, and internally consistent. If verification fails, daemon MUST send `Signal(close, reason=state_lost)` for that session.
+
+**Required components** (per [cryptography-and-wire.md](./cryptography-and-wire.md)):
+
+- Session ID
+- Directional traffic keys (`clientToDaemon`, `daemonToClient`)
+- Send sequence number
+- Receive replay state (`maxSeen` and bitmap)
+
+**Verification requirements:**
+
+1. All components MUST be present
+2. Keys MUST be correct length (32 bytes each)
+3. Sequence numbers MUST be valid (non-negative, not exhausted)
+4. Replay window MUST be consistent with `maxSeen`
+
+If any check fails → `Signal(close, reason=state_lost)` for that session.
+If all checks pass → `Signal(ready)` for that session.
+
+::: tip Implementation Note
+For in-memory state (the common case), verification requires checking that:
+
+1. The session object exists with all fields populated
+2. Key lengths are correct (32 bytes each)
+3. Sequence numbers are valid and not exhausted
+4. Replay window is consistent with `maxSeen`
+
+Merely confirming field presence is necessary but not sufficient. Daemons that do not persist session state across process restarts will fail these checks on restart and MUST close all sessions.
+
+For daemons that persist state to durable storage, implementations SHOULD add an integrity check (e.g., HMAC or authenticated encryption) to detect corruption or tampering during storage.
+:::
 
 ### Non-Resumable Daemons (`res: false`)
 

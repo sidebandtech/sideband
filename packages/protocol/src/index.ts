@@ -58,6 +58,7 @@ export type {
   ControlFrame,
   ControlFrameOptions,
   ErrorFrame,
+  ErrorFrameOptions,
   Frame,
   HandshakeControlFrame,
   MessageFrame,
@@ -68,6 +69,7 @@ export type {
 
 export {
   createCloseFrame,
+  createErrorFrame,
   createHandshakeFrame,
   createMessageFrame,
   createPingFrame,

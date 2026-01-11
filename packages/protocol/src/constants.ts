@@ -33,12 +33,14 @@ export enum ControlOp {
 /**
  * Error code enumeration.
  * Standardized error codes for protocol violations and application errors.
+ * See error-codes.md for the canonical registry.
  */
 export enum ErrorCode {
-  // Protocol errors (1000-1999)
+  // SBP errors (1000-1099)
   ProtocolViolation = 1000,
   UnsupportedVersion = 1001,
   InvalidFrame = 1002,
+  UnsupportedFeature = 1003,
 
   // Application errors (2000+)
   ApplicationError = 2000,

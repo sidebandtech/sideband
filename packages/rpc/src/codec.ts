@@ -9,13 +9,13 @@
  * See ADR-006 and ADR-010 for the envelope specification.
  */
 
-import type { RpcEnvelope } from "./envelope.js";
 import {
   frameIdFromHex,
   frameIdToHex,
   ProtocolError,
-  ErrorCode,
 } from "@sideband/protocol";
+import type { RpcEnvelope } from "./envelope.js";
+import { RpcErrorCode } from "./errors.js";
 
 export type EncodingFormat = "json";
 
@@ -39,7 +39,7 @@ export function encodeRpcEnvelope(
 
   throw new ProtocolError(
     `Unsupported encoding format: ${format}`,
-    ErrorCode.ProtocolViolation,
+    RpcErrorCode.InvalidEnvelope,
   );
 }
 
@@ -64,7 +64,7 @@ export function decodeRpcEnvelope(
 
   throw new ProtocolError(
     `Unsupported encoding format: ${format}`,
-    ErrorCode.ProtocolViolation,
+    RpcErrorCode.InvalidEnvelope,
   );
 }
 
@@ -87,7 +87,7 @@ function encodeJson(envelope: RpcEnvelope): Uint8Array {
       `Failed to JSON-encode RPC envelope: ${
         err instanceof Error ? err.message : String(err)
       }`,
-      ErrorCode.ProtocolViolation,
+      RpcErrorCode.InvalidEnvelope,
     );
   }
 }
@@ -118,7 +118,7 @@ function decodeJson(data: Uint8Array | ArrayBufferView): RpcEnvelope {
       } catch (err) {
         throw new ProtocolError(
           `Invalid cid hex value: ${envelope.cid}`,
-          ErrorCode.ProtocolViolation,
+          RpcErrorCode.InvalidEnvelope,
         );
       }
     }
@@ -132,7 +132,7 @@ function decodeJson(data: Uint8Array | ArrayBufferView): RpcEnvelope {
       `Failed to JSON-decode RPC envelope: ${
         err instanceof Error ? err.message : String(err)
       }`,
-      ErrorCode.ProtocolViolation,
+      RpcErrorCode.InvalidEnvelope,
     );
   }
 }
@@ -156,7 +156,7 @@ function validateEnvelopeStructure(obj: unknown): void {
   if (typeof obj !== "object" || obj === null) {
     throw new ProtocolError(
       "RPC envelope must be an object, got " + typeof obj,
-      ErrorCode.ProtocolViolation,
+      RpcErrorCode.InvalidEnvelope,
     );
   }
 
@@ -167,7 +167,7 @@ function validateEnvelopeStructure(obj: unknown): void {
   if (typeof t !== "string" || !["r", "R", "E", "N"].includes(t)) {
     throw new ProtocolError(
       `Invalid envelope type: "${t}". Must be one of: "r", "R", "E", "N"`,
-      ErrorCode.ProtocolViolation,
+      RpcErrorCode.InvalidEnvelope,
     );
   }
 
@@ -178,7 +178,7 @@ function validateEnvelopeStructure(obj: unknown): void {
     if (typeof envelope.cid !== "string" || !isValidHexFrameId(envelope.cid)) {
       throw new ProtocolError(
         `${t === "r" ? "Request" : "Response"} envelope missing or invalid cid (must be 32-char hex): ${envelope.cid}`,
-        ErrorCode.ProtocolViolation,
+        RpcErrorCode.InvalidEnvelope,
       );
     }
   }
@@ -190,7 +190,7 @@ function validateEnvelopeStructure(obj: unknown): void {
       if (typeof envelope.m !== "string") {
         throw new ProtocolError(
           `Request envelope missing or invalid method: ${envelope.m}`,
-          ErrorCode.ProtocolViolation,
+          RpcErrorCode.InvalidEnvelope,
         );
       }
       break;
@@ -205,13 +205,13 @@ function validateEnvelopeStructure(obj: unknown): void {
       if (typeof envelope.code !== "number") {
         throw new ProtocolError(
           `Error response missing or invalid code: ${envelope.code}`,
-          ErrorCode.ProtocolViolation,
+          RpcErrorCode.InvalidEnvelope,
         );
       }
       if (typeof envelope.message !== "string") {
         throw new ProtocolError(
           `Error response missing or invalid message: ${envelope.message}`,
-          ErrorCode.ProtocolViolation,
+          RpcErrorCode.InvalidEnvelope,
         );
       }
       break;
@@ -221,7 +221,7 @@ function validateEnvelopeStructure(obj: unknown): void {
       if (typeof envelope.e !== "string") {
         throw new ProtocolError(
           `Notification envelope missing or invalid event: ${envelope.e}`,
-          ErrorCode.ProtocolViolation,
+          RpcErrorCode.InvalidEnvelope,
         );
       }
       break;

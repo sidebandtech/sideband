@@ -6,15 +6,31 @@ Sideband is a layered communication stack for browser-to-daemon communication, d
 
 ## Architecture
 
-| Layer          | Component | Purpose                                |
-| -------------- | --------- | -------------------------------------- |
-| App Framing    | SBP       | Framing, multiplexing, message routing |
-| Relay Session  | SBRP      | Encrypted sessions over relay          |
-| Direct Session | SBDP      | P2P session (future)                   |
-| Semantic       | RPC       | Typed request/response patterns        |
+**Start here**: [Protocol Architecture](./architecture.md) defines layering, frame wrapping rules, and dependency invariants. All specifications below must be consistent with the architecture document.
+
+```text
+┌───────────────────────────────────────────────────┐
+│ Application / SDK                                 │
+├───────────────────────────────────────────────────┤
+│ RPC (semantic envelopes inside MessageFrame.data) │
+├───────────────────────────────────────────────────┤
+│ SBP (application framing, routing, correlation)   │
+├───────────────────────────────────────────────────┤
+│ Session: SBRP (relay E2EE) or SBDP (direct P2P)   │
+├───────────────────────────────────────────────────┤
+│ Transport (WebSocket, WebRTC, etc.)               │
+└───────────────────────────────────────────────────┘
+```
+
+| Layer          | Protocol | Status | Purpose                                |
+| -------------- | -------- | ------ | -------------------------------------- |
+| App Framing    | SBP      | v1     | Framing, multiplexing, message routing |
+| Relay Session  | SBRP     | Draft  | E2EE sessions via relay server         |
+| Direct Session | SBDP     | Design | P2P encryption (future)                |
+| Semantic       | RPC      | v1     | Typed request/response patterns        |
 
 ::: info
-RPC is a semantic layer built on top of SBP message frames, not a transport or session protocol.
+RPC envelopes live inside `MessageFrame.data`. Session layers (SBRP/SBDP) encrypt entire SBP frames; they never inspect RPC content. See [architecture](./architecture.md) for wrapping rules.
 :::
 
 ## SBP (Sideband Protocol)

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorCode } from "./constants.js";
-
 /**
  * Protocol-specific error with error code tracking.
- * Used for protocol violations and application-level errors.
+ *
+ * Used across protocol layers (SBP, RPC, etc.). Each layer owns a
+ * non-overlapping code range; see architecture.md#error-code-ownership.
  */
 export class ProtocolError extends Error {
-  public readonly code: ErrorCode;
+  public readonly code: number;
   public readonly details?: unknown;
 
-  constructor(message: string, code: ErrorCode, details?: unknown) {
+  constructor(message: string, code: number, details?: unknown) {
     super(message);
     this.name = "ProtocolError";
     this.code = code;

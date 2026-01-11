@@ -185,16 +185,16 @@ describe("session", () => {
       const daemonSession = createDaemonSession(sessionKeys);
       const clientSession = createClientSession(clientId, sessionKeys);
 
-      // Encrypt 100 messages to advance the window
+      // Encrypt 200 messages to advance the window (default window is 128)
       const messages: EncryptedMessage[] = [];
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 200; i++) {
         messages.push(
-          encryptClientToDaemon(daemonSession, new Uint8Array([i])),
+          encryptClientToDaemon(daemonSession, new Uint8Array([i % 256])),
         );
       }
 
-      // Decrypt latest 64 (within window)
-      for (let i = 99; i >= 36; i--) {
+      // Decrypt latest 128 (within window)
+      for (let i = 199; i >= 72; i--) {
         decryptClientToDaemon(clientSession, messages[i]);
       }
 
@@ -217,16 +217,16 @@ describe("session", () => {
       const daemonSession = createDaemonSession(sessionKeys);
       const clientSession = createClientSession(clientId, sessionKeys);
 
-      // Encrypt 100 messages to advance the window
+      // Encrypt 200 messages to advance the window (default window is 128)
       const messages: EncryptedMessage[] = [];
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 200; i++) {
         messages.push(
-          encryptDaemonToClient(clientSession, new Uint8Array([i])),
+          encryptDaemonToClient(clientSession, new Uint8Array([i % 256])),
         );
       }
 
-      // Decrypt latest 64 (within window)
-      for (let i = 99; i >= 36; i--) {
+      // Decrypt latest 128 (within window)
+      for (let i = 199; i >= 72; i--) {
         decryptDaemonToClient(daemonSession, messages[i]);
       }
 

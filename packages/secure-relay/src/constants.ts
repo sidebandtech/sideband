@@ -40,8 +40,8 @@ export const NONCE_LENGTH = 12;
 /** Length of Poly1305 auth tag in bytes */
 export const AUTH_TAG_LENGTH = 16;
 
-/** Default replay window size (bits) */
-export const DEFAULT_REPLAY_WINDOW_SIZE = 64n;
+/** Default replay window size (bits). Spec requires ≥64, recommends ≥128. */
+export const DEFAULT_REPLAY_WINDOW_SIZE = 128n;
 
 /** Direction bytes in nonce (4 bytes, big-endian) */
 export const DIRECTION_CLIENT_TO_DAEMON = new Uint8Array([0, 0, 0, 1]);

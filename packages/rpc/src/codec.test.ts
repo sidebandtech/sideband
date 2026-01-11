@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, it, expect } from "bun:test";
-import { generateFrameId, frameIdToHex } from "@sideband/protocol";
-import { encodeRpcEnvelope, decodeRpcEnvelope } from "./codec.js";
 import {
-  createRpcRequest,
-  createRpcSuccessResponse,
+  frameIdToHex,
+  generateFrameId,
+  ProtocolError,
+} from "@sideband/protocol";
+import { describe, expect, it } from "bun:test";
+import { decodeRpcEnvelope, encodeRpcEnvelope } from "./codec.js";
+import {
   createRpcErrorResponse,
   createRpcNotification,
-  type RpcEnvelope,
+  createRpcRequest,
+  createRpcSuccessResponse,
 } from "./envelope.js";
-import { ProtocolError, ErrorCode } from "@sideband/protocol";
+import { RpcErrorCode } from "./errors.js";
 
 describe("RPC Codec", () => {
   describe("JSON encoding", () => {
@@ -184,6 +187,18 @@ describe("RPC Codec", () => {
     it("throws on malformed JSON", () => {
       const badBytes = new TextEncoder().encode("{invalid json");
       expect(() => decodeRpcEnvelope(badBytes, "json")).toThrow(ProtocolError);
+    });
+
+    it("uses RpcErrorCode.InvalidEnvelope for validation errors", () => {
+      const badJson = JSON.stringify({ t: "X", m: "foo" });
+      const bytes = new TextEncoder().encode(badJson);
+      try {
+        decodeRpcEnvelope(bytes, "json");
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ProtocolError);
+        expect((err as ProtocolError).code).toBe(RpcErrorCode.InvalidEnvelope);
+      }
     });
   });
 
