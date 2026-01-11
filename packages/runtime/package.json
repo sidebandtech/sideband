@@ -40,7 +40,8 @@
     "@sideband/rpc": "workspace:^"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "publishConfig": {
     "access": "public"

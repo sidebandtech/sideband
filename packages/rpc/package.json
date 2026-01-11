@@ -39,7 +39,8 @@
     "@sideband/protocol": "workspace:^"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "publishConfig": {
     "access": "public"
