@@ -864,7 +864,7 @@ signature = Ed25519.sign(identityPrivateKey, signaturePayload)
 
 **String encoding:** Context strings (`"sbrp-v1-handshake"`, `"sbrp-v1-transcript"`) and `daemonId` MUST be UTF-8 encoded with no BOM or length prefix before concatenation.
 
-Client verifies using **pinned** identity key (see [index.md](./index.md#_3-3-identity-key-trust-tofu)):
+Client verifies using **pinned** identity key (see [index.md](./index.md#tofu-identity-pinning)):
 
 ```text
 valid = Ed25519.verify(pinnedIdentityPublicKey, signaturePayload, signature)
@@ -949,6 +949,18 @@ nonce (12 bytes) || ciphertext || authTag (16 bytes)
 * Messages outside window are rejected
 * Bitmap approach prevents memory exhaustion from attacker-controlled sequence numbers
 * Large sequence jumps (beyond window size) MUST be handled in O(1) by resetting the bitmap rather than iterating; failure to do so enables CPU exhaustion attacks
+
+### 2.4.1 Sequence Exhaustion
+
+Sequence numbers are **unsigned 64-bit integers** (`uint64`). Nonce uniqueness requires that `seq` MUST NOT wrap while using the same directional traffic key.
+
+**Sender:** If `seq` reaches `2^64 − 1`, the sender MUST stop sending encrypted frames for that direction and terminate the session. To continue, endpoints must perform a new handshake to derive fresh keys.
+
+**Receiver:** The replay window (§2.4) naturally rejects wrap — any `seq` that implies reset will fall outside the sliding window. Implementations must use correct `uint64` arithmetic to preserve this property.
+
+::: tip Implementation Note
+In JavaScript/TypeScript, use `bigint` for sequence tracking. The `number` type loses precision beyond 2^53, causing silent bugs in comparison and arithmetic long before exhaustion.
+:::
 
 ### 2.5 Replay Window Implementation
 
@@ -1894,6 +1906,32 @@ Transports (`@sideband/transport-*`):
 * MUST NOT parse any layer above raw bytes
 * MUST NOT generate frames for any layer
 
+## Error Code Ownership
+
+Error codes form a global registry across protocol layers.
+
+| Range     | Owner    | Purpose                                                                                         |
+| --------- | -------- | ----------------------------------------------------------------------------------------------- |
+| 1000–1049 | SBP      | Frame/handshake/namespace faults (ProtocolViolation, InvalidFrame, UnsupportedVersion/Feature)  |
+| 1050–1099 | RPC      | Envelope/method faults (InvalidEnvelope, UnsupportedMethod, CorrelationMismatch)                |
+| 1100–1999 | Reserved | Future protocol extensions (allocated by ADR)                                                   |
+| 2000+     | App      | User-defined application errors                                                                 |
+
+Implementations MUST NOT define codes outside their owned range.
+
+SBRP uses a separate Control code namespace (0x01xx–0x10xx); these are not SBP/RPC error codes.
+
+## Error Scope and Transport Authority
+
+Error scope is determined by wire carrier:
+
+* **SBP `ErrorFrame` (kind=3)**: Connection-scoped. Receivers apply fatality rules per `sbp/errors.md`.
+* **RPC `RpcError` (t="E")**: Request-scoped. MUST NOT trigger transport close.
+
+### Escalation
+
+Errors that cannot be routed to a request are connection-scoped by definition. If an RPC envelope cannot be parsed or correlated, emit `ErrorFrame`; receivers apply fatality rules per `sbp/errors.md`. If the envelope is valid but the method fails, respond with `RpcError`.
+
 ## Terminology Disambiguation
 
 ### "Control" at Different Layers
@@ -2086,7 +2124,7 @@ Before merging protocol changes, verify:
 
 ## File Structure
 
-```
+```bash
 docs/protocols/
 ├── README.md           # This file (guidelines)
 ├── index.md            # Protocol hub + pattern declaration
@@ -2403,7 +2441,7 @@ Implementations SHOULD:
 
 * Set request timeout of 30 seconds by default
 * Allow per-method timeout configuration
-* Return `RpcError` with code 1001 (Timeout) on expiry
+* Return `RpcError` with code 1053 (Timeout) on expiry
 
 Implementations MUST:
 
@@ -2439,6 +2477,10 @@ Multiple requests MAY be in flight simultaneously:
 * No response expected
 * No delivery guarantee beyond transport layer
 
+## Transport Semantics
+
+RpcError is request-scoped and MUST NOT trigger transport close.
+
 ---
 
 ---
@@ -2470,9 +2512,12 @@ This document will cover:
 
 ## Subject Validation
 
-* \[ ] Subjects MUST be 1-256 UTF-8 characters
-* \[ ] Subjects MUST NOT contain null bytes
-* \[ ] Subjects MUST match reserved prefix (`rpc/`, `event/`, `stream/`, `app/`)
+* \[ ] RPC subjects MUST begin with `rpc/` prefix
+* \[ ] Subject format and namespace rules are validated by SBP (see [SBP Behavior](../sbp/behavior.md#subject-namespace))
+
+## Error Handling
+
+* \[ ] Valid `RpcError` response MUST NOT close transport
 
 ## Test Vectors
 
@@ -2499,16 +2544,9 @@ Encoded as JSON (v1) or CBOR (v2+).
 
 ## Subject Namespace
 
-All `MessageFrame.subject` values must match one of these reserved prefixes (validated at runtime):
+RPC envelopes require `MessageFrame.subject` to begin with `rpc/`. Other prefixes (`event/`, `stream/`, `app/`) are handled by other subsystems and are outside RPC scope.
 
-| Prefix    | Purpose                       | Example                  |
-| --------- | ----------------------------- | ------------------------ |
-| `rpc/`    | RPC request/response          | `rpc/getUser`            |
-| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      |
-| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    |
-| `app/`    | Vendor-specific               | `app/com.example/mydata` |
-
-Subjects: 1–256 UTF-8 characters, no null bytes.
+See [SBP Behavior](../sbp/behavior.md#subject-namespace) for the canonical namespace table and validation rules.
 
 ## Envelope Structure
 
@@ -2541,10 +2579,18 @@ interface RpcNotification {
 }
 ```
 
-Error code ranges:
+RPC defines error codes in the 1050–1099 range:
 
-* `1000–1999`: Protocol errors (framework reserved)
-* `2000+`: Application errors (user-defined)
+| Code | Name                | Semantics                                       |
+| ---- | ------------------- | ----------------------------------------------- |
+| 1050 | InvalidEnvelope     | Envelope structure or encoding error            |
+| 1051 | UnsupportedMethod   | Method not recognized by handler                |
+| 1052 | CorrelationMismatch | Response cid does not match any pending request |
+| 1053 | Timeout             | Request timed out waiting for response          |
+
+Application errors use range 2000+ (user-defined).
+
+See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
 
 ## Encoding
 
@@ -2566,12 +2612,12 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 
 ## Validation Rules
 
-* **Subject**: Reserved prefix (`rpc/`, `event/`, `stream/`, `app/`), 1–256 UTF-8, no nulls
+* **Subject**: Must begin with `rpc/` (namespace validation handled by SBP)
 * **Request**: `t: "r"`, `m` and `cid` required
 * **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
 * **Notification**: `t: "N"`, `e` required
 
-Invalid envelopes raise `ProtocolViolation`.
+Unroutable envelope failures escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`.
 
 ---
 
@@ -2691,6 +2737,41 @@ Semantic guarantees and expectations that sit above the raw frame format. Applie
 * Liveness: peers MAY send `Ping`; receivers SHOULD respond with `Pong` promptly. Unanswered pings can drive transport-level timeouts.
 * Close: either side MAY send `Control:Close` and then terminate the transport.
 
+## Subject namespace
+
+SBP defines the canonical subject namespace for `MessageFrame.subject`. Higher layers (RPC, pub/sub) interpret payloads but do not own namespace rules.
+
+### Recognized prefixes
+
+| Prefix    | Purpose                         |
+| --------- | ------------------------------- |
+| `rpc/`    | RPC request/response            |
+| `event/`  | Fire-and-forget pub/sub         |
+| `stream/` | Streaming (reserved for v2)     |
+| `app/`    | Vendor-specific / custom        |
+
+Subjects MUST be non-empty UTF-8 with no NUL characters. Implementations SHOULD limit to 256 bytes; oversize subjects MAY be rejected.
+
+### Validation
+
+Implementations MUST validate `MessageFrame.subject` on receipt.
+
+If the subject does not begin with a recognized prefix:
+
+* Respond with `ErrorFrame{code=1002, message="Invalid subject namespace"}`
+* Set `id` to the offending frame's `frameId`
+* Continue processing (non-fatal)
+
+If the subject uses a recognized but unsupported prefix (e.g., `stream/` in v1):
+
+* Respond with `ErrorFrame{code=1003, message="Unsupported feature: stream/"}`
+* Set `id` to the offending frame's `frameId`
+* Continue processing (non-fatal)
+
+### v1 reservations
+
+`stream/` is reserved for v2. v1 implementations MUST reject `stream/` subjects as described above. Future capability-gated prefixes follow the same pattern.
+
 ## Ordering and delivery
 
 * Within a single transport stream (WebSocket or loopback), frames are delivered in send order (reliable, ordered). Transports must preserve order.
@@ -2750,10 +2831,20 @@ Lightweight checklist for cross-implementation compatibility. Use deterministic 
 * Handshake validation: wrong protocol/version MUST throw `UnsupportedVersion`; missing required fields MUST throw `InvalidFrame`.
 * Ack frame ID: must reference exactly 16 bytes from another frame's `frameId`.
 
+## Subject namespace validation
+
+* MUST reject unknown prefix (e.g., `foo/bar`) with `ErrorFrame{code=1002}`
+* MUST reject `stream/` in v1 with `ErrorFrame{code=1003}`
+* MUST set `ErrorFrame.id` to the offending frame's `frameId`
+* MUST continue processing after rejection (non-fatal)
+* MUST accept valid prefixes (`rpc/`, `event/`, `app/`)
+* Round-trip: valid subjects route without error
+
 ## Negative fuzzing
 
 * Feed random/oversized buffers into `decodeFrame`; expect bounded error handling (no crashes/hangs) and `InvalidFrame`.
 * Bound `ErrorFrame.message` length to implementation limit; ensure rejection path is consistent.
+* Malformed RPC envelope MUST emit `ErrorFrame`, not `RpcError`.
 
 ## Transport-shared expectations
 
@@ -2775,8 +2866,18 @@ Defines canonical error semantics for `@sideband/protocol`, independent of trans
 
 ## Error taxonomy
 
-* Protocol errors (1000–1999): `ProtocolViolation`, `UnsupportedVersion`, `InvalidFrame`.
-* Application errors (2000+): `ApplicationError` (catch‑all; higher-level layers may define stable subcodes via metadata or payload).
+SBP defines error codes in the 1000–1049 range:
+
+| Code | Name               | Semantics                                        |
+| ---- | ------------------ | ------------------------------------------------ |
+| 1000 | ProtocolViolation  | Generic protocol contract violation              |
+| 1001 | UnsupportedVersion | Peer advertised incompatible version             |
+| 1002 | InvalidFrame       | Frame structure or encoding error                |
+| 1003 | UnsupportedFeature | Feature reserved or requires capability exchange |
+
+Application errors use range 2000+. `ApplicationError` (2000) is a catch‑all; higher-level layers may define stable subcodes via metadata or payload.
+
+See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
 
 ## Error frame shape (binary)
 
@@ -2796,6 +2897,7 @@ Defines canonical error semantics for `@sideband/protocol`, independent of trans
 
 * Treat `ProtocolViolation` and `UnsupportedVersion` as fatal; close the transport after emitting diagnostics.
 * `InvalidFrame` MAY be fatal or MAY trigger best-effort recovery if the frame boundary is intact; if recovery is unsafe, close.
+* `UnsupportedFeature` is non-fatal; continue processing subsequent frames. The feature is valid but unavailable in this version or capability set.
 * `ApplicationError` is non-fatal to the transport; the caller decides whether to retry.
 * If `id` is present, route the error to the correlated request/stream; otherwise emit as connection-level fault.
 

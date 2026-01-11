@@ -14,6 +14,41 @@ Semantic guarantees and expectations that sit above the raw frame format. Applie
 * Liveness: peers MAY send `Ping`; receivers SHOULD respond with `Pong` promptly. Unanswered pings can drive transport-level timeouts.
 * Close: either side MAY send `Control:Close` and then terminate the transport.
 
+## Subject namespace
+
+SBP defines the canonical subject namespace for `MessageFrame.subject`. Higher layers (RPC, pub/sub) interpret payloads but do not own namespace rules.
+
+### Recognized prefixes
+
+| Prefix    | Purpose                         |
+| --------- | ------------------------------- |
+| `rpc/`    | RPC request/response            |
+| `event/`  | Fire-and-forget pub/sub         |
+| `stream/` | Streaming (reserved for v2)     |
+| `app/`    | Vendor-specific / custom        |
+
+Subjects MUST be non-empty UTF-8 with no NUL characters. Implementations SHOULD limit to 256 bytes; oversize subjects MAY be rejected.
+
+### Validation
+
+Implementations MUST validate `MessageFrame.subject` on receipt.
+
+If the subject does not begin with a recognized prefix:
+
+* Respond with `ErrorFrame{code=1002, message="Invalid subject namespace"}`
+* Set `id` to the offending frame's `frameId`
+* Continue processing (non-fatal)
+
+If the subject uses a recognized but unsupported prefix (e.g., `stream/` in v1):
+
+* Respond with `ErrorFrame{code=1003, message="Unsupported feature: stream/"}`
+* Set `id` to the offending frame's `frameId`
+* Continue processing (non-fatal)
+
+### v1 reservations
+
+`stream/` is reserved for v2. v1 implementations MUST reject `stream/` subjects as described above. Future capability-gated prefixes follow the same pattern.
+
 ## Ordering and delivery
 
 * Within a single transport stream (WebSocket or loopback), frames are delivered in send order (reliable, ordered). Transports must preserve order.

@@ -27,9 +27,12 @@ This document will cover:
 
 ## Subject Validation
 
-* \[ ] Subjects MUST be 1-256 UTF-8 characters
-* \[ ] Subjects MUST NOT contain null bytes
-* \[ ] Subjects MUST match reserved prefix (`rpc/`, `event/`, `stream/`, `app/`)
+* \[ ] RPC subjects MUST begin with `rpc/` prefix
+* \[ ] Subject format and namespace rules are validated by SBP (see [SBP Behavior](../sbp/behavior.md#subject-namespace))
+
+## Error Handling
+
+* \[ ] Valid `RpcError` response MUST NOT close transport
 
 ## Test Vectors
 

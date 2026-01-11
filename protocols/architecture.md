@@ -139,6 +139,32 @@ Transports (`@sideband/transport-*`):
 * MUST NOT parse any layer above raw bytes
 * MUST NOT generate frames for any layer
 
+## Error Code Ownership
+
+Error codes form a global registry across protocol layers.
+
+| Range     | Owner    | Purpose                                                                                         |
+| --------- | -------- | ----------------------------------------------------------------------------------------------- |
+| 1000–1049 | SBP      | Frame/handshake/namespace faults (ProtocolViolation, InvalidFrame, UnsupportedVersion/Feature)  |
+| 1050–1099 | RPC      | Envelope/method faults (InvalidEnvelope, UnsupportedMethod, CorrelationMismatch)                |
+| 1100–1999 | Reserved | Future protocol extensions (allocated by ADR)                                                   |
+| 2000+     | App      | User-defined application errors                                                                 |
+
+Implementations MUST NOT define codes outside their owned range.
+
+SBRP uses a separate Control code namespace (0x01xx–0x10xx); these are not SBP/RPC error codes.
+
+## Error Scope and Transport Authority
+
+Error scope is determined by wire carrier:
+
+* **SBP `ErrorFrame` (kind=3)**: Connection-scoped. Receivers apply fatality rules per `sbp/errors.md`.
+* **RPC `RpcError` (t="E")**: Request-scoped. MUST NOT trigger transport close.
+
+### Escalation
+
+Errors that cannot be routed to a request are connection-scoped by definition. If an RPC envelope cannot be parsed or correlated, emit `ErrorFrame`; receivers apply fatality rules per `sbp/errors.md`. If the envelope is valid but the method fails, respond with `RpcError`.
+
 ## Terminology Disambiguation
 
 ### "Control" at Different Layers

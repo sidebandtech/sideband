@@ -28,7 +28,7 @@ Implementations SHOULD:
 
 * Set request timeout of 30 seconds by default
 * Allow per-method timeout configuration
-* Return `RpcError` with code 1001 (Timeout) on expiry
+* Return `RpcError` with code 1053 (Timeout) on expiry
 
 Implementations MUST:
 
@@ -63,3 +63,7 @@ Multiple requests MAY be in flight simultaneously:
 * No `cid` (no correlation)
 * No response expected
 * No delivery guarantee beyond transport layer
+
+## Transport Semantics
+
+RpcError is request-scoped and MUST NOT trigger transport close.

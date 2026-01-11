@@ -79,7 +79,7 @@ signature = Ed25519.sign(identityPrivateKey, signaturePayload)
 
 **String encoding:** Context strings (`"sbrp-v1-handshake"`, `"sbrp-v1-transcript"`) and `daemonId` MUST be UTF-8 encoded with no BOM or length prefix before concatenation.
 
-Client verifies using **pinned** identity key (see [index.md](./index.md#_3-3-identity-key-trust-tofu)):
+Client verifies using **pinned** identity key (see [index.md](./index.md#tofu-identity-pinning)):
 
 ```text
 valid = Ed25519.verify(pinnedIdentityPublicKey, signaturePayload, signature)
@@ -164,6 +164,18 @@ nonce (12 bytes) || ciphertext || authTag (16 bytes)
 * Messages outside window are rejected
 * Bitmap approach prevents memory exhaustion from attacker-controlled sequence numbers
 * Large sequence jumps (beyond window size) MUST be handled in O(1) by resetting the bitmap rather than iterating; failure to do so enables CPU exhaustion attacks
+
+### 2.4.1 Sequence Exhaustion
+
+Sequence numbers are **unsigned 64-bit integers** (`uint64`). Nonce uniqueness requires that `seq` MUST NOT wrap while using the same directional traffic key.
+
+**Sender:** If `seq` reaches `2^64 − 1`, the sender MUST stop sending encrypted frames for that direction and terminate the session. To continue, endpoints must perform a new handshake to derive fresh keys.
+
+**Receiver:** The replay window (§2.4) naturally rejects wrap — any `seq` that implies reset will fall outside the sliding window. Implementations must use correct `uint64` arithmetic to preserve this property.
+
+::: tip Implementation Note
+In JavaScript/TypeScript, use `bigint` for sequence tracking. The `number` type loses precision beyond 2^53, causing silent bugs in comparison and arithmetic long before exhaustion.
+:::
 
 ### 2.5 Replay Window Implementation
 

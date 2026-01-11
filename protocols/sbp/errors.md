@@ -10,8 +10,18 @@ Defines canonical error semantics for `@sideband/protocol`, independent of trans
 
 ## Error taxonomy
 
-* Protocol errors (1000–1999): `ProtocolViolation`, `UnsupportedVersion`, `InvalidFrame`.
-* Application errors (2000+): `ApplicationError` (catch‑all; higher-level layers may define stable subcodes via metadata or payload).
+SBP defines error codes in the 1000–1049 range:
+
+| Code | Name               | Semantics                                        |
+| ---- | ------------------ | ------------------------------------------------ |
+| 1000 | ProtocolViolation  | Generic protocol contract violation              |
+| 1001 | UnsupportedVersion | Peer advertised incompatible version             |
+| 1002 | InvalidFrame       | Frame structure or encoding error                |
+| 1003 | UnsupportedFeature | Feature reserved or requires capability exchange |
+
+Application errors use range 2000+. `ApplicationError` (2000) is a catch‑all; higher-level layers may define stable subcodes via metadata or payload.
+
+See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
 
 ## Error frame shape (binary)
 
@@ -31,6 +41,7 @@ Defines canonical error semantics for `@sideband/protocol`, independent of trans
 
 * Treat `ProtocolViolation` and `UnsupportedVersion` as fatal; close the transport after emitting diagnostics.
 * `InvalidFrame` MAY be fatal or MAY trigger best-effort recovery if the frame boundary is intact; if recovery is unsafe, close.
+* `UnsupportedFeature` is non-fatal; continue processing subsequent frames. The feature is valid but unavailable in this version or capability set.
 * `ApplicationError` is non-fatal to the transport; the caller decides whether to retry.
 * If `id` is present, route the error to the correlated request/stream; otherwise emit as connection-level fault.
 

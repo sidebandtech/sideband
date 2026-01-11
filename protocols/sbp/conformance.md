@@ -23,10 +23,20 @@ Lightweight checklist for cross-implementation compatibility. Use deterministic 
 * Handshake validation: wrong protocol/version MUST throw `UnsupportedVersion`; missing required fields MUST throw `InvalidFrame`.
 * Ack frame ID: must reference exactly 16 bytes from another frame's `frameId`.
 
+## Subject namespace validation
+
+* MUST reject unknown prefix (e.g., `foo/bar`) with `ErrorFrame{code=1002}`
+* MUST reject `stream/` in v1 with `ErrorFrame{code=1003}`
+* MUST set `ErrorFrame.id` to the offending frame's `frameId`
+* MUST continue processing after rejection (non-fatal)
+* MUST accept valid prefixes (`rpc/`, `event/`, `app/`)
+* Round-trip: valid subjects route without error
+
 ## Negative fuzzing
 
 * Feed random/oversized buffers into `decodeFrame`; expect bounded error handling (no crashes/hangs) and `InvalidFrame`.
 * Bound `ErrorFrame.message` length to implementation limit; ensure rejection path is consistent.
+* Malformed RPC envelope MUST emit `ErrorFrame`, not `RpcError`.
 
 ## Transport-shared expectations
 

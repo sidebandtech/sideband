@@ -17,16 +17,9 @@ Encoded as JSON (v1) or CBOR (v2+).
 
 ## Subject Namespace
 
-All `MessageFrame.subject` values must match one of these reserved prefixes (validated at runtime):
+RPC envelopes require `MessageFrame.subject` to begin with `rpc/`. Other prefixes (`event/`, `stream/`, `app/`) are handled by other subsystems and are outside RPC scope.
 
-| Prefix    | Purpose                       | Example                  |
-| --------- | ----------------------------- | ------------------------ |
-| `rpc/`    | RPC request/response          | `rpc/getUser`            |
-| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      |
-| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    |
-| `app/`    | Vendor-specific               | `app/com.example/mydata` |
-
-Subjects: 1–256 UTF-8 characters, no null bytes.
+See [SBP Behavior](../sbp/behavior.md#subject-namespace) for the canonical namespace table and validation rules.
 
 ## Envelope Structure
 
@@ -59,10 +52,18 @@ interface RpcNotification {
 }
 ```
 
-Error code ranges:
+RPC defines error codes in the 1050–1099 range:
 
-* `1000–1999`: Protocol errors (framework reserved)
-* `2000+`: Application errors (user-defined)
+| Code | Name                | Semantics                                       |
+| ---- | ------------------- | ----------------------------------------------- |
+| 1050 | InvalidEnvelope     | Envelope structure or encoding error            |
+| 1051 | UnsupportedMethod   | Method not recognized by handler                |
+| 1052 | CorrelationMismatch | Response cid does not match any pending request |
+| 1053 | Timeout             | Request timed out waiting for response          |
+
+Application errors use range 2000+ (user-defined).
+
+See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
 
 ## Encoding
 
@@ -84,9 +85,9 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 
 ## Validation Rules
 
-* **Subject**: Reserved prefix (`rpc/`, `event/`, `stream/`, `app/`), 1–256 UTF-8, no nulls
+* **Subject**: Must begin with `rpc/` (namespace validation handled by SBP)
 * **Request**: `t: "r"`, `m` and `cid` required
 * **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
 * **Notification**: `t: "N"`, `e` required
 
-Invalid envelopes raise `ProtocolViolation`.
+Unroutable envelope failures escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`.

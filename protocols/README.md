@@ -105,7 +105,7 @@ Before merging protocol changes, verify:
 
 ## File Structure
 
-```
+```bash
 docs/protocols/
 ├── README.md           # This file (guidelines)
 ├── index.md            # Protocol hub + pattern declaration
