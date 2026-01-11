@@ -64,7 +64,7 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 
 * \[ ] MUST resume with the same keys and sequence state if relay session is resumed.
 * \[ ] MUST send `Signal(ready)` for sessions with retained state after reconnect.
-* \[ ] MUST send `Signal(close, reason=state_lost)` for sessions with lost state before processing any frames.
+* \[ ] MUST verify session state integrity before sending `Signal(ready)`; if any component is missing, malformed, or inconsistent, MUST send `Signal(close, reason=state_lost)` instead.
 * \[ ] MUST send `Signal(close)` for all sessions after process restart or loss of volatile memory.
 
 ### Signal Frame Requirements

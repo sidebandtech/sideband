@@ -15,11 +15,22 @@ The RPC envelope is a canonical structure carried inside `MessageFrame.data`. It
 
 Encoded as JSON (v1) or CBOR (v2+).
 
-## Subject Namespace
+## Subject Namespacing
 
-RPC envelopes require `MessageFrame.subject` to begin with `rpc/`. Other prefixes (`event/`, `stream/`, `app/`) are handled by other subsystems and are outside RPC scope.
+RPC envelope semantics apply to `rpc/` and `event/` namespaces. The `MessageFrame.subject` prefix determines which envelope types are valid.
 
-See [SBP Behavior](../sbp/behavior.md#subject-namespace) for the canonical namespace table and validation rules.
+| Subject Prefix | Allowed `t`         | Semantics                          |
+| -------------- | ------------------- | ---------------------------------- |
+| `rpc/`         | `"r"`, `"R"`, `"E"` | Bidirectional request/response     |
+| `event/`       | `"N"`               | Fire-and-forget notification       |
+| `stream/`      | —                   | Reserved (v2); reject per SBP      |
+| `app/`         | —                   | Vendor-defined; not parsed as RPC envelope |
+
+Receivers MUST validate envelope `t` against subject prefix for `rpc/` and `event/` subjects. Mismatched envelopes MUST be dropped; receivers SHOULD log. This is non-fatal; continue processing subsequent frames.
+
+Rationale: There is no valid subject to reply on. The sender receives a timeout, which signals failure; the receiver log provides diagnostics.
+
+See [SBP Behavior](../sbp/behavior.md#subject-namespace) for subject format validation.
 
 ## Envelope Structure
 
@@ -52,6 +63,8 @@ interface RpcNotification {
 }
 ```
 
+## Error Codes
+
 RPC defines error codes in the 1050–1099 range:
 
 | Code | Name                | Semantics                                       |
@@ -60,6 +73,7 @@ RPC defines error codes in the 1050–1099 range:
 | 1051 | UnsupportedMethod   | Method not recognized by handler                |
 | 1052 | CorrelationMismatch | Response cid does not match any pending request |
 | 1053 | Timeout             | Request timed out waiting for response          |
+| 1054 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
 
 Application errors use range 2000+ (user-defined).
 
@@ -85,9 +99,9 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 
 ## Validation Rules
 
-* **Subject**: Must begin with `rpc/` (namespace validation handled by SBP)
+* **Subject**: Must match allowed `t` per [Subject Namespacing](#subject-namespacing)
 * **Request**: `t: "r"`, `m` and `cid` required
 * **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
-* **Notification**: `t: "N"`, `e` required
+* **Notification**: `t: "N"`, `e` required; uses `event/` subjects
 
-Unroutable envelope failures escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`.
+Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).

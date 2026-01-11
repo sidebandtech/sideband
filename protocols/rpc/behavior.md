@@ -58,8 +58,9 @@ Multiple requests MAY be in flight simultaneously:
 
 ## Notifications
 
-`RpcNotification` (type `"N"`) is fire-and-forget:
+`RpcNotification` (`t:"N"`) is fire-and-forget:
 
+* MUST use `event/` subjects (see [envelope.md](./envelope.md#subject-namespacing))
 * No `cid` (no correlation)
 * No response expected
 * No delivery guarantee beyond transport layer

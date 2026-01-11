@@ -2471,8 +2471,9 @@ Multiple requests MAY be in flight simultaneously:
 
 ## Notifications
 
-`RpcNotification` (type `"N"`) is fire-and-forget:
+`RpcNotification` (`t:"N"`) is fire-and-forget:
 
+* MUST use `event/` subjects (see [envelope.md](./envelope.md#subject-namespacing))
 * No `cid` (no correlation)
 * No response expected
 * No delivery guarantee beyond transport layer
@@ -2510,10 +2511,13 @@ This document will cover:
 * \[ ] `RpcError` MUST have `t: "E"`, `code`, `message`, and `cid`
 * \[ ] `RpcNotification` MUST have `t: "N"` and `e`
 
-## Subject Validation
+## Subject-Envelope Validation
 
-* \[ ] RPC subjects MUST begin with `rpc/` prefix
-* \[ ] Subject format and namespace rules are validated by SBP (see [SBP Behavior](../sbp/behavior.md#subject-namespace))
+* \[ ] `t:"r"`, `t:"R"`, `t:"E"` envelopes MUST use `rpc/` subjects
+* \[ ] `t:"N"` envelopes MUST use `event/` subjects
+* \[ ] Mismatched envelopes MUST be dropped (log recommended)
+* \[ ] Rejection is non-fatal (continue processing subsequent frames)
+* \[ ] Subject format rules are validated by SBP (see [SBP Behavior](../sbp/behavior.md#subject-namespace))
 
 ## Error Handling
 
@@ -2542,11 +2546,22 @@ The RPC envelope is a canonical structure carried inside `MessageFrame.data`. It
 
 Encoded as JSON (v1) or CBOR (v2+).
 
-## Subject Namespace
+## Subject Namespacing
 
-RPC envelopes require `MessageFrame.subject` to begin with `rpc/`. Other prefixes (`event/`, `stream/`, `app/`) are handled by other subsystems and are outside RPC scope.
+RPC envelope semantics apply to `rpc/` and `event/` namespaces. The `MessageFrame.subject` prefix determines which envelope types are valid.
 
-See [SBP Behavior](../sbp/behavior.md#subject-namespace) for the canonical namespace table and validation rules.
+| Subject Prefix | Allowed `t`         | Semantics                          |
+| -------------- | ------------------- | ---------------------------------- |
+| `rpc/`         | `"r"`, `"R"`, `"E"` | Bidirectional request/response     |
+| `event/`       | `"N"`               | Fire-and-forget notification       |
+| `stream/`      | —                   | Reserved (v2); reject per SBP      |
+| `app/`         | —                   | Vendor-defined; not parsed as RPC envelope |
+
+Receivers MUST validate envelope `t` against subject prefix for `rpc/` and `event/` subjects. Mismatched envelopes MUST be dropped; receivers SHOULD log. This is non-fatal; continue processing subsequent frames.
+
+Rationale: There is no valid subject to reply on. The sender receives a timeout, which signals failure; the receiver log provides diagnostics.
+
+See [SBP Behavior](../sbp/behavior.md#subject-namespace) for subject format validation.
 
 ## Envelope Structure
 
@@ -2579,6 +2594,8 @@ interface RpcNotification {
 }
 ```
 
+## Error Codes
+
 RPC defines error codes in the 1050–1099 range:
 
 | Code | Name                | Semantics                                       |
@@ -2587,6 +2604,7 @@ RPC defines error codes in the 1050–1099 range:
 | 1051 | UnsupportedMethod   | Method not recognized by handler                |
 | 1052 | CorrelationMismatch | Response cid does not match any pending request |
 | 1053 | Timeout             | Request timed out waiting for response          |
+| 1054 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
 
 Application errors use range 2000+ (user-defined).
 
@@ -2612,12 +2630,12 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 
 ## Validation Rules
 
-* **Subject**: Must begin with `rpc/` (namespace validation handled by SBP)
+* **Subject**: Must match allowed `t` per [Subject Namespacing](#subject-namespacing)
 * **Request**: `t: "r"`, `m` and `cid` required
 * **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
-* **Notification**: `t: "N"`, `e` required
+* **Notification**: `t: "N"`, `e` required; uses `event/` subjects
 
-Unroutable envelope failures escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`.
+Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).
 
 ---
 
@@ -2633,7 +2651,7 @@ RPC is a **semantic layer** carried inside SBP Message frames. It does not defin
 
 ## Relationship to SBP
 
-RPC envelopes are encoded in `MessageFrame.data` with subjects prefixed `rpc/`. The frame ID provides request/response correlation.
+RPC envelopes are encoded in `MessageFrame.data`. Subject prefixes determine envelope semantics: `rpc/` for request/response, `event/` for notifications. See [envelope.md#subject-namespacing](./envelope.md#subject-namespacing).
 
 ## Delegation
 
@@ -2651,12 +2669,12 @@ This protocol defines:
 
 ## Errors
 
-RPC does not define protocol-level error codes. It reuses:
+RPC defines error codes in the 1050–1099 range (see [envelope.md](./envelope.md#error-codes)). It also uses:
 
-* SBP protocol errors (1000-1999) — see [sbp/errors.md](../sbp/errors.md)
-* Application errors (2000+) — defined per-method in envelope.md
+* SBP protocol errors (1000–1049) — see [sbp/errors.md](../sbp/errors.md)
+* Application errors (2000+) — defined per-method
 
-This follows gRPC/JSON-RPC/tRPC convention: transport errors are delegated, only application errors are layer-specific.
+See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation.
 
 ## Documents
 
@@ -3068,7 +3086,7 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 
 * \[ ] MUST resume with the same keys and sequence state if relay session is resumed.
 * \[ ] MUST send `Signal(ready)` for sessions with retained state after reconnect.
-* \[ ] MUST send `Signal(close, reason=state_lost)` for sessions with lost state before processing any frames.
+* \[ ] MUST verify session state integrity before sending `Signal(ready)`; if any component is missing, malformed, or inconsistent, MUST send `Signal(close, reason=state_lost)` instead.
 * \[ ] MUST send `Signal(close)` for all sessions after process restart or loss of volatile memory.
 
 ### Signal Frame Requirements
@@ -3168,7 +3186,8 @@ This checklist summarizes security requirements from normative documents. For au
 * \[ ] Use directional keys (prevent reflection)
 * \[ ] Implement bitmap-based sliding window (≥64 messages)
 * \[ ] Send `Signal(ready)` for sessions with retained state after reconnect
-* \[ ] Send `Signal(close)` for sessions with lost state after reconnect
+* \[ ] Verify session state integrity before sending `Signal(ready)` after reconnect
+* \[ ] Send `Signal(close, reason=state_lost)` for sessions with lost state after reconnect
 * \[ ] Best-effort zero ephemeral keys and shared secrets after derivation
 * \[ ] Best-effort clear all key material on session close
 
@@ -3710,11 +3729,45 @@ A relay tracks the pairing between one client connection and one daemon connecti
 ### Resumable Daemons (default, `res` claim absent or `true`)
 
 * A resumed session MUST reuse the same session keys and sequence state.
-* After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close)` for sessions with lost state.
+* After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close, reason=state_lost)` for sessions with lost state.
 * Relay MUST send `Control(session_pending)` to client when daemon reconnects.
 * Relay MUST NOT send `Control(session_resumed)` until daemon sends `Signal(ready)`.
-* If sequence state is lost (even partially), daemon MUST send `Signal(close)` for that session before processing frames.
-* If the daemon process restarts or loses volatile memory, it MUST send `Signal(close)` for all sessions.
+* If sequence state is lost (even partially), daemon MUST send `Signal(close, reason=state_lost)` for that session before processing frames.
+* If the daemon process restarts or loses volatile memory, it MUST send `Signal(close, reason=state_lost)` for all sessions.
+
+### State Integrity Verification
+
+Before sending `Signal(ready)` for a session, the daemon MUST verify that all required per-session state is present, well-formed, and internally consistent. If verification fails, daemon MUST send `Signal(close, reason=state_lost)` for that session.
+
+**Required components** (per [cryptography-and-wire.md](./cryptography-and-wire.md)):
+
+* Session ID
+* Directional traffic keys (`clientToDaemon`, `daemonToClient`)
+* Send sequence number
+* Receive replay state (`maxSeen` and bitmap)
+
+**Verification requirements:**
+
+1. All components MUST be present
+2. Keys MUST be correct length (32 bytes each)
+3. Sequence numbers MUST be valid (non-negative, not exhausted)
+4. Replay window MUST be consistent with `maxSeen`
+
+If any check fails → `Signal(close, reason=state_lost)` for that session.
+If all checks pass → `Signal(ready)` for that session.
+
+::: tip Implementation Note
+For in-memory state (the common case), verification requires checking that:
+
+1. The session object exists with all fields populated
+2. Key lengths are correct (32 bytes each)
+3. Sequence numbers are valid and not exhausted
+4. Replay window is consistent with `maxSeen`
+
+Merely confirming field presence is necessary but not sufficient. Daemons that do not persist session state across process restarts will fail these checks on restart and MUST close all sessions.
+
+For daemons that persist state to durable storage, implementations SHOULD add an integrity check (e.g., HMAC or authenticated encryption) to detect corruption or tampering during storage.
+:::
 
 ### Non-Resumable Daemons (`res: false`)
 

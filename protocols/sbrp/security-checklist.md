@@ -19,7 +19,8 @@ This checklist summarizes security requirements from normative documents. For au
 * \[ ] Use directional keys (prevent reflection)
 * \[ ] Implement bitmap-based sliding window (≥64 messages)
 * \[ ] Send `Signal(ready)` for sessions with retained state after reconnect
-* \[ ] Send `Signal(close)` for sessions with lost state after reconnect
+* \[ ] Verify session state integrity before sending `Signal(ready)` after reconnect
+* \[ ] Send `Signal(close, reason=state_lost)` for sessions with lost state after reconnect
 * \[ ] Best-effort zero ephemeral keys and shared secrets after derivation
 * \[ ] Best-effort clear all key material on session close
 

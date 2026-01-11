@@ -10,7 +10,7 @@ RPC is a **semantic layer** carried inside SBP Message frames. It does not defin
 
 ## Relationship to SBP
 
-RPC envelopes are encoded in `MessageFrame.data` with subjects prefixed `rpc/`. The frame ID provides request/response correlation.
+RPC envelopes are encoded in `MessageFrame.data`. Subject prefixes determine envelope semantics: `rpc/` for request/response, `event/` for notifications. See [envelope.md#subject-namespacing](./envelope.md#subject-namespacing).
 
 ## Delegation
 
@@ -28,12 +28,12 @@ This protocol defines:
 
 ## Errors
 
-RPC does not define protocol-level error codes. It reuses:
+RPC defines error codes in the 1050–1099 range (see [envelope.md](./envelope.md#error-codes)). It also uses:
 
-* SBP protocol errors (1000-1999) — see [sbp/errors.md](../sbp/errors.md)
-* Application errors (2000+) — defined per-method in envelope.md
+* SBP protocol errors (1000–1049) — see [sbp/errors.md](../sbp/errors.md)
+* Application errors (2000+) — defined per-method
 
-This follows gRPC/JSON-RPC/tRPC convention: transport errors are delegated, only application errors are layer-specific.
+See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation.
 
 ## Documents
 

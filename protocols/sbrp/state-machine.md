@@ -113,11 +113,45 @@ A relay tracks the pairing between one client connection and one daemon connecti
 ### Resumable Daemons (default, `res` claim absent or `true`)
 
 * A resumed session MUST reuse the same session keys and sequence state.
-* After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close)` for sessions with lost state.
+* After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close, reason=state_lost)` for sessions with lost state.
 * Relay MUST send `Control(session_pending)` to client when daemon reconnects.
 * Relay MUST NOT send `Control(session_resumed)` until daemon sends `Signal(ready)`.
-* If sequence state is lost (even partially), daemon MUST send `Signal(close)` for that session before processing frames.
-* If the daemon process restarts or loses volatile memory, it MUST send `Signal(close)` for all sessions.
+* If sequence state is lost (even partially), daemon MUST send `Signal(close, reason=state_lost)` for that session before processing frames.
+* If the daemon process restarts or loses volatile memory, it MUST send `Signal(close, reason=state_lost)` for all sessions.
+
+### State Integrity Verification
+
+Before sending `Signal(ready)` for a session, the daemon MUST verify that all required per-session state is present, well-formed, and internally consistent. If verification fails, daemon MUST send `Signal(close, reason=state_lost)` for that session.
+
+**Required components** (per [cryptography-and-wire.md](./cryptography-and-wire.md)):
+
+* Session ID
+* Directional traffic keys (`clientToDaemon`, `daemonToClient`)
+* Send sequence number
+* Receive replay state (`maxSeen` and bitmap)
+
+**Verification requirements:**
+
+1. All components MUST be present
+2. Keys MUST be correct length (32 bytes each)
+3. Sequence numbers MUST be valid (non-negative, not exhausted)
+4. Replay window MUST be consistent with `maxSeen`
+
+If any check fails → `Signal(close, reason=state_lost)` for that session.
+If all checks pass → `Signal(ready)` for that session.
+
+::: tip Implementation Note
+For in-memory state (the common case), verification requires checking that:
+
+1. The session object exists with all fields populated
+2. Key lengths are correct (32 bytes each)
+3. Sequence numbers are valid and not exhausted
+4. Replay window is consistent with `maxSeen`
+
+Merely confirming field presence is necessary but not sufficient. Daemons that do not persist session state across process restarts will fail these checks on restart and MUST close all sessions.
+
+For daemons that persist state to durable storage, implementations SHOULD add an integrity check (e.g., HMAC or authenticated encryption) to detect corruption or tampering during storage.
+:::
 
 ### Non-Resumable Daemons (`res: false`)
 

@@ -25,10 +25,13 @@ This document will cover:
 * \[ ] `RpcError` MUST have `t: "E"`, `code`, `message`, and `cid`
 * \[ ] `RpcNotification` MUST have `t: "N"` and `e`
 
-## Subject Validation
+## Subject-Envelope Validation
 
-* \[ ] RPC subjects MUST begin with `rpc/` prefix
-* \[ ] Subject format and namespace rules are validated by SBP (see [SBP Behavior](../sbp/behavior.md#subject-namespace))
+* \[ ] `t:"r"`, `t:"R"`, `t:"E"` envelopes MUST use `rpc/` subjects
+* \[ ] `t:"N"` envelopes MUST use `event/` subjects
+* \[ ] Mismatched envelopes MUST be dropped (log recommended)
+* \[ ] Rejection is non-fatal (continue processing subsequent frames)
+* \[ ] Subject format rules are validated by SBP (see [SBP Behavior](../sbp/behavior.md#subject-namespace))
 
 ## Error Handling
 
