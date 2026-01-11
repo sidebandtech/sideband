@@ -546,6 +546,383 @@ Move subject validation into `@sideband/protocol` — the only package owning th
 ---
 
 ---
+url: /adr/009-runtime-peer-lifecycle.md
+---
+# ADR 009: Runtime Session Lifecycle
+
+* **Date**: 2025-01-11
+* **Status**: Accepted
+* **Applies to**: Runtime
+* **Tags**: runtime, session, negotiation, lifecycle
+
+## Context
+
+The runtime must manage connections throughout their lifecycle. However, Sideband supports multiple protocol modes:
+
+* **SBP (direct)**: Simple handshake-first exchange
+* **SBRP (relay)**: E2EE with HandshakeInit/Accept, TOFU identity pinning, key derivation
+
+A single hardcoded lifecycle won't age well. We need an architecture that:
+
+1. Separates transport (bytes) from session (secure channel) from routing (dispatch)
+2. Makes protocol-specific negotiation pluggable
+3. Distinguishes logical peer identity from physical session
+4. Allows per-transport retry policies
+
+## Decision
+
+### 1. Three-Layer Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        Router                           │
+│              (dispatches frames to handlers)            │
+└────────────────────────┬────────────────────────────────┘
+                         │ MessageFrame
+┌────────────────────────┴────────────────────────────────┐
+│                       Session                           │
+│         (active channel, protocol-negotiated)           │
+│                                                         │
+│  ┌─────────────────┐    ┌─────────────────────────┐    │
+│  │ SbpNegotiator   │ OR │ Custom Negotiator       │    │
+│  │ (handshake)     │    │ (user-provided)         │    │
+│  └─────────────────┘    └─────────────────────────┘    │
+└────────────────────────┬────────────────────────────────┘
+                         │ Uint8Array
+┌────────────────────────┴────────────────────────────────┐
+│                      Transport                          │
+│            (connects, sends/receives bytes)             │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Boundaries:**
+
+| Layer | Responsibility | Does NOT handle |
+|-------|----------------|-----------------|
+| Transport | Connection, byte streams | Framing, security, routing |
+| Session | Negotiation, encryption, session state | Message dispatch, handlers |
+| Router | Handler registry, dispatch, correlation | Connection management |
+
+### 2. Peer vs Session
+
+These are distinct concepts:
+
+| Concept | Type | Meaning | Lifetime |
+|---------|------|---------|----------|
+| **Peer** | `Peer` | Logical remote entity | Long-lived, survives reconnects |
+| **Session** | `Session` | Active channel to peer | Transient, replaced on reconnect |
+| **peerId** | `PeerId` | Routing label | Stable per peer |
+| **identity** | `VerifiedIdentity?` | Cryptographic identity (e.g., Ed25519 pubkey fingerprint) | Set by negotiator, used for TOFU |
+
+In SBRP, TOFU pins the daemon's identity key, not the peerId. The runtime exposes both:
+
+```ts
+interface Session {
+  peerId: PeerId;                    // Routing label (from handshake)
+  identity?: VerifiedIdentity;       // Cryptographic identity (from negotiator)
+  state: SessionState;               // Observable lifecycle state
+  channel: SessionChannel;           // I/O channel (raw or wrapped)
+  sendFrame(frame: Frame): Promise<void>;  // Preferred: type-safe, encodes frame
+  sendRaw(data: Uint8Array): Promise<void>; // Advanced: raw bytes (escape hatch)
+}
+
+// VerifiedIdentity is negotiator-specific
+type VerifiedIdentity = {
+  type: "ed25519";
+  fingerprint: string;  // Hex of pubkey hash
+};
+```
+
+Note: `state` is intentionally exposed for observability (logging, UI indicators). Application code SHOULD NOT branch on internal states like `retry-wait`; use events instead.
+
+**Ownership invariant:**
+
+> A `Peer` owns zero or more `Session` instances over time.
+> At most one `Session` may be `Active` per peer in v1.
+
+The `Peer` type is not exposed as a public class in v1, but this invariant guides internal design and prevents multi-session ambiguity.
+
+### 3. Session States
+
+```
+                    ┌─────────────┐
+                    │    Idle     │◄────────────────────┐
+                    └──────┬──────┘                     │
+                           │ connect()                  │ terminate() / fatal
+                           ▼                            │
+                    ┌─────────────┐                     │
+            ┌──────►│ Connecting  │─────────────────────┤
+            │       └──────┬──────┘                     │
+            │              │ transport open             │
+            │              ▼                            │
+            │       ┌─────────────┐                     │
+            │       │ Negotiating │─────────────────────┤
+            │       └──────┬──────┘                     │
+            │              │ negotiation complete       │
+            │              ▼                            │
+            │       ┌─────────────┐                     │
+  retry     │       │   Active    │─────────────────────┘
+            │       └──────┬──────┘
+            │              │ transport error (retryable)
+            │              ▼
+            │       ┌─────────────┐
+            └───────┤  RetryWait  │
+                    └─────────────┘
+```
+
+**State definitions:**
+
+| State | Meaning |
+|-------|---------|
+| `Idle` | No session. Initial and terminal state. |
+| `Connecting` | Transport `connect()` in progress. |
+| `Negotiating` | Transport open, negotiator establishing channel (handshake, E2EE, auth). |
+| `Active` | Ready for message exchange. |
+| `RetryWait` | Waiting before retry attempt (if retry enabled). |
+
+### 4. Pluggable Negotiators
+
+Negotiators handle protocol-specific session establishment:
+
+```ts
+interface Negotiator {
+  /** Establish session after transport opens */
+  negotiate(conn: TransportConnection): Promise<NegotiationResult>;
+
+  /** Protocol-specific close; MUST be idempotent */
+  terminate(conn: TransportConnection, reason?: string): Promise<void>;
+
+  /** Classify an error as fatal or retryable */
+  classifyError(error: Error): "fatal" | "retryable";
+}
+
+interface NegotiationResult {
+  peerId: PeerId;
+  identity?: VerifiedIdentity;
+  capabilities: string[];
+  metadata: Record<string, string>;
+  channel?: SessionChannel;  // Optional session-layer channel (see SessionChannel type)
+}
+
+// SessionChannel is a session-layer abstraction that implements TransportConnection.
+// It MAY wrap an underlying transport with encryption or other session-specific processing.
+type SessionChannel = TransportConnection;
+
+// v2 extension for session resume (not in v1)
+interface ResumableNegotiator extends Negotiator {
+  resume(conn: TransportConnection, token: Uint8Array): Promise<NegotiationResult>;
+}
+```
+
+**Built-in negotiators:**
+
+| Negotiator | Protocol | Behavior |
+|------------|----------|----------|
+| `SbpNegotiator` | SBP | Handshake frame exchange, capability negotiation |
+
+> **SBRP Integration**: The runtime does NOT include an `SbrpNegotiator`. SBRP is a session-layer E2EE protocol with complex cryptography; its primitives live in `@sideband/secure-relay`. SBRP can integrate via:
+>
+> 1. **Custom Negotiator with `channel`**: Implement a negotiator that performs SBRP key exchange and returns a `NegotiationResult.channel` — a wrapped `TransportConnection` that encrypts outbound frames and decrypts inbound frames. The runtime uses this channel transparently.
+> 2. **Transport Adapter**: Embed SBRP logic in a custom transport that exposes decrypted SBP frames directly. Simpler but couples session and transport layers.
+>
+> See `docs/protocols/architecture.md` "Session Output Contract" for the normative interface.
+
+**SBP negotiation sequence:**
+
+```
+Client                              Server
+  │──────── Handshake{peerId} ─────────►│
+  │◄─────── Handshake{peerId} ──────────│
+  │            [Active]                 │
+```
+
+For SBRP negotiation sequences, see `docs/protocols/sbrp/` and `@sideband/secure-relay`.
+
+### 5. Error Classification
+
+The **negotiator** classifies errors as fatal or retryable via `classifyError()`. The runtime never hardcodes fatality—this keeps security-sensitive decisions in the negotiator where they belong.
+
+**Typical classifications (examples, not rules):**
+
+| Error type | Typical classification | Notes |
+|------------|------------------------|-------|
+| Transport connect failure | Retryable | Network transient |
+| Negotiation timeout | Negotiator decides | Could be transient or MITM interference |
+| Protocol violation (bad frame) | Fatal | Per SBP spec |
+| Identity mismatch (TOFU) | Fatal | Security-critical |
+| Unsupported protocol version | Fatal | Per SBP spec |
+| Application error | Retryable | Non-fatal to transport |
+
+**Invariants:**
+
+* Negotiators MUST classify `ProtocolViolation` and `UnsupportedVersion` as fatal per SBP spec
+* `"fatal"` means "terminate this session and do not retry"—it does **not** necessarily imply a protocol violation (e.g., identity mismatch is fatal but not a protocol error)
+* Other classifications are negotiator-specific
+
+### 6. Retry Policy
+
+Retry is **per-session** and **opt-in**:
+
+```ts
+interface RetryPolicy {
+  mode: "never" | "on-error";  // Default: "never"
+  backoff: BackoffPolicy;
+}
+
+interface BackoffPolicy {
+  initialDelayMs: number;      // Default: 1000
+  maxDelayMs: number;          // Default: 30000
+  maxAttempts: number;         // Retry attempts (excludes initial); 0 = unlimited
+  jitter: number;              // Default: 0.2 (20%)
+}
+```
+
+**Backoff formula:**
+
+```
+delay = min(initial * 2^attempt, max) * (1 + random(-jitter, +jitter))
+```
+
+**Retry behavior:**
+
+1. Transport error in `Active` → transition to `RetryWait`
+2. Wait backoff delay
+3. Transition to `Connecting`, attempt new connection
+4. On success: full re-negotiation (no session resume in v1)
+5. On max attempts: transition to `Idle`, emit `closed` event
+
+**Attempt counting:** `maxAttempts` counts only retry attempts, not the initial connection. With `maxAttempts: 5`, a total of 6 connection attempts occur (1 initial + 5 retries). The attempt counter resets on successful transition to `Active`.
+
+**Retry invariants:**
+
+* When retrying, a new Session replaces the previous Session for the same Peer; retries never create parallel sessions
+* Calling `terminate()` cancels any pending retries and transitions immediately to `Idle`
+
+**Channel and retry semantics:**
+
+If a negotiator returns a wrapped `channel`, channel-level errors (e.g., decryption failure, session expiry) are surfaced to the runtime as session errors and classified via `Negotiator.classifyError()`. Retries always:
+
+1. Close the existing channel and transport
+2. Re-establish a fresh transport connection
+3. Re-invoke `negotiate()` to obtain a new channel
+
+The runtime does not attempt to "resume" a wrapped channel; each retry creates an entirely new session.
+
+### 7. Session Events
+
+```ts
+interface SessionEvents {
+  connecting: { endpoint: string };
+  negotiating: { transport: TransportConnection };
+  active: { peerId: PeerId; capabilities: string[] };
+  retrying: { attempt: number; delayMs: number; lastError: Error };
+  closed: { reason: string; wasClean: boolean; fatal: boolean };
+
+  // Security events (from negotiator)
+  identity_established: { identity: VerifiedIdentity; trusted: boolean };
+  identity_mismatch: { expected: VerifiedIdentity; received: VerifiedIdentity };
+}
+```
+
+The `active` event carries negotiation results, not the session itself — subscribers already hold the session reference. This keeps events serializable and avoids circular references.
+
+Note: `identity_established` (not `identity_verified`) because TOFU is trust establishment, not cryptographic verification. The `trusted` flag indicates whether this identity was previously pinned.
+
+### 8. Protocol-Aware Termination
+
+Termination follows a strict ordering to ensure proper cleanup:
+
+```ts
+async function terminate(reason?: string): Promise<void> {
+  // 1. Protocol-level signaling via negotiator (uses raw transport)
+  await negotiator.terminate(transport, reason);
+
+  // 2. Close session channel (if distinct from transport)
+  if (channel !== transport) {
+    await channel.close(reason);
+  }
+
+  // 3. Close underlying transport
+  await transport.close(reason);
+
+  // 4. Transition to Idle
+  state = "idle";
+}
+```
+
+**Close ordering invariant:**
+
+> When a session provides a `SessionChannel` distinct from the underlying transport, the runtime MUST close the channel before closing the transport.
+
+This ensures session-layer cleanup (e.g., encryption state, pending operations) completes while the transport is still available.
+
+**Negotiator.terminate() scope:**
+
+`Negotiator.terminate()` is responsible only for **protocol-level signaling** over the underlying transport (e.g., sending SBP Close frames). Session-layer resource cleanup MUST be handled by closing the `SessionChannel`. The negotiator receives the raw transport, not the wrapped channel.
+
+**Idempotency invariants:**
+
+* `terminate()` MUST be idempotent (safe to call multiple times)
+* Negotiators MUST tolerate already-closed transports
+* Close errors are logged but do not throw
+
+**SbpNegotiator.terminate():**
+
+```ts
+// Send Close control frame if transport is open
+if (conn.state === "open") {
+  await send(createControlFrame({ op: ControlOp.Close, data: encodeReason(reason) }));
+}
+```
+
+For SBRP termination semantics, see `docs/protocols/sbrp/state-machine.md`.
+
+### 9. Session Resumption Semantics
+
+Runtime core does not require resumable sessions. Terminology:
+
+| Term | Meaning |
+|------|---------|
+| **Transport reconnect** | WebSocket drops and reconnects (pure transport layer) |
+| **Session resume** | Reuse same cryptographic state without new handshake (SBRP daemon only) |
+| **Client reconnect** | Always requires new token + full handshake |
+
+**v1 behavior:**
+
+* Client reconnects always create fresh sessions
+* SBRP daemons MAY implement resumable sessions (gated by `Signal(ready)` state machine)
+* Non-SBRP negotiators may ignore resume entirely
+* Pending RPC requests are rejected on disconnect; application handles retransmission
+
+SBRP implementations (whether via custom negotiator or transport adapter) MUST implement the SBRP pause/pending/resume state machine when supporting resumable daemon sessions. See `docs/protocols/sbrp/state-machine.md`. Session resume can be extended to clients in v2 via `ResumableNegotiator` interface.
+
+## Alternatives Considered
+
+| Alternative | Why Rejected |
+|-------------|--------------|
+| Single handshake model for all protocols | SBRP and SBP have fundamentally different handshakes |
+| Global retry policy | Different transports have different reliability characteristics |
+| peerId as security identity | Conflates routing with authentication; SBRP TOFU pins keys, not peerId |
+| Session resume in v1 | Adds complexity; v1 focuses on correctness |
+
+## Consequences
+
+* **Protocol isolation**: SBP and SBRP don't leak into each other
+* **Future-proof**: SBDP or new protocols slot in as new negotiators
+* **Clear security model**: `identity` is distinct from `peerId`
+* **Testable**: Each layer can be tested independently
+* **No hidden magic**: Retry is opt-in, termination is explicit
+
+## References
+
+* ADR-005 (Transport ABI)
+* `docs/protocols/sbp/behavior.md` (handshake-first rule)
+* `docs/protocols/sbrp/` (E2EE handshake, TOFU)
+* `packages/secure-relay/src/handshake.ts` (SBRP implementation)
+
+---
+
+---
 url: /adr/010-rpc-correlation-cid.md
 ---
 # ADR 010: Explicit RPC Correlation via `cid` in the Envelope
@@ -635,6 +1012,356 @@ See updated `docs/protocols/rpc/envelope.md` for the complete envelope specifica
 ---
 
 ---
+url: /adr/011-runtime-message-routing.md
+---
+# ADR 011: Runtime Message Routing
+
+* **Date**: 2025-01-11
+* **Status**: Accepted
+* **Applies to**: Runtime
+* **Tags**: runtime, routing, handlers, dispatch
+
+## Context
+
+The runtime's Router layer dispatches incoming frames to handlers. The existing specs define subject namespaces (ADR-006, ADR-008) and RPC envelope structure (ADR-010), but do not specify:
+
+1. How handlers are registered and matched
+2. Dispatch ordering when multiple handlers match
+3. Error propagation from handlers
+4. Per-peer vs global handler scoping
+
+Key design goals:
+
+* **Predictable**: Deterministic dispatch ordering
+* **Composable**: Works for RPC, events, and custom protocols
+* **Extensible**: Custom prefixes without hacks
+* **Safe**: Hard to accidentally misuse (e.g., frameId reuse)
+
+## Decision
+
+### 1. Router API
+
+The Router manages handler registration and dispatch:
+
+```ts
+interface Router {
+  /** Register handler for exact subject match */
+  route(subject: string, handler: MessageHandler, options?: RouteOptions): Unsubscribe;
+
+  /** Register handler for subject prefix */
+  routePrefix(prefix: string, handler: MessageHandler, options?: RouteOptions): Unsubscribe;
+
+  /** Remove all handlers for a subject */
+  unroute(subject: string): void;
+
+  /** Clear all handlers */
+  clear(): void;
+}
+
+interface RouteOptions {
+  mode?: "exclusive" | "broadcast";  // Default: inferred from prefix
+}
+
+type Unsubscribe = () => void;
+type MessageHandler = (msg: InboundMessage) => Promise<void> | void;
+```
+
+### 2. InboundMessage (not MessageContext)
+
+The handler receives an `InboundMessage` with clear separation between general messaging and RPC:
+
+```ts
+interface InboundMessage {
+  // Core message data
+  readonly subject: Subject;
+  readonly payload: Uint8Array;
+  readonly peerId: PeerId;
+  readonly session: Session;
+
+  // Low-level frame access (read-only)
+  readonly frame: Readonly<MessageFrame>;
+
+  /** Send a response message (generates fresh frameId) */
+  send(subject: Subject, data: Uint8Array): Promise<void>;
+
+  /** RPC context (only present for rpc/ subjects with valid envelope) */
+  readonly rpc?: RpcContext;
+}
+
+interface RpcContext {
+  readonly method: string;
+  readonly params: unknown;
+  readonly cid: FrameId;
+
+  /** Reply with success result */
+  reply(result?: unknown): Promise<void>;
+
+  /** Reply with error */
+  error(code: number, message: string, data?: unknown): Promise<void>;
+}
+```
+
+**Key design:**
+
+* `send()` is always available (generates fresh frameId internally)
+* `rpc` is only present when envelope decodes successfully
+* `frame` is read-only to prevent accidental frameId reuse; exposed for diagnostics and tracing only—application logic SHOULD NOT depend on frame internals
+* `rpc.reply()` and `rpc.error()` handle correlation automatically
+
+### 3. Subject Validation Policy
+
+Subject prefixes are **policy-driven**, not type-locked:
+
+```ts
+interface SubjectPolicy {
+  /** Required prefixes (default: ["rpc/", "event/", "stream/", "app/"]) */
+  allowedPrefixes: string[];
+
+  /** Prefixes that are reserved/rejected (default: ["stream/"]) */
+  reservedPrefixes: string[];
+
+  /** Custom classifier for dispatch semantics */
+  classify?(subject: string): SubjectKind;
+}
+
+type SubjectKind = "rpc" | "event" | "custom" | "reserved";
+```
+
+**Validation order:**
+
+1. Check `reservedPrefixes` → reject with `ErrorFrame{code: 1003}` (UnsupportedFeature)
+2. Check `allowedPrefixes` → reject with `ErrorFrame{code: 1002}` (InvalidFrame) if no match
+3. Run `classify()` if provided → determines dispatch semantics
+
+**Precedence:** `reservedPrefixes` always takes precedence over `allowedPrefixes`. If a prefix appears in both, it is reserved.
+
+**Classification invariant:** If `classify()` returns `"rpc"`, the message MUST contain a valid RPC envelope; otherwise the message is rejected with `ErrorFrame{code: 1002}` (InvalidFrame: malformed payload). This prevents semantic spoofing where non-RPC messages bypass envelope validation.
+
+**Default validation:**
+
+| Prefix | Kind | Default mode | Behavior |
+|--------|------|--------------|----------|
+| `rpc/` | `rpc` | `exclusive` | Single handler, must reply |
+| `event/` | `event` | `broadcast` | Fan-out, no reply |
+| `stream/` | `reserved` | — | Reject with ErrorFrame(1003) |
+| `app/` | `custom` | `broadcast` | User-defined semantics |
+
+**Future extensibility:** Reserved prefixes (e.g., `stream/`) may be reclassified by negotiators in future protocol versions. V2 negotiators can advertise streaming capability and override the default reserved status.
+
+**Extensibility:**
+
+```ts
+// Allow custom prefix
+const router = createRouter({
+  subjectPolicy: {
+    allowedPrefixes: ["rpc/", "event/", "app/", "debug/", "admin/"],
+    reservedPrefixes: ["stream/"],
+  }
+});
+
+router.routePrefix("debug/", debugHandler);
+router.routePrefix("admin/", adminHandler, { mode: "exclusive" });
+```
+
+### 4. Dispatch Ordering
+
+When multiple handlers match, dispatch follows deterministic rules:
+
+**Matching priority:**
+
+1. Exact match handlers (highest priority)
+2. Prefix handlers (longest prefix first)
+
+**Within each bucket:**
+
+* Registration order (first registered, first called)
+
+**Invocation:**
+
+| Mode | Behavior |
+|------|----------|
+| `exclusive` | First matching handler only; others ignored |
+| `broadcast` | All matching handlers invoked sequentially |
+
+**Why sequential broadcast?** Handlers are awaited sequentially—the next handler is invoked only after the previous one resolves. This ensures deterministic side-effects. Concurrent invocation would introduce race conditions and make debugging harder. If parallel execution is needed, handlers can spawn their own async tasks.
+
+**Example:**
+
+```ts
+router.route("event/user.joined", handlerA);           // exact
+router.routePrefix("event/user.", handlerB);           // prefix (longer)
+router.routePrefix("event/", handlerC);                // prefix (shorter)
+
+// Incoming: "event/user.joined"
+// Dispatch order: handlerA (exact), then handlerB (longer prefix), then handlerC
+// For broadcast mode: all three called in order
+// For exclusive mode: only handlerA called
+```
+
+### 5. RPC Dispatch Rules
+
+For subjects classified as `rpc`:
+
+1. Decode RPC envelope from payload
+2. If envelope decoding fails → emit `ErrorFrame{code: 1002}` (InvalidFrame: malformed payload)
+3. If no handler → reply `RpcError{code: 1101, message: "Method not found"}`
+4. If handler doesn't reply within timeout → reply `RpcError{code: 1103, message: "Handler timeout"}`
+5. If handler throws → reply `RpcError{code: 2000, message: error.message}` (default mapper)
+
+**Note:** The frame itself is valid; only the payload (envelope) is malformed. This is a non-fatal error per SBP `InvalidFrame` semantics—the connection remains open; only the specific request fails.
+
+**Timeout configuration:**
+
+```ts
+interface RouterConfig {
+  rpcTimeoutMs: number;  // Default: 30000 (30s)
+}
+```
+
+### 6. Event Dispatch Rules
+
+For `event/` subjects:
+
+1. Decode envelope (expect `RpcNotification`)
+2. If decode fails → log warning, drop (no response)
+3. Fan-out to all matching handlers (broadcast mode)
+4. Handler errors → log warning, continue to next handler
+5. No reply expected; `msg.rpc` is undefined
+
+### 7. Error Propagation
+
+Error handling is **configurable** via error mapper:
+
+```ts
+interface RouterConfig {
+  /** Map handler errors to RPC error responses */
+  errorMapper?: (error: Error, msg: InboundMessage) => RpcErrorPayload;
+}
+
+interface RpcErrorPayload {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+```
+
+**Default error mapper:**
+
+```ts
+const defaultErrorMapper = (error: Error): RpcErrorPayload => ({
+  code: 2000,  // Application error range
+  message: error.message,
+});
+```
+
+**Custom error mapper example:**
+
+```ts
+const router = createRouter({
+  errorMapper: (error, msg) => {
+    if (error instanceof ValidationError) {
+      return { code: 2001, message: "Validation failed", data: error.details };
+    }
+    if (error instanceof NotFoundError) {
+      return { code: 2002, message: "Resource not found" };
+    }
+    return { code: 2000, message: error.message };
+  }
+});
+```
+
+**Error code ranges** (see `docs/protocols/error-codes.md`):
+
+| Range | Owner | Examples |
+|-------|-------|----------|
+| 1000–1099 | SBP (protocol) | `InvalidFrame`, `ProtocolViolation` |
+| 1100–1199 | RPC (runtime) | `UnsupportedMethod` (1101), `Timeout` (1103) |
+| 2000+ | Application | User-defined |
+
+### 8. Per-Session vs Global Handlers
+
+Handlers can be registered at two levels:
+
+```ts
+// Global: survives session reconnects
+runtime.router.route("rpc/getStatus", handler);
+
+// Per-session: auto-cleared on session close
+session.router.route("rpc/sessionSpecific", handler);
+```
+
+**Use cases:**
+
+* Global: Service methods that should always be available
+* Per-session: Handlers tied to session state (e.g., authenticated user context)
+
+**Cleanup:**
+
+* `session.close()` → clears session-scoped handlers
+* `runtime.close()` → clears all handlers
+
+**Cleanup timing:** Session-scoped handlers are cleared **after** the `closed` event is emitted. This allows cleanup logic in event handlers to still inspect registered handlers if needed.
+
+### 9. Preventing frameId Misuse
+
+The API makes it hard to accidentally reuse frameId:
+
+```ts
+// WRONG: Exposing frame for modification
+ctx.frame.frameId  // This would allow reuse
+
+// RIGHT: Read-only frame, send() generates new frameId
+msg.send(subject, data);  // Always fresh frameId
+
+// RIGHT: RPC reply uses cid for correlation, fresh frameId for response
+msg.rpc.reply(result);  // cid from request, new frameId
+```
+
+Implementation:
+
+```ts
+async function send(subject: Subject, data: Uint8Array): Promise<void> {
+  const frame = createMessageFrame(subject, data);  // Generates new frameId
+  await session.transport.send(encodeFrame(frame));
+}
+
+async function rpcReply(result: unknown): Promise<void> {
+  const envelope: RpcSuccess = { t: "R", cid: this.cid, result };
+  const frame = createMessageFrame(this.subject, encodeRpcEnvelope(envelope));
+  await session.transport.send(encodeFrame(frame));
+}
+```
+
+## Alternatives Considered
+
+| Alternative | Why Rejected |
+|-------------|--------------|
+| Type-locked `SubjectPrefix` union | Prevents custom prefixes; forces workarounds via `app/` |
+| `reply()` always available | Confusing for events; RPC-specific methods belong in `rpc` context |
+| Concurrent dispatch for all modes | Unpredictable ordering; sequential is safer default |
+| Global handlers only | Forces manual filtering by peerId; per-session is cleaner |
+| Glob/regex patterns | Over-engineering for v1; prefix matching covers 95% of cases |
+
+## Consequences
+
+* **Predictable dispatch**: Exact > prefix, registration order, documented rules
+* **Safe API**: `send()` always generates fresh frameId; `frame` is read-only
+* **Extensible prefixes**: Policy-driven, not type-locked
+* **Clear RPC boundary**: `msg.rpc` only present when appropriate
+* **Flexible error handling**: Custom mappers for domain-specific codes
+* **Two scopes**: Global handlers persist; session handlers auto-clean
+
+## References
+
+* ADR-006 (RPC envelope, subject namespaces)
+* ADR-008 (subject namespace validation)
+* ADR-009 (session lifecycle)
+* ADR-010 (RPC correlation via `cid`)
+* `docs/protocols/sbp/errors.md` (error code ranges)
+
+---
+
+---
 url: /adr/000-template.md
 ---
 # ADR-NNN: \[Short Title]
@@ -662,6 +1389,35 @@ url: /adr/000-template.md
 ## References
 
 \[Links to related docs, code, or external resources.]
+
+---
+
+---
+url: /adr.md
+---
+# Architecture Decision Records
+
+This section documents significant architectural decisions for the Sideband project. Each ADR captures the context, decision, and consequences of a choice that affects the codebase.
+
+## Index
+
+| ADR                                                   | Title                                 | Status   |
+| ----------------------------------------------------- | ------------------------------------- | -------- |
+| [001](./001-protocol-versioning-and-compatibility.md) | Protocol Versioning and Compatibility | Accepted |
+| [002](./002-naming-matrix.md)                         | Naming Matrix for Protocol Types      | Accepted |
+| [003](./003-control-frame-invariants.md)              | Control Frame Invariants              | Accepted |
+| [004](./004-binary-frameid.md)                        | Binary FrameId                        | Accepted |
+| [005](./005-transport-abi.md)                         | Transport ABI                         | Accepted |
+| [006](./006-rpc-envelope.md)                          | RPC Envelope                          | Accepted |
+| [007](./007-immutable-frame-types.md)                 | Immutable Frame Types                 | Accepted |
+| [008](./008-subject-namespace-validation.md)          | Subject Namespace Validation          | Accepted |
+| [009](./009-runtime-peer-lifecycle.md)                | Runtime Peer Lifecycle                | Accepted |
+| [010](./010-rpc-correlation-cid.md)                   | RPC Correlation with CID              | Accepted |
+| [011](./011-runtime-message-routing.md)               | Runtime Message Routing               | Accepted |
+
+## Creating a new ADR
+
+Copy [000-template.md](./000-template.md) and follow the format. Number ADRs sequentially.
 
 ---
 
@@ -1310,6 +2066,86 @@ Frame: 20 00000016 0000000000000001 10 01 "Daemon disconnected"
 ---
 
 ---
+url: /protocols/error-codes.md
+---
+# Error Code Registry
+
+> **Authority**: Primary (Normative)
+> **Purpose**: Canonical registry for all error codes across protocol layers.
+
+This document is the single source of truth for error codes. Specifications MUST reference this registry; they MUST NOT define codes inline.
+
+## Code Ranges
+
+| Range       | Owner    | Carrier     | Purpose                             |
+| ----------- | -------- | ----------- | ----------------------------------- |
+| 1000–1099   | SBP      | ErrorFrame  | Frame/handshake/namespace faults    |
+| 1100–1199   | RPC      | RpcError    | Envelope/method/routing faults      |
+| 1200–1999   | Reserved | —           | Future protocol extensions          |
+| 2000+       | App      | RpcError    | User-defined application errors     |
+
+Implementations MUST NOT define codes outside their owned range.
+
+## SBP Codes (1000–1099)
+
+Carried in `ErrorFrame.code`. These are protocol-level errors.
+
+| Code | Name               | Fatality   | Semantics                                        |
+| ---- | ------------------ | ---------- | ------------------------------------------------ |
+| 1000 | ProtocolViolation  | Fatal      | Generic protocol contract violation              |
+| 1001 | UnsupportedVersion | Fatal      | Peer advertised incompatible version             |
+| 1002 | InvalidFrame       | Contextual | Frame structure or encoding error                |
+| 1003 | UnsupportedFeature | Non-fatal  | Feature reserved or requires capability exchange |
+
+**Fatality rules**:
+
+* **Fatal**: Receiver MUST close transport after emitting diagnostics
+* **Non-fatal**: Continue processing subsequent frames
+* **Contextual**: MAY be fatal if recovery is unsafe; otherwise continue
+
+See [SBP Error Model](./sbp/errors.md) for sender/receiver contracts.
+
+## RPC Codes (1100–1199)
+
+Carried in `RpcError.code` (envelope `t: "E"`). These are request-scoped errors that MUST NOT trigger transport close.
+
+| Code | Name                | Semantics                                       |
+| ---- | ------------------- | ----------------------------------------------- |
+| 1100 | InvalidEnvelope     | Envelope structure or encoding error            |
+| 1101 | UnsupportedMethod   | Method not recognized by handler                |
+| 1102 | CorrelationMismatch | Response cid does not match any pending request |
+| 1103 | Timeout             | Request timed out waiting for response          |
+| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
+
+**Key invariant**: Routers MUST NOT use SBP `ErrorFrame` to represent handler timeouts. Timeouts MUST be delivered as `RpcError` responses.
+
+## Application Codes (2000+)
+
+User-defined codes for application-specific errors. Carried in `RpcError.code`.
+
+| Code | Name             | Semantics                            |
+| ---- | ---------------- | ------------------------------------ |
+| 2000 | ApplicationError | Catch-all for unspecified app errors |
+
+Applications MAY define stable subcodes above 2000 for domain-specific errors.
+
+## SBRP Control Codes
+
+SBRP uses a separate namespace (0x01xx–0x10xx) for relay control signaling. These are NOT error codes and are never carried in `ErrorFrame` or `RpcError`. See [SBRP Control Codes](./sbrp/control-codes.md).
+
+## Adding New Codes
+
+New codes require:
+
+1. ADR documenting the need and semantics
+2. Update to this registry
+3. Update to `@sideband/protocol` or `@sideband/rpc` constants
+
+Reserved ranges (1200–1999) are allocated only by ADR.
+
+---
+
+---
 url: /guide.md
 ---
 # Getting Started
@@ -1906,16 +2742,30 @@ Transports (`@sideband/transport-*`):
 * MUST NOT parse any layer above raw bytes
 * MUST NOT generate frames for any layer
 
+### Session Output Contract (Normative)
+
+A session protocol (e.g., SBRP, SBDP) MUST present the runtime with a channel that:
+
+1. Delivers complete, decrypted SBP frames on the inbound path
+2. Accepts outbound SBP frames for encryption and transmission
+
+This contract may be implemented:
+
+* **Via Negotiator**: The `Negotiator.negotiate()` method returns a `NegotiationResult` with an optional `channel` field. If provided, the runtime uses this wrapped connection for all subsequent frame I/O. The negotiator handles key exchange and returns a channel that transparently encrypts/decrypts.
+* **Via Transport Adapter**: A custom transport embeds session logic internally, exposing decrypted SBP frames directly. This approach is simpler but couples session and transport layers.
+
+The runtime MUST NOT depend on which implementation approach is used. Both satisfy the contract.
+
 ## Error Code Ownership
 
-Error codes form a global registry across protocol layers.
+See [Error Code Registry](./error-codes.md) for the canonical code definitions.
 
-| Range     | Owner    | Purpose                                                                                         |
-| --------- | -------- | ----------------------------------------------------------------------------------------------- |
-| 1000–1049 | SBP      | Frame/handshake/namespace faults (ProtocolViolation, InvalidFrame, UnsupportedVersion/Feature)  |
-| 1050–1099 | RPC      | Envelope/method faults (InvalidEnvelope, UnsupportedMethod, CorrelationMismatch)                |
-| 1100–1999 | Reserved | Future protocol extensions (allocated by ADR)                                                   |
-| 2000+     | App      | User-defined application errors                                                                 |
+| Range       | Owner    | Carrier     | Purpose                          |
+| ----------- | -------- | ----------- | -------------------------------- |
+| 1000–1099   | SBP      | ErrorFrame  | Frame/handshake/namespace faults |
+| 1100–1199   | RPC      | RpcError    | Envelope/method/routing faults   |
+| 1200–1999   | Reserved | —           | Future protocol extensions       |
+| 2000+       | App      | RpcError    | User-defined application errors  |
 
 Implementations MUST NOT define codes outside their owned range.
 
@@ -1982,6 +2832,30 @@ These are unrelated:
 
 SBP Ping/Pong are routable like Messages and encrypted by session layers for end-to-end liveness detection. SBRP Ping/Pong are unencrypted and connection-scoped.
 
+## Session Resumption
+
+Session resumption semantics differ by role:
+
+| Role   | Resumption Support | Behavior                                         |
+| ------ | ------------------ | ------------------------------------------------ |
+| Client | Not supported      | Reconnect requires full handshake (new token)    |
+| Daemon | SBRP only          | Resumable via `Signal(ready)` state machine      |
+
+Runtime core does not require resumable sessions. Specific session layers (e.g., SBRP) MAY define resumable session semantics. When using SBRP, the session implementation (via negotiator-provided channel or transport adapter) MUST implement the SBRP pause/pending/resume state machine; other session implementations MAY ignore resume entirely.
+
+## Registries
+
+Canonical sources of truth for protocol constants:
+
+| Registry         | Location                                       | Purpose                          |
+| ---------------- | ---------------------------------------------- | -------------------------------- |
+| Error codes      | [error-codes.md](./error-codes.md)             | All SBP/RPC error codes          |
+| Subject prefixes | [rpc/envelope.md](./rpc/envelope.md)           | Reserved subject namespaces      |
+| Capability names | [sbp/behavior.md](./sbp/behavior.md)           | Handshake capability strings     |
+| SBRP controls    | [sbrp/control-codes.md](./sbrp/control-codes.md) | Relay notification codes       |
+
+Specifications MUST reference registries; they MUST NOT define constants inline.
+
 ## v1 Invariants
 
 Properties guaranteed in v1 that implementations may rely on:
@@ -2011,7 +2885,9 @@ These are intentionally not addressed in v1:
 | [SBDP Specification](./sbdp/)                                 | Design only (future)   | P2P session layer principles           |
 | [RPC Specification](./rpc/)                                   | Normative (RPC layer)  | Envelope format, correlation           |
 | [ADR-002: Naming Matrix](../adr/002-naming-matrix.md)         | Canonical              | Type/field names across all layers     |
+| [ADR-009: Session Lifecycle](../adr/009-runtime-peer-lifecycle.md) | Canonical         | Negotiator interface, session states   |
 | [ADR-010: RPC Correlation](../adr/010-rpc-correlation-cid.md) | Canonical              | frameId vs cid semantics               |
+| [ADR-011: Message Routing](../adr/011-runtime-message-routing.md) | Canonical           | Router, handler dispatch               |
 
 **Authority hierarchy**: This document defines intended layering and dependencies. Conflicts indicate bugs; lower-level specs MUST be updated to comply. This document is updated only if the architecture itself changes.
 
@@ -2441,12 +3317,14 @@ Implementations SHOULD:
 
 * Set request timeout of 30 seconds by default
 * Allow per-method timeout configuration
-* Return `RpcError` with code 1053 (Timeout) on expiry
+* Return `RpcError` with code 1103 (Timeout) on expiry
 
 Implementations MUST:
 
 * Not assume responses arrive in request order
 * Handle responses after timeout gracefully (discard)
+
+**Key invariant**: Routers MUST NOT use SBP `ErrorFrame` to represent handler timeouts. Timeouts MUST be delivered as `RpcError` responses (code 1103).
 
 ## Retry Guidance
 
@@ -2481,6 +3359,24 @@ Multiple requests MAY be in flight simultaneously:
 ## Transport Semantics
 
 RpcError is request-scoped and MUST NOT trigger transport close.
+
+## Invalid Envelope Handling
+
+Error handling differs by subject prefix to prevent amplification attacks while preserving diagnostics.
+
+### For `rpc/*` Subjects
+
+* If envelope is invalid **but `cid` is extractable**: respond with `RpcError{code: 1100, cid, message}`
+* If envelope is invalid **and `cid` is not extractable**: emit `ErrorFrame{code: 1002}` and continue (non-fatal)
+* MUST NOT close connection for a single invalid envelope
+
+### For `event/*` Subjects
+
+* If envelope is invalid: MUST drop
+* MAY log (rate-limited to prevent log DoS)
+* MUST NOT emit `ErrorFrame` (prevents attacker-triggered error storms)
+
+Rationale: Events are fire-and-forget with no reply channel. Emitting `ErrorFrame` for malformed events would allow attackers to amplify traffic.
 
 ---
 
@@ -2596,19 +3492,19 @@ interface RpcNotification {
 
 ## Error Codes
 
-RPC defines error codes in the 1050–1099 range:
+RPC defines error codes in the 1100–1199 range:
 
 | Code | Name                | Semantics                                       |
 | ---- | ------------------- | ----------------------------------------------- |
-| 1050 | InvalidEnvelope     | Envelope structure or encoding error            |
-| 1051 | UnsupportedMethod   | Method not recognized by handler                |
-| 1052 | CorrelationMismatch | Response cid does not match any pending request |
-| 1053 | Timeout             | Request timed out waiting for response          |
-| 1054 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
+| 1100 | InvalidEnvelope     | Envelope structure or encoding error            |
+| 1101 | UnsupportedMethod   | Method not recognized by handler                |
+| 1102 | CorrelationMismatch | Response cid does not match any pending request |
+| 1103 | Timeout             | Request timed out waiting for response          |
+| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
 
 Application errors use range 2000+ (user-defined).
 
-See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
+See [Error Code Registry](../error-codes.md) for the canonical code definitions.
 
 ## Encoding
 
@@ -2804,6 +3700,31 @@ If the subject uses a recognized but unsupported prefix (e.g., `stream/` in v1):
 * Node/Bun WS: same as browser; server implementations SHOULD cap message size and enforce idle timeouts.
 * Memory/loopback: ordered, reliable; optional loss simulation MUST be documented by the implementation.
 
+## Ack Policy
+
+Ack frames confirm receipt, not processing. Runtime implementations follow these rules:
+
+**Default behavior**:
+
+* Runtimes MUST NOT generate Ack frames by default
+
+**Opt-in configuration** (`acks: "none" | "receipt"`):
+
+* `"none"` (default): No automatic Ack generation
+* `"receipt"`: Send Ack after frame validated and enqueued for delivery
+
+**Receipt mode semantics**:
+
+* Runtime MUST send Ack after validating frame structure and enqueuing for handler delivery
+* Runtime MUST NOT wait for handler completion (that's RPC semantics)
+* Ack confirms "I received and will attempt to process", not "I processed successfully"
+
+**Interaction with RPC**:
+
+* RPC does not require ACKs for correctness; RPC uses request/response for confirmation
+* Retries and timeouts are RPC-layer behaviors (code 1103), not Ack-derived
+* Applications requiring delivery guarantees should use RPC correlation
+
 ## State and idempotency
 
 * Requests/responses/events share the `Message` frame; correlation (`id`) is the only built-in state tracker.
@@ -2884,18 +3805,18 @@ Defines canonical error semantics for `@sideband/protocol`, independent of trans
 
 ## Error taxonomy
 
-SBP defines error codes in the 1000–1049 range:
+SBP defines error codes in the 1000–1099 range:
 
-| Code | Name               | Semantics                                        |
-| ---- | ------------------ | ------------------------------------------------ |
-| 1000 | ProtocolViolation  | Generic protocol contract violation              |
-| 1001 | UnsupportedVersion | Peer advertised incompatible version             |
-| 1002 | InvalidFrame       | Frame structure or encoding error                |
-| 1003 | UnsupportedFeature | Feature reserved or requires capability exchange |
+| Code | Name               | Fatality   | Semantics                                        |
+| ---- | ------------------ | ---------- | ------------------------------------------------ |
+| 1000 | ProtocolViolation  | Fatal      | Generic protocol contract violation              |
+| 1001 | UnsupportedVersion | Fatal      | Peer advertised incompatible version             |
+| 1002 | InvalidFrame       | Contextual | Frame structure or encoding error                |
+| 1003 | UnsupportedFeature | Non-fatal  | Feature reserved or requires capability exchange |
 
 Application errors use range 2000+. `ApplicationError` (2000) is a catch‑all; higher-level layers may define stable subcodes via metadata or payload.
 
-See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
+See [Error Code Registry](../error-codes.md) for the canonical code definitions and RPC-layer codes.
 
 ## Error frame shape (binary)
 

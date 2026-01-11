@@ -17,8 +17,9 @@ A drop-in SDK that lets browsers talk to local daemons reliably – no reconnect
 - [Sideband Relay Protocol (SBRP)](/protocols/sbrp.md)
 - [RPC Layer](/protocols/rpc.md)
 
-### Other
+### ADRs
 
+- [Architecture Decision Records](/adr.md)
 - [ADR 001: Protocol Versioning & Compatibility](/adr/001-protocol-versioning-and-compatibility.md)
 - [ADR 002: Naming Matrix for Protocol Types](/adr/002-naming-matrix.md)
 - [ADR 003: Control Frame Type Invariants](/adr/003-control-frame-invariants.md)
@@ -27,10 +28,16 @@ A drop-in SDK that lets browsers talk to local daemons reliably – no reconnect
 - [ADR 006: Canonical RPC Envelope over MessageFrame](/adr/006-rpc-envelope.md)
 - [ADR 007: Immutable Decoded Frame Types](/adr/007-immutable-frame-types.md)
 - [ADR 008: Enforce Reserved Subject Namespace at the Protocol Layer](/adr/008-subject-namespace-validation.md)
+- [ADR 009: Runtime Session Lifecycle](/adr/009-runtime-peer-lifecycle.md)
 - [ADR 010: Explicit RPC Correlation via `cid` in the Envelope](/adr/010-rpc-correlation-cid.md)
+- [ADR 011: Runtime Message Routing](/adr/011-runtime-message-routing.md)
+
+### Other
+
 - [ADR-NNN: \[Short Title]](/adr/000-template.md)
 - [Control Codes](/protocols/sbrp/control-codes.md)
 - [Cryptography and Wire Format](/protocols/sbrp/cryptography-and-wire.md)
+- [Error Code Registry](/protocols/error-codes.md)
 - [Package Architecture](/architecture/package-architecture.md)
 - [Project Structure](/architecture/project-structure.md)
 - [Protocol Architecture](/protocols/architecture.md)

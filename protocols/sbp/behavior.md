@@ -63,6 +63,31 @@ If the subject uses a recognized but unsupported prefix (e.g., `stream/` in v1):
 * Node/Bun WS: same as browser; server implementations SHOULD cap message size and enforce idle timeouts.
 * Memory/loopback: ordered, reliable; optional loss simulation MUST be documented by the implementation.
 
+## Ack Policy
+
+Ack frames confirm receipt, not processing. Runtime implementations follow these rules:
+
+**Default behavior**:
+
+* Runtimes MUST NOT generate Ack frames by default
+
+**Opt-in configuration** (`acks: "none" | "receipt"`):
+
+* `"none"` (default): No automatic Ack generation
+* `"receipt"`: Send Ack after frame validated and enqueued for delivery
+
+**Receipt mode semantics**:
+
+* Runtime MUST send Ack after validating frame structure and enqueuing for handler delivery
+* Runtime MUST NOT wait for handler completion (that's RPC semantics)
+* Ack confirms "I received and will attempt to process", not "I processed successfully"
+
+**Interaction with RPC**:
+
+* RPC does not require ACKs for correctness; RPC uses request/response for confirmation
+* Retries and timeouts are RPC-layer behaviors (code 1103), not Ack-derived
+* Applications requiring delivery guarantees should use RPC correlation
+
 ## State and idempotency
 
 * Requests/responses/events share the `Message` frame; correlation (`id`) is the only built-in state tracker.

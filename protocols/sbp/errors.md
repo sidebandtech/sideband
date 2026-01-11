@@ -10,18 +10,18 @@ Defines canonical error semantics for `@sideband/protocol`, independent of trans
 
 ## Error taxonomy
 
-SBP defines error codes in the 1000–1049 range:
+SBP defines error codes in the 1000–1099 range:
 
-| Code | Name               | Semantics                                        |
-| ---- | ------------------ | ------------------------------------------------ |
-| 1000 | ProtocolViolation  | Generic protocol contract violation              |
-| 1001 | UnsupportedVersion | Peer advertised incompatible version             |
-| 1002 | InvalidFrame       | Frame structure or encoding error                |
-| 1003 | UnsupportedFeature | Feature reserved or requires capability exchange |
+| Code | Name               | Fatality   | Semantics                                        |
+| ---- | ------------------ | ---------- | ------------------------------------------------ |
+| 1000 | ProtocolViolation  | Fatal      | Generic protocol contract violation              |
+| 1001 | UnsupportedVersion | Fatal      | Peer advertised incompatible version             |
+| 1002 | InvalidFrame       | Contextual | Frame structure or encoding error                |
+| 1003 | UnsupportedFeature | Non-fatal  | Feature reserved or requires capability exchange |
 
 Application errors use range 2000+. `ApplicationError` (2000) is a catch‑all; higher-level layers may define stable subcodes via metadata or payload.
 
-See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
+See [Error Code Registry](../error-codes.md) for the canonical code definitions and RPC-layer codes.
 
 ## Error frame shape (binary)
 

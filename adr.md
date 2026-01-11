@@ -1,0 +1,26 @@
+---
+url: /adr.md
+---
+# Architecture Decision Records
+
+This section documents significant architectural decisions for the Sideband project. Each ADR captures the context, decision, and consequences of a choice that affects the codebase.
+
+## Index
+
+| ADR                                                   | Title                                 | Status   |
+| ----------------------------------------------------- | ------------------------------------- | -------- |
+| [001](./001-protocol-versioning-and-compatibility.md) | Protocol Versioning and Compatibility | Accepted |
+| [002](./002-naming-matrix.md)                         | Naming Matrix for Protocol Types      | Accepted |
+| [003](./003-control-frame-invariants.md)              | Control Frame Invariants              | Accepted |
+| [004](./004-binary-frameid.md)                        | Binary FrameId                        | Accepted |
+| [005](./005-transport-abi.md)                         | Transport ABI                         | Accepted |
+| [006](./006-rpc-envelope.md)                          | RPC Envelope                          | Accepted |
+| [007](./007-immutable-frame-types.md)                 | Immutable Frame Types                 | Accepted |
+| [008](./008-subject-namespace-validation.md)          | Subject Namespace Validation          | Accepted |
+| [009](./009-runtime-peer-lifecycle.md)                | Runtime Peer Lifecycle                | Accepted |
+| [010](./010-rpc-correlation-cid.md)                   | RPC Correlation with CID              | Accepted |
+| [011](./011-runtime-message-routing.md)               | Runtime Message Routing               | Accepted |
+
+## Creating a new ADR
+
+Copy [000-template.md](./000-template.md) and follow the format. Number ADRs sequentially.

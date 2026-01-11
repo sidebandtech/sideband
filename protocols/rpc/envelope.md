@@ -65,19 +65,19 @@ interface RpcNotification {
 
 ## Error Codes
 
-RPC defines error codes in the 1050–1099 range:
+RPC defines error codes in the 1100–1199 range:
 
 | Code | Name                | Semantics                                       |
 | ---- | ------------------- | ----------------------------------------------- |
-| 1050 | InvalidEnvelope     | Envelope structure or encoding error            |
-| 1051 | UnsupportedMethod   | Method not recognized by handler                |
-| 1052 | CorrelationMismatch | Response cid does not match any pending request |
-| 1053 | Timeout             | Request timed out waiting for response          |
-| 1054 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
+| 1100 | InvalidEnvelope     | Envelope structure or encoding error            |
+| 1101 | UnsupportedMethod   | Method not recognized by handler                |
+| 1102 | CorrelationMismatch | Response cid does not match any pending request |
+| 1103 | Timeout             | Request timed out waiting for response          |
+| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
 
 Application errors use range 2000+ (user-defined).
 
-See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation table across layers.
+See [Error Code Registry](../error-codes.md) for the canonical code definitions.
 
 ## Encoding
 

@@ -139,16 +139,30 @@ Transports (`@sideband/transport-*`):
 * MUST NOT parse any layer above raw bytes
 * MUST NOT generate frames for any layer
 
+### Session Output Contract (Normative)
+
+A session protocol (e.g., SBRP, SBDP) MUST present the runtime with a channel that:
+
+1. Delivers complete, decrypted SBP frames on the inbound path
+2. Accepts outbound SBP frames for encryption and transmission
+
+This contract may be implemented:
+
+* **Via Negotiator**: The `Negotiator.negotiate()` method returns a `NegotiationResult` with an optional `channel` field. If provided, the runtime uses this wrapped connection for all subsequent frame I/O. The negotiator handles key exchange and returns a channel that transparently encrypts/decrypts.
+* **Via Transport Adapter**: A custom transport embeds session logic internally, exposing decrypted SBP frames directly. This approach is simpler but couples session and transport layers.
+
+The runtime MUST NOT depend on which implementation approach is used. Both satisfy the contract.
+
 ## Error Code Ownership
 
-Error codes form a global registry across protocol layers.
+See [Error Code Registry](./error-codes.md) for the canonical code definitions.
 
-| Range     | Owner    | Purpose                                                                                         |
-| --------- | -------- | ----------------------------------------------------------------------------------------------- |
-| 1000–1049 | SBP      | Frame/handshake/namespace faults (ProtocolViolation, InvalidFrame, UnsupportedVersion/Feature)  |
-| 1050–1099 | RPC      | Envelope/method faults (InvalidEnvelope, UnsupportedMethod, CorrelationMismatch)                |
-| 1100–1999 | Reserved | Future protocol extensions (allocated by ADR)                                                   |
-| 2000+     | App      | User-defined application errors                                                                 |
+| Range       | Owner    | Carrier     | Purpose                          |
+| ----------- | -------- | ----------- | -------------------------------- |
+| 1000–1099   | SBP      | ErrorFrame  | Frame/handshake/namespace faults |
+| 1100–1199   | RPC      | RpcError    | Envelope/method/routing faults   |
+| 1200–1999   | Reserved | —           | Future protocol extensions       |
+| 2000+       | App      | RpcError    | User-defined application errors  |
 
 Implementations MUST NOT define codes outside their owned range.
 
@@ -215,6 +229,30 @@ These are unrelated:
 
 SBP Ping/Pong are routable like Messages and encrypted by session layers for end-to-end liveness detection. SBRP Ping/Pong are unencrypted and connection-scoped.
 
+## Session Resumption
+
+Session resumption semantics differ by role:
+
+| Role   | Resumption Support | Behavior                                         |
+| ------ | ------------------ | ------------------------------------------------ |
+| Client | Not supported      | Reconnect requires full handshake (new token)    |
+| Daemon | SBRP only          | Resumable via `Signal(ready)` state machine      |
+
+Runtime core does not require resumable sessions. Specific session layers (e.g., SBRP) MAY define resumable session semantics. When using SBRP, the session implementation (via negotiator-provided channel or transport adapter) MUST implement the SBRP pause/pending/resume state machine; other session implementations MAY ignore resume entirely.
+
+## Registries
+
+Canonical sources of truth for protocol constants:
+
+| Registry         | Location                                       | Purpose                          |
+| ---------------- | ---------------------------------------------- | -------------------------------- |
+| Error codes      | [error-codes.md](./error-codes.md)             | All SBP/RPC error codes          |
+| Subject prefixes | [rpc/envelope.md](./rpc/envelope.md)           | Reserved subject namespaces      |
+| Capability names | [sbp/behavior.md](./sbp/behavior.md)           | Handshake capability strings     |
+| SBRP controls    | [sbrp/control-codes.md](./sbrp/control-codes.md) | Relay notification codes       |
+
+Specifications MUST reference registries; they MUST NOT define constants inline.
+
 ## v1 Invariants
 
 Properties guaranteed in v1 that implementations may rely on:
@@ -244,6 +282,8 @@ These are intentionally not addressed in v1:
 | [SBDP Specification](./sbdp/)                                 | Design only (future)   | P2P session layer principles           |
 | [RPC Specification](./rpc/)                                   | Normative (RPC layer)  | Envelope format, correlation           |
 | [ADR-002: Naming Matrix](../adr/002-naming-matrix.md)         | Canonical              | Type/field names across all layers     |
+| [ADR-009: Session Lifecycle](../adr/009-runtime-peer-lifecycle.md) | Canonical         | Negotiator interface, session states   |
 | [ADR-010: RPC Correlation](../adr/010-rpc-correlation-cid.md) | Canonical              | frameId vs cid semantics               |
+| [ADR-011: Message Routing](../adr/011-runtime-message-routing.md) | Canonical           | Router, handler dispatch               |
 
 **Authority hierarchy**: This document defines intended layering and dependencies. Conflicts indicate bugs; lower-level specs MUST be updated to comply. This document is updated only if the architecture itself changes.

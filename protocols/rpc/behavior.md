@@ -28,12 +28,14 @@ Implementations SHOULD:
 
 * Set request timeout of 30 seconds by default
 * Allow per-method timeout configuration
-* Return `RpcError` with code 1053 (Timeout) on expiry
+* Return `RpcError` with code 1103 (Timeout) on expiry
 
 Implementations MUST:
 
 * Not assume responses arrive in request order
 * Handle responses after timeout gracefully (discard)
+
+**Key invariant**: Routers MUST NOT use SBP `ErrorFrame` to represent handler timeouts. Timeouts MUST be delivered as `RpcError` responses (code 1103).
 
 ## Retry Guidance
 
@@ -68,3 +70,21 @@ Multiple requests MAY be in flight simultaneously:
 ## Transport Semantics
 
 RpcError is request-scoped and MUST NOT trigger transport close.
+
+## Invalid Envelope Handling
+
+Error handling differs by subject prefix to prevent amplification attacks while preserving diagnostics.
+
+### For `rpc/*` Subjects
+
+* If envelope is invalid **but `cid` is extractable**: respond with `RpcError{code: 1100, cid, message}`
+* If envelope is invalid **and `cid` is not extractable**: emit `ErrorFrame{code: 1002}` and continue (non-fatal)
+* MUST NOT close connection for a single invalid envelope
+
+### For `event/*` Subjects
+
+* If envelope is invalid: MUST drop
+* MAY log (rate-limited to prevent log DoS)
+* MUST NOT emit `ErrorFrame` (prevents attacker-triggered error storms)
+
+Rationale: Events are fire-and-forget with no reply channel. Emitting `ErrorFrame` for malformed events would allow attackers to amplify traffic.
