@@ -1,7 +1,10 @@
 # RPC Envelope Specification
 
+> **Authority**: Primary (Normative)  
+> **Purpose**: Defines envelope structure, subject namespacing, and validation rules for RPC.
+
 **Date**: 2025-11-23
-**References**: ADR-010 (correlation), ADR-006, ADR-002
+**References**: [Protocol Architecture](../architecture.md), ADR-010, ADR-006, ADR-002
 
 ## Overview
 
@@ -9,18 +12,22 @@ The RPC envelope is a canonical structure carried inside `MessageFrame.data`. It
 
 Encoded as JSON (v1) or CBOR (v2+).
 
-## Subject Namespace
+## Subject Namespacing
 
-All `MessageFrame.subject` values must match one of these reserved prefixes (validated at runtime):
+RPC envelope semantics apply to `rpc/` and `event/` namespaces. The `MessageFrame.subject` prefix determines which envelope types are valid.
 
-| Prefix    | Purpose                       | Example                  |
-| --------- | ----------------------------- | ------------------------ |
-| `rpc/`    | RPC request/response          | `rpc/getUser`            |
-| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      |
-| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    |
-| `app/`    | Vendor-specific               | `app/com.example/mydata` |
+| Subject Prefix | Allowed `t`         | Semantics                                  |
+| -------------- | ------------------- | ------------------------------------------ |
+| `rpc/`         | `"r"`, `"R"`, `"E"` | Bidirectional request/response             |
+| `event/`       | `"N"`               | Fire-and-forget notification               |
+| `stream/`      | —                   | Reserved (v2); reject per SBP              |
+| `app/`         | —                   | Vendor-defined; not parsed as RPC envelope |
 
-Subjects: 1–256 UTF-8 characters, no null bytes.
+Receivers MUST validate envelope `t` against subject prefix for `rpc/` and `event/` subjects. Mismatched envelopes MUST be dropped; receivers SHOULD log. This is non-fatal; continue processing subsequent frames.
+
+Rationale: There is no valid subject to reply on. The sender receives a timeout, which signals failure; the receiver log provides diagnostics.
+
+See [SBP Behavior](../sbp/behavior.md#subject-namespace) for subject format validation.
 
 ## Envelope Structure
 
@@ -53,10 +60,21 @@ interface RpcNotification {
 }
 ```
 
-Error code ranges:
+## Error Codes
 
-- `1000–1999`: Protocol errors (framework reserved)
-- `2000+`: Application errors (user-defined)
+RPC defines error codes in the 1100–1199 range:
+
+| Code | Name                | Semantics                                       |
+| ---- | ------------------- | ----------------------------------------------- |
+| 1100 | InvalidEnvelope     | Envelope structure or encoding error            |
+| 1101 | UnsupportedMethod   | Method not recognized by handler                |
+| 1102 | CorrelationMismatch | Response cid does not match any pending request |
+| 1103 | Timeout             | Request timed out waiting for response          |
+| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
+
+Application errors use range 2000+ (user-defined).
+
+See [Error Code Registry](../error-codes.md) for the canonical code definitions.
 
 ## Encoding
 
@@ -78,9 +96,9 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 
 ## Validation Rules
 
-- **Subject**: Reserved prefix (`rpc/`, `event/`, `stream/`, `app/`), 1–256 UTF-8, no nulls
+- **Subject**: Must match allowed `t` per [Subject Namespacing](#subject-namespacing)
 - **Request**: `t: "r"`, `m` and `cid` required
 - **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
-- **Notification**: `t: "N"`, `e` required
+- **Notification**: `t: "N"`, `e` required; uses `event/` subjects
 
-Invalid envelopes raise `ProtocolViolation`.
+Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).

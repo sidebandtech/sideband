@@ -86,6 +86,43 @@ Identity keys use trust-on-first-use (TOFU) pinning:
 - Never accept key changes silently — `identity_key_changed` indicates potential MITM
 - On mismatch, present both fingerprints and require explicit user approval
 
+### Detecting Identity Key Changes
+
+Compare the daemon's current identity key against your stored pin before handshake:
+
+```ts
+import {
+  processHandshakeAccept,
+  computeFingerprint,
+  SbrpError,
+  SbrpErrorCode,
+} from "@sideband/secure-relay";
+
+// Load pinned key from storage (null on first connection)
+const pinnedKey = await storage.get(`tofu:${daemonId}`);
+
+if (pinnedKey && !equalBytes(pinnedKey, currentIdentityKey)) {
+  // Key changed — potential MITM attack
+  throw new SbrpError(
+    SbrpErrorCode.IdentityKeyChanged,
+    `Identity key changed for ${daemonId}. ` +
+      `Expected: ${computeFingerprint(pinnedKey)}, ` +
+      `Got: ${computeFingerprint(currentIdentityKey)}`,
+  );
+}
+
+// First connection: pin the key after successful handshake
+const result = processHandshakeAccept(
+  accept,
+  daemonId,
+  currentIdentityKey,
+  ephemeralKeyPair,
+);
+if (!pinnedKey) {
+  await storage.set(`tofu:${daemonId}`, currentIdentityKey);
+}
+```
+
 ## Error Handling
 
 All errors throw `SbrpError` with a specific `code`:

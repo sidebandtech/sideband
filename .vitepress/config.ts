@@ -3,9 +3,7 @@ import path from "node:path";
 import { codeToHtml } from "shiki";
 import type { Plugin } from "vite";
 import { defineConfig } from "vitepress";
-import llmstxt, {
-  copyOrDownloadAsMarkdownButtons,
-} from "vitepress-plugin-llms";
+import llmstxt from "vitepress-plugin-llms";
 
 async function highlightCode(code: string, lang = "ts") {
   return codeToHtml(code, {
@@ -70,12 +68,6 @@ export default defineConfig({
     ["meta", { name: "twitter:site", content: "@sidebandtech" }],
   ],
 
-  markdown: {
-    config(md) {
-      md.use(copyOrDownloadAsMarkdownButtons);
-    },
-  },
-
   themeConfig: {
     nav: [
       { text: "Guide", link: "/guide/" },
@@ -95,6 +87,45 @@ export default defineConfig({
           { text: "SBP", link: "/protocols/sbp/" },
           { text: "SBRP", link: "/protocols/sbrp/" },
           { text: "RPC", link: "/protocols/rpc/" },
+        ],
+      },
+      {
+        text: "ADRs",
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/adr/" },
+          {
+            text: "001: Versioning",
+            link: "/adr/001-protocol-versioning-and-compatibility",
+          },
+          { text: "002: Naming Matrix", link: "/adr/002-naming-matrix" },
+          {
+            text: "003: Control Frame Invariants",
+            link: "/adr/003-control-frame-invariants",
+          },
+          { text: "004: Binary FrameId", link: "/adr/004-binary-frameid" },
+          { text: "005: Transport ABI", link: "/adr/005-transport-abi" },
+          { text: "006: RPC Envelope", link: "/adr/006-rpc-envelope" },
+          {
+            text: "007: Immutable Frame Types",
+            link: "/adr/007-immutable-frame-types",
+          },
+          {
+            text: "008: Subject Validation",
+            link: "/adr/008-subject-namespace-validation",
+          },
+          {
+            text: "009: Peer Lifecycle",
+            link: "/adr/009-runtime-peer-lifecycle",
+          },
+          {
+            text: "010: RPC Correlation",
+            link: "/adr/010-rpc-correlation-cid",
+          },
+          {
+            text: "011: Message Routing",
+            link: "/adr/011-runtime-message-routing",
+          },
         ],
       },
     ],

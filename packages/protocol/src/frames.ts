@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { ControlOp, ErrorCode, FrameKind } from "./constants.js";
+import { ControlOp, FrameKind } from "./constants.js";
 import type { FrameId, Subject } from "./types.js";
 import { asSubject, generateFrameId } from "./types.js";
 
@@ -100,10 +100,12 @@ export interface AckFrame extends BaseFrame {
 
 /**
  * Error frame for protocol and application errors.
+ * code is a number to allow each layer (SBP, RPC, app) to use its own enum;
+ * see architecture.md#error-code-ownership for range allocations.
  */
 export interface ErrorFrame extends BaseFrame {
   readonly kind: FrameKind.Error;
-  readonly code: ErrorCode;
+  readonly code: number;
   readonly message: string;
   readonly details?: Readonly<Uint8Array>; // optional binary error details (e.g. JSON metadata)
 }
@@ -200,6 +202,40 @@ export function createCloseFrame(
     frameId: opts?.frameId ?? generateFrameId(),
     timestamp: opts?.timestamp,
     data: reason,
+  };
+}
+
+/**
+ * Options for creating error frames.
+ * frameId is auto-generated if not provided.
+ */
+export interface ErrorFrameOptions {
+  frameId?: FrameId;
+  timestamp?: number; // optional: milliseconds since Unix epoch
+}
+
+/**
+ * Create an Error frame.
+ * Carries facts only; receiver applies fatality policy per sbp/errors.md.
+ *
+ * @param code - Error code (see architecture.md#error-code-ownership for ranges)
+ * @param message - Human-readable error message
+ * @param details - Optional binary details (e.g., JSON metadata)
+ * @param opts - Optional frame configuration (frameId auto-generated if omitted)
+ */
+export function createErrorFrame(
+  code: number,
+  message: string,
+  details?: Uint8Array,
+  opts?: ErrorFrameOptions,
+): Readonly<ErrorFrame> {
+  return {
+    kind: FrameKind.Error,
+    frameId: opts?.frameId ?? generateFrameId(),
+    timestamp: opts?.timestamp,
+    code,
+    message,
+    details,
   };
 }
 

@@ -1,11 +1,24 @@
 # SBP Error Model (v1)
 
+> **Authority**: Primary (Normative)  
+> **Purpose**: Error taxonomy, codes, sender/receiver contracts, and retryability for SBP.
+
 Defines canonical error semantics for `@sideband/protocol`, independent of transport. Error frames are part of the public contract; transports MAY also surface transport-native errors (e.g. WebSocket close codes) but must map protocol failures to `ErrorFrame`.
 
 ## Error taxonomy
 
-- Protocol errors (1000–1999): `ProtocolViolation`, `UnsupportedVersion`, `InvalidFrame`.
-- Application errors (2000+): `ApplicationError` (catch‑all; higher-level layers may define stable subcodes via metadata or payload).
+SBP defines error codes in the 1000–1099 range:
+
+| Code | Name               | Fatality   | Semantics                                        |
+| ---- | ------------------ | ---------- | ------------------------------------------------ |
+| 1000 | ProtocolViolation  | Fatal      | Generic protocol contract violation              |
+| 1001 | UnsupportedVersion | Fatal      | Peer advertised incompatible version             |
+| 1002 | InvalidFrame       | Contextual | Frame structure or encoding error                |
+| 1003 | UnsupportedFeature | Non-fatal  | Feature reserved or requires capability exchange |
+
+Application errors use range 2000+. `ApplicationError` (2000) is a catch‑all; higher-level layers may define stable subcodes via metadata or payload.
+
+See [Error Code Registry](../error-codes.md) for the canonical code definitions and RPC-layer codes.
 
 ## Error frame shape (binary)
 
@@ -25,6 +38,7 @@ Defines canonical error semantics for `@sideband/protocol`, independent of trans
 
 - Treat `ProtocolViolation` and `UnsupportedVersion` as fatal; close the transport after emitting diagnostics.
 - `InvalidFrame` MAY be fatal or MAY trigger best-effort recovery if the frame boundary is intact; if recovery is unsafe, close.
+- `UnsupportedFeature` is non-fatal; continue processing subsequent frames. The feature is valid but unavailable in this version or capability set.
 - `ApplicationError` is non-fatal to the transport; the caller decides whether to retry.
 - If `id` is present, route the error to the correlated request/stream; otherwise emit as connection-level fault.
 

@@ -384,7 +384,7 @@ function decodeFramePayload(
         );
       }
       const view = new DataView(payload.buffer, payload.byteOffset);
-      const code = view.getUint16(0, true) as ErrorCode;
+      const code = view.getUint16(0, true);
       const msgLen = view.getUint32(2, true);
       if (payload.length < 6 + msgLen) {
         throw new ProtocolError(

@@ -36,13 +36,12 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@sideband/protocol": "workspace:^"
-  },
-  "devDependencies": {
+    "@sideband/protocol": "workspace:^",
     "@sideband/rpc": "workspace:^"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "publishConfig": {
     "access": "public"

@@ -42,7 +42,8 @@
     "@sideband/transport": "workspace:^"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "publishConfig": {
     "access": "public"

@@ -13,6 +13,8 @@ bun add @sideband/protocol
 ```ts
 import {
   FrameKind,
+  PROTOCOL_NAME,
+  PROTOCOL_VERSION,
   createHandshakeFrame,
   createMessageFrame,
   encodeFrame,
@@ -25,6 +27,8 @@ import {
 // Build a handshake frame
 const handshake = createHandshakeFrame(
   encodeHandshake({
+    protocol: PROTOCOL_NAME,
+    version: PROTOCOL_VERSION,
     peerId: asPeerId("peer-123"),
     caps: ["rpc"],
   }),

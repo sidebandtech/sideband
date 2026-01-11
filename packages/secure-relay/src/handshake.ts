@@ -65,6 +65,9 @@ export function createHandshakeInit(): {
  * 1. Generate ephemeral X25519 keypair
  * 2. Sign ephemeral public key with identity key (context-bound)
  * 3. Derive session keys
+ *
+ * NOTE: Callers MUST enforce a 30-second handshake timeout per SBRP §1.4.
+ * This function does not track time; timeout enforcement is a transport concern.
  */
 export function processHandshakeInit(
   init: HandshakeInit,
@@ -116,6 +119,9 @@ export function processHandshakeInit(
  *
  * 1. Verify signature using PINNED identity key (TOFU)
  * 2. Derive session keys using same transcript hash as daemon
+ *
+ * NOTE: Callers MUST enforce a 30-second handshake timeout per SBRP §1.4.
+ * This function does not track time; timeout enforcement is a transport concern.
  *
  * @throws {SbrpError} with code HandshakeFailed if signature verification fails
  */
