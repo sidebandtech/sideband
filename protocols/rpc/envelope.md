@@ -3,8 +3,11 @@ url: /protocols/rpc/envelope.md
 ---
 # RPC Envelope Specification
 
+> **Authority**: Primary (Normative)\
+> **Purpose**: Defines envelope structure, subject namespacing, and validation rules for RPC.
+
 **Date**: 2025-11-23
-**References**: ADR-010 (correlation), ADR-006, ADR-002
+**References**: [Protocol Architecture](../architecture.md), ADR-010, ADR-006, ADR-002
 
 ## Overview
 

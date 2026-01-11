@@ -3,6 +3,9 @@ url: /protocols/sbp/behavior.md
 ---
 # SBP Behavior & Ordering (v1)
 
+> **Authority**: Primary (Normative)\
+> **Purpose**: Runtime semantics, ordering guarantees, and delivery expectations for SBP.
+
 Semantic guarantees and expectations that sit above the raw frame format. Applies across transports; transport-specific notes call out deviations.
 
 ## Lifecycle

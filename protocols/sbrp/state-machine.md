@@ -3,6 +3,9 @@ url: /protocols/sbrp/state-machine.md
 ---
 # Sideband Relay Protocol State Machine
 
+> **Authority**: Primary (Normative)\
+> **Purpose**: State transitions, lifecycle semantics, and control code behavioral definitions.
+
 Concise state models for Client, Daemon, and Relay sessions. Intended to complement the [main SBRP spec](./index.md) with implementer-facing control flow.
 
 ## Notation
@@ -11,6 +14,30 @@ Concise state models for Client, Daemon, and Relay sessions. Intended to complem
 * Transitions list the next state and key requirements.
 * Error transitions terminate the session unless otherwise noted.
 * Control codes reference §14 of the main spec.
+
+## Control Code Quick Reference
+
+> **Note**: This table is a non-authoritative snapshot for quick reference. For canonical code values, see [control-codes.md](./control-codes.md).
+
+|   Code | Name               | T/N | SID | Meaning                |
+| -----: | ------------------ | --- | --- | ---------------------- |
+| 0x0101 | unauthorized       | T   | 0   | Invalid/expired token  |
+| 0x0102 | forbidden          | T   | 0   | Access denied          |
+| 0x0201 | daemon\_not\_found   | T   | S   | Unknown daemon ID      |
+| 0x0202 | daemon\_offline     | N   | S   | Daemon not connected   |
+| 0x0301 | session\_not\_found  | T   | S   | Unknown session ID     |
+| 0x0302 | session\_expired    | T   | S   | Session terminated     |
+| 0x0401 | malformed\_frame    | T   | 0   | Invalid header         |
+| 0x0402 | payload\_too\_large  | T   | 0   | Exceeds 64KB           |
+| 0x0403 | invalid\_frame\_type | T   | 0   | Unknown type byte      |
+| 0x0404 | invalid\_session\_id | T   | 0   | SessionID invalid      |
+| 0x0405 | disallowed\_sender  | T   | S   | Wrong direction        |
+| 0x0601 | internal\_error     | T   | 0   | Relay internal failure |
+| 0x0901 | rate\_limited       | N   | 0   | Too many requests      |
+| 0x1001 | session\_paused     | N   | S   | Daemon disconnected    |
+| 0x1002 | session\_resumed    | N   | S   | Daemon ready           |
+| 0x1003 | session\_ended      | N   | S   | Client disconnected    |
+| 0x1004 | session\_pending    | N   | S   | Awaiting daemon ready  |
 
 ## Client (UI)
 
