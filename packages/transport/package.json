@@ -34,6 +34,11 @@
       "bun": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "bun": "./src/errors.ts",
+      "default": "./dist/errors.js"
+    },
     "./package.json": "./package.json"
   },
   "dependencies": {

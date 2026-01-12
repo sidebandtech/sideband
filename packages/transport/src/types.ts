@@ -8,8 +8,10 @@
  */
 
 import type { ConnectionId } from "@sideband/protocol";
+import type { CloseInfo } from "./errors.js";
 
 export type { ConnectionId };
+export type { CloseInfo } from "./errors.js";
 export { asConnectionId } from "@sideband/protocol";
 
 /**
@@ -26,6 +28,22 @@ export function asTransportEndpoint(value: string): TransportEndpoint {
 }
 
 /**
+ * Connection lifecycle state.
+ * See docs/protocols/transport/abi.md for state transition rules.
+ */
+export type ConnectionState = "connecting" | "open" | "closing" | "closed";
+
+/**
+ * Options for closing a connection.
+ */
+export interface CloseOptions {
+  /** WebSocket close code (1000-4999). Default: 1000. */
+  code?: number;
+  /** Human-readable reason. */
+  reason?: string;
+}
+
+/**
  * Options for establishing a connection.
  */
 export interface ConnectOptions {
@@ -33,6 +51,11 @@ export interface ConnectOptions {
    * Connection timeout in milliseconds. Default: no timeout.
    */
   timeoutMs?: number;
+
+  /**
+   * Signal to abort the connection attempt.
+   */
+  signal?: AbortSignal;
 
   /**
    * Additional transport-specific options.
@@ -67,6 +90,28 @@ export interface TransportConnection {
   readonly endpoint: TransportEndpoint;
 
   /**
+   * Current connection state.
+   * See docs/protocols/transport/abi.md for state transition rules.
+   */
+  readonly state: ConnectionState;
+
+  /**
+   * Promise that resolves when the connection closes.
+   * MUST resolve (not reject) regardless of close reason.
+   */
+  readonly closed: Promise<CloseInfo>;
+
+  /**
+   * Negotiated subprotocol, if applicable.
+   */
+  readonly protocol?: string;
+
+  /**
+   * Bytes queued for sending. Undefined if transport doesn't expose this.
+   */
+  readonly bufferedAmount?: number;
+
+  /**
    * Send raw bytes over this connection.
    * Throws if connection is closed or send fails.
    */
@@ -74,9 +119,9 @@ export interface TransportConnection {
 
   /**
    * Close this connection gracefully.
-   * @param reason Optional reason for closure
+   * Multiple calls are safe; subsequent calls resolve when the first completes.
    */
-  close(reason?: string): Promise<void>;
+  close(options?: CloseOptions): Promise<void>;
 
   /**
    * Stream of inbound data.
@@ -98,9 +143,9 @@ export type ConnectionHandler = (
  */
 export interface TransportListener {
   /**
-   * The endpoint this listener is listening on.
+   * The actual address this listener is bound to.
    */
-  readonly endpoint: TransportEndpoint;
+  readonly address: TransportEndpoint;
 
   /**
    * Close the listener and stop accepting connections.

@@ -20,12 +20,18 @@ export type {
   TransportConnection,
   TransportListener,
   TransportEndpoint,
+  ConnectionState,
   ConnectOptions,
+  CloseOptions,
   ListenOptions,
   ConnectionHandler,
+  CloseInfo,
 } from "./types.js";
 
 export { asTransportEndpoint } from "./types.js";
+
+export { TransportError, isRetryable, kindFromCloseCode } from "./errors.js";
+export type { TransportErrorKind } from "./errors.js";
 
 // Example / reference implementation
 export { MemoryTransport } from "./memory.js";

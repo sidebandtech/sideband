@@ -33,3 +33,30 @@ Created `@sideband/transport` as a dedicated, transport-agnostic ABI layer:
 - **Testability**: MemoryTransport reference implementation serves as both documentation and test harness
 - **Async iterables**: Inbound stream via `AsyncIterable<Uint8Array>` enables backpressure, composition, and natural error handling
 - **Stateless types**: `TransportEndpoint` and `ConnectionId` are transport-agnostic, avoiding implicit coupling
+
+## Specification Documents
+
+Normative behavioral semantics are defined in the transport specification:
+
+- `docs/protocols/transport/abi.md` — Extended connection lifecycle and semantics
+- `docs/protocols/transport/errors.md` — Error taxonomy and classification
+- `docs/protocols/transport/websocket.md` — WebSocket-specific rules
+- `docs/protocols/transport/conformance.md` — Conformance test matrix
+
+## Key Types
+
+The specification documents extend the core interfaces with additional types:
+
+- **ConnectionState** — Finite state machine: `connecting`, `open`, `closing`, `closed`
+- **TransportError** — Structured error with `kind: TransportErrorKind` for classification
+- **TransportErrorKind** — Error classification (see `transport/errors.md` for full taxonomy)
+- **CloseInfo** — Details about connection closure: `wasClean`, `code`, `reason`, `error`
+- **CloseOptions** — Options for graceful shutdown: `code`, `reason`
+- **ConnectOptions** — Connection options: `timeoutMs`, `signal` (transport-specific specs may extend)
+
+## Consequences
+
+- This ADR establishes the interface contract and architectural boundaries
+- The specification documents provide normative behavioral semantics that implementations must follow
+- Conformance tests validate that concrete transports adhere to both the ABI and behavioral specs
+- Updates to connection lifecycle or error handling require spec changes, not ADR amendments

@@ -16,6 +16,34 @@ This document is the single source of truth for error codes. Specifications MUST
 
 Implementations MUST NOT define codes outside their owned range.
 
+## Transport Errors (Local)
+
+Transport errors are **local-only** and are **NOT** wire protocol errors. They describe why a local transport operation failed (connection refused, DNS failure, TLS error, timeout, etc.) and are never sent on the wire or carried in `ErrorFrame` or `RpcError`.
+
+For the full transport error taxonomy, see [transport/errors.md](./transport/errors.md).
+
+**TransportErrorKind values** (reference):
+
+| Kind                    | Retryable | Description                            |
+| ----------------------- | --------- | -------------------------------------- |
+| `connection_refused`    | Yes       | Server not accepting connections       |
+| `dns_failure`           | Yes       | DNS resolution failed                  |
+| `tls_failure`           | No        | TLS/SSL handshake or certificate error |
+| `timeout`               | Yes       | Connection or operation timed out      |
+| `network_offline`       | Yes       | Network unavailable                    |
+| `abnormal_close`        | Yes       | Connection dropped unexpectedly        |
+| `message_too_large`     | No        | Message exceeds size limit             |
+| `policy_violation`      | No        | CSP, CORS, or browser security policy  |
+| `authentication_failed` | No        | Relay-level auth (NOT E2EE auth)       |
+| `aborted`               | No        | Explicit AbortSignal cancellation      |
+| `protocol_mismatch`     | No        | Subprotocol negotiation failed         |
+| `transport_failure`     | Yes       | Catch-all for unmapped errors          |
+
+> **Scope distinction**:
+>
+> - **Wire protocol errors** (this document): Sent between peers, carried in `ErrorFrame` or `RpcError`
+> - **Transport errors** ([transport/errors.md](./transport/errors.md)): Local-only, describe transport layer failures, surfaced via `TransportError` class
+
 ## SBP Codes (1000–1099)
 
 Carried in `ErrorFrame.code`. These are protocol-level errors.
