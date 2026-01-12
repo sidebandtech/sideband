@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { TransportListener } from "./index.js";
 import {
-  MemoryTransport,
-  asTransportEndpoint,
+  LoopbackTransport,
   TransportError,
   isRetryable,
-  kindFromCloseCode,
+  unsafeAsTransportEndpoint,
 } from "./index.js";
-import type { TransportListener } from "./index.js";
 
-describe("MemoryTransport", () => {
-  let transport: MemoryTransport;
+describe("LoopbackTransport", () => {
+  let transport: LoopbackTransport;
   let listener: TransportListener | undefined;
 
   beforeEach(() => {
-    transport = new MemoryTransport();
+    transport = new LoopbackTransport();
   });
 
   afterEach(async () => {
@@ -27,7 +26,7 @@ describe("MemoryTransport", () => {
 
   describe("Lifecycle", () => {
     it("connect returns valid connection", async () => {
-      const endpoint = asTransportEndpoint("memory://test");
+      const endpoint = unsafeAsTransportEndpoint("loopback://test");
       listener = await transport.listen(endpoint, async () => {});
 
       const conn = await transport.connect(endpoint);
@@ -44,7 +43,7 @@ describe("MemoryTransport", () => {
     });
 
     it("connect rejects invalid endpoint with TransportError", async () => {
-      const endpoint = asTransportEndpoint("memory://nonexistent");
+      const endpoint = unsafeAsTransportEndpoint("loopback://nonexistent");
 
       try {
         await transport.connect(endpoint);
@@ -56,7 +55,7 @@ describe("MemoryTransport", () => {
     });
 
     it("state transitions correctly", async () => {
-      const endpoint = asTransportEndpoint("memory://state");
+      const endpoint = unsafeAsTransportEndpoint("loopback://state");
       listener = await transport.listen(endpoint, async () => {});
 
       const conn = await transport.connect(endpoint);
@@ -67,7 +66,7 @@ describe("MemoryTransport", () => {
     });
 
     it("listen returns listener with address", async () => {
-      const endpoint = asTransportEndpoint("memory://listen-test");
+      const endpoint = unsafeAsTransportEndpoint("loopback://listen-test");
       listener = await transport.listen(endpoint, async () => {});
 
       expect(listener.address).toBe(endpoint);
@@ -75,7 +74,7 @@ describe("MemoryTransport", () => {
     });
 
     it("close is idempotent", async () => {
-      const endpoint = asTransportEndpoint("memory://idempotent");
+      const endpoint = unsafeAsTransportEndpoint("loopback://idempotent");
       listener = await transport.listen(endpoint, async () => {});
 
       const conn = await transport.connect(endpoint);
@@ -89,24 +88,24 @@ describe("MemoryTransport", () => {
     });
 
     it("closed promise resolves with CloseInfo", async () => {
-      const endpoint = asTransportEndpoint("memory://closed-promise");
+      const endpoint = unsafeAsTransportEndpoint("loopback://closed-promise");
       listener = await transport.listen(endpoint, async () => {});
 
       const conn = await transport.connect(endpoint);
       const closePromise = conn.closed;
 
-      await conn.close({ code: 1001, reason: "test reason" });
+      await conn.close({ closeCode: 1001, reason: "test reason" });
 
       const closeInfo = await closePromise;
-      expect(closeInfo.wasClean).toBe(true);
-      expect(closeInfo.code).toBe(1001);
+      expect(closeInfo.graceful).toBe(true);
+      expect(closeInfo.closeCode).toBe(1001);
       expect(closeInfo.reason).toBe("test reason");
     });
   });
 
   describe("Data Transfer", () => {
     it("send delivers bytes intact", async () => {
-      const endpoint = asTransportEndpoint("memory://send");
+      const endpoint = unsafeAsTransportEndpoint("loopback://send");
       const received: Uint8Array[] = [];
 
       listener = await transport.listen(endpoint, async (conn) => {
@@ -126,7 +125,7 @@ describe("MemoryTransport", () => {
     });
 
     it("order is preserved for sequential sends", async () => {
-      const endpoint = asTransportEndpoint("memory://order");
+      const endpoint = unsafeAsTransportEndpoint("loopback://order");
       const received: Uint8Array[] = [];
 
       listener = await transport.listen(endpoint, async (conn) => {
@@ -150,7 +149,7 @@ describe("MemoryTransport", () => {
     });
 
     it("large messages (64 KB)", async () => {
-      const endpoint = asTransportEndpoint("memory://large");
+      const endpoint = unsafeAsTransportEndpoint("loopback://large");
       let receivedData: Uint8Array | undefined;
 
       listener = await transport.listen(endpoint, async (conn) => {
@@ -177,7 +176,7 @@ describe("MemoryTransport", () => {
     });
 
     it("max message size boundary (1 MiB)", async () => {
-      const endpoint = asTransportEndpoint("memory://max-size");
+      const endpoint = unsafeAsTransportEndpoint("loopback://max-size");
       listener = await transport.listen(endpoint, async () => {});
 
       const client = await transport.connect(endpoint);
@@ -200,7 +199,7 @@ describe("MemoryTransport", () => {
     });
 
     it("buffered messages delivered post-close", async () => {
-      const endpoint = asTransportEndpoint("memory://buffered");
+      const endpoint = unsafeAsTransportEndpoint("loopback://buffered");
       const received: Uint8Array[] = [];
 
       let serverConn: Awaited<ReturnType<typeof transport.connect>> | undefined;
@@ -227,7 +226,7 @@ describe("MemoryTransport", () => {
 
   describe("Error Handling", () => {
     it("send after close rejects with TransportError", async () => {
-      const endpoint = asTransportEndpoint("memory://send-closed");
+      const endpoint = unsafeAsTransportEndpoint("loopback://send-closed");
       listener = await transport.listen(endpoint, async () => {});
 
       const conn = await transport.connect(endpoint);
@@ -243,7 +242,7 @@ describe("MemoryTransport", () => {
     });
 
     it("inbound completes after graceful close", async () => {
-      const endpoint = asTransportEndpoint("memory://inbound-close");
+      const endpoint = unsafeAsTransportEndpoint("loopback://inbound-close");
       let iteratorCompleted = false;
 
       listener = await transport.listen(endpoint, async (conn) => {
@@ -261,7 +260,7 @@ describe("MemoryTransport", () => {
     });
 
     it("handler throw does not crash server", async () => {
-      const endpoint = asTransportEndpoint("memory://handler-throw");
+      const endpoint = unsafeAsTransportEndpoint("loopback://handler-throw");
       let callCount = 0;
 
       listener = await transport.listen(endpoint, async () => {
@@ -286,7 +285,7 @@ describe("MemoryTransport", () => {
     });
 
     it("reject duplicate listen on same endpoint", async () => {
-      const endpoint = asTransportEndpoint("memory://duplicate");
+      const endpoint = unsafeAsTransportEndpoint("loopback://duplicate");
       listener = await transport.listen(endpoint, async () => {});
 
       await expect(
@@ -295,7 +294,7 @@ describe("MemoryTransport", () => {
     });
 
     it("connect rejects with aborted signal", async () => {
-      const endpoint = asTransportEndpoint("memory://abort");
+      const endpoint = unsafeAsTransportEndpoint("loopback://abort");
       listener = await transport.listen(endpoint, async () => {});
 
       const controller = new AbortController();
@@ -311,7 +310,7 @@ describe("MemoryTransport", () => {
     });
 
     it("abnormal close propagates to peer", async () => {
-      const endpoint = asTransportEndpoint("memory://abnormal");
+      const endpoint = unsafeAsTransportEndpoint("loopback://abnormal");
       let serverConn: Awaited<ReturnType<typeof transport.connect>> | undefined;
       let serverIteratorError: Error | undefined;
 
@@ -342,9 +341,9 @@ describe("MemoryTransport", () => {
 
       // Server should see abnormal close
       const serverCloseInfo = await serverConn!.closed;
-      expect(serverCloseInfo.wasClean).toBe(false);
+      expect(serverCloseInfo.graceful).toBe(false);
       expect(serverCloseInfo.error).toBeDefined();
-      expect(serverCloseInfo.code).toBe(1006);
+      expect(serverCloseInfo.closeCode).toBe(1006);
 
       // Server iterator should have thrown
       expect(serverIteratorError).toBeInstanceOf(TransportError);
@@ -356,7 +355,7 @@ describe("MemoryTransport", () => {
 
   describe("Iterator Semantics", () => {
     it("single consumer enforced", async () => {
-      const endpoint = asTransportEndpoint("memory://single-consumer");
+      const endpoint = unsafeAsTransportEndpoint("loopback://single-consumer");
       let serverConn: Awaited<ReturnType<typeof transport.connect>> | undefined;
 
       listener = await transport.listen(endpoint, async (conn) => {
@@ -383,7 +382,7 @@ describe("MemoryTransport", () => {
     });
 
     it("early break does not close connection", async () => {
-      const endpoint = asTransportEndpoint("memory://early-break");
+      const endpoint = unsafeAsTransportEndpoint("loopback://early-break");
       let serverConn: Awaited<ReturnType<typeof transport.connect>> | undefined;
 
       listener = await transport.listen(endpoint, async (conn) => {
@@ -408,7 +407,7 @@ describe("MemoryTransport", () => {
     });
 
     it("resumes and drains buffer after break", async () => {
-      const endpoint = asTransportEndpoint("memory://resume");
+      const endpoint = unsafeAsTransportEndpoint("loopback://resume");
       let serverConn: Awaited<ReturnType<typeof transport.connect>> | undefined;
 
       listener = await transport.listen(endpoint, async (conn) => {
@@ -460,33 +459,7 @@ describe("TransportError helpers", () => {
       expect(isRetryable("policy_violation")).toBe(false);
       expect(isRetryable("authentication_failed")).toBe(false);
       expect(isRetryable("aborted")).toBe(false);
-      expect(isRetryable("protocol_mismatch")).toBe(false);
-    });
-  });
-
-  describe("kindFromCloseCode", () => {
-    it("returns null for clean close (1000)", () => {
-      expect(kindFromCloseCode(1000)).toBeNull();
-    });
-
-    it("maps standard close codes correctly", () => {
-      expect(kindFromCloseCode(1001)).toBe("abnormal_close");
-      expect(kindFromCloseCode(1002)).toBe("transport_failure");
-      expect(kindFromCloseCode(1003)).toBe("transport_failure");
-      expect(kindFromCloseCode(1006)).toBe("abnormal_close");
-      expect(kindFromCloseCode(1008)).toBe("policy_violation");
-      expect(kindFromCloseCode(1009)).toBe("message_too_large");
-      expect(kindFromCloseCode(1010)).toBe("protocol_mismatch");
-      expect(kindFromCloseCode(1011)).toBe("transport_failure");
-      expect(kindFromCloseCode(1012)).toBe("abnormal_close");
-      expect(kindFromCloseCode(1013)).toBe("abnormal_close");
-      expect(kindFromCloseCode(1015)).toBe("tls_failure");
-    });
-
-    it("maps private use codes to transport_failure", () => {
-      expect(kindFromCloseCode(4000)).toBe("transport_failure");
-      expect(kindFromCloseCode(4500)).toBe("transport_failure");
-      expect(kindFromCloseCode(4999)).toBe("transport_failure");
+      expect(isRetryable("subprotocol_mismatch")).toBe(false);
     });
   });
 });

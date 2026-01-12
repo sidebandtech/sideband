@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { PeerId } from "@sideband/protocol";
+import type { CloseOptions } from "@sideband/transport";
 import type { VerifiedIdentity } from "../types.js";
+
+export type { CloseOptions };
 
 /**
  * Transport connection interface (from @sideband/transport).
@@ -15,7 +18,7 @@ export interface TransportConnection {
   readonly id: string;
   readonly endpoint: string;
   send(data: Uint8Array): Promise<void>;
-  close(reason?: string): Promise<void>;
+  close(options?: CloseOptions): Promise<void>;
   readonly inbound: AsyncIterable<Uint8Array>;
 }
 
@@ -59,7 +62,7 @@ export interface Negotiator {
   /** Establish session after transport opens */
   negotiate(conn: TransportConnection): Promise<NegotiationResult>;
   /** Protocol-specific close signaling; MUST be idempotent */
-  terminate(conn: TransportConnection, reason?: string): Promise<void>;
+  terminate(conn: TransportConnection, options?: CloseOptions): Promise<void>;
   /** Classify an error as fatal or retryable */
   classifyError(error: Error): "fatal" | "retryable";
 }
@@ -92,7 +95,7 @@ export interface SessionEvents {
   negotiating: { transport: TransportConnection };
   active: { peerId: PeerId; capabilities: string[] };
   retrying: { attempt: number; delayMs: number; lastError: Error };
-  closed: { reason: string; wasClean: boolean; fatal: boolean };
+  closed: { reason: string; graceful: boolean; fatal: boolean };
   identity_established: { identity: VerifiedIdentity; trusted: boolean };
   identity_mismatch: { expected: VerifiedIdentity; received: VerifiedIdentity };
 }

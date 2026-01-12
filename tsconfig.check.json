@@ -6,8 +6,7 @@
     { "path": "./packages/rpc/tsconfig.check.json" },
     { "path": "./packages/runtime/tsconfig.check.json" },
     { "path": "./packages/peer/tsconfig.check.json" },
-    { "path": "./packages/transport-browser/tsconfig.check.json" },
-    { "path": "./packages/transport-node/tsconfig.check.json" },
+    { "path": "./packages/transport-ws/tsconfig.check.json" },
     { "path": "./packages/cli/tsconfig.check.json" },
     { "path": "./packages/testing/tsconfig.check.json" }
   ]

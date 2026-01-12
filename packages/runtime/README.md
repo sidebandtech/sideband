@@ -25,7 +25,10 @@ import {
   type Session,
 } from "@sideband/runtime";
 import { asPeerId, isMessageFrame } from "@sideband/protocol";
-import { MemoryTransport, asTransportEndpoint } from "@sideband/transport";
+import {
+  LoopbackTransport,
+  unsafeAsTransportEndpoint,
+} from "@sideband/transport";
 
 const router = createRouter();
 
@@ -36,8 +39,8 @@ router.route("rpc/user.get", async (msg) => {
 
 let activeSession: Session | undefined;
 
-const transport = new MemoryTransport();
-const endpoint = asTransportEndpoint("memory://loop");
+const transport = new LoopbackTransport();
+const endpoint = unsafeAsTransportEndpoint("loopback://test");
 
 const manager = createSessionManager({
   endpoint,
@@ -63,7 +66,7 @@ Notes:
 
 - `Router.dispatch()` expects `MessageFrame` and returns encoded ErrorFrame bytes when subject validation or RPC envelope decoding fails. Send those bytes back on the session channel.
 - `SessionManager` only decodes frames; higher layers own validation and routing.
-- The `MemoryTransport` example assumes a peer is listening on the same transport. Swap in your real transport for production.
+- The `LoopbackTransport` example assumes a peer is listening on the same transport. Swap in your real transport for production.
 
 ## Quick start: RPC correlation
 

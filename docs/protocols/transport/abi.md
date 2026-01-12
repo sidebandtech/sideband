@@ -32,9 +32,9 @@ interface TransportConnection {
 
 interface CloseInfo {
   /** True if closed via normal close handshake. */
-  wasClean: boolean;
-  /** WebSocket close code, if available. */
-  code?: number;
+  graceful: boolean;
+  /** Transport-specific close code, if applicable. */
+  closeCode?: number;
   /** Human-readable close reason. */
   reason?: string;
   /** Optional; present when the close was abnormal or carries error context. */
@@ -86,11 +86,11 @@ connect() called
 
 6. **Error transition**: On transport error:
    - `state` MUST transition to `"closing"` then `"closed"`
-   - `closed` promise MUST resolve with `CloseInfo` where `wasClean === false`
+   - `closed` promise MUST resolve with `CloseInfo` where `graceful === false`
 
 7. **No backwards transitions**: State transitions MUST be monotonic: `connecting -> open -> closing -> closed`. Implementations MUST NOT transition backwards.
 
-8. **Promise resolution**: `closed` MUST resolve (not reject) for all close scenarios. Error information is conveyed via `CloseInfo.wasClean` and `CloseInfo.error`.
+8. **Promise resolution**: `closed` MUST resolve (not reject) for all close scenarios. Error information is conveyed via `CloseInfo.graceful` and `CloseInfo.error`.
 
 ## 2. Inbound Iterator Semantics
 
@@ -178,12 +178,12 @@ for await (const message of conn.inbound) {
    - Default: 16 MiB
    - When exceeded: MAY reject `send()` with `TransportError(kind: "transport_failure")` OR close the connection
 
-3. **Buffered amount exposure**: Implementations SHOULD expose `bufferedAmount` when the underlying transport provides it:
+3. **Buffered amount exposure**: Implementations SHOULD expose `pendingSendBytes` when the underlying transport provides it:
 
    ```typescript
    interface TransportConnection {
      /** Bytes queued for sending. Undefined if transport doesn't expose this. */
-     readonly bufferedAmount?: number;
+     readonly pendingSendBytes?: number;
    }
    ```
 
@@ -233,8 +233,12 @@ interface Transport {
 
 ```typescript
 interface CloseOptions {
-  /** WebSocket close code (1000-4999). Default: 1000. */
-  code?: number;
+  /**
+   * Transport-specific close code.
+   * Transports that don't support close codes MAY ignore this.
+   * Default is transport-defined (e.g., WebSocket uses 1000).
+   */
+  closeCode?: number;
   /** Human-readable reason. */
   reason?: string;
 }
@@ -256,24 +260,9 @@ interface TransportConnection {
 
 4. **In-flight sends**: Sends already accepted (promise returned but not resolved) MAY complete or be cancelled. Behavior is implementation-defined.
 
-5. **Default close code**: If `code` is not specified, implementations MUST use 1000 (normal closure).
+5. **Default close code**: If `closeCode` is not specified, transports SHOULD use a transport-appropriate default (e.g., WebSocket uses 1000). See transport-specific specs for details.
 
-6. **Reason truncation**: WebSocket transports SHOULD truncate `reason` to 123 bytes (RFC 6455 limit). Other transports MAY preserve longer reasons.
-
-7. **State transition**: `close()` MUST transition `state` to `"closing"` synchronously, then to `"closed"` when complete.
-
-### 6.3 Standard Close Codes
-
-| Code | Meaning              | Usage                                     |
-| ---- | -------------------- | ----------------------------------------- |
-| 1000 | Normal closure       | Default; clean shutdown                   |
-| 1001 | Going away           | Browser page unload, server shutdown      |
-| 1002 | Protocol error       | Invalid frame structure                   |
-| 1003 | Unsupported data     | Text frame received (binary-only rule)    |
-| 1009 | Message too big      | Exceeds maxMessageSize                    |
-| 1011 | Unexpected condition | Internal error                            |
-| 1012 | Service restart      | Server restarting, reconnect soon         |
-| 1013 | Try again later      | Server overloaded, reconnect with backoff |
+6. **State transition**: `close()` MUST transition `state` to `"closing"` synchronously, then to `"closed"` when complete.
 
 ## 7. Listener Accept Semantics
 

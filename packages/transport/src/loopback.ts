@@ -1,43 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * In-memory transport for testing and local communication.
+ * Loopback transport for testing and local communication.
  *
  * Suitable for unit tests, local development, and cross-component communication
  * within the same process. Does not involve I/O or async operations.
  */
 
-import { asConnectionId } from "@sideband/protocol";
 import type { ConnectionId } from "@sideband/protocol";
-
-/** Default maximum message size: 1 MiB */
-const DEFAULT_MAX_MESSAGE_SIZE = 1024 * 1024;
+import { asConnectionId } from "@sideband/protocol";
+import { TransportError } from "./errors.js";
 import type {
+  CloseInfo,
+  CloseOptions,
+  ConnectionHandler,
+  ConnectionState,
+  ConnectOptions,
+  ListenOptions,
   Transport,
   TransportConnection,
   TransportEndpoint,
-  ConnectOptions,
-  CloseOptions,
-  ListenOptions,
-  ConnectionHandler,
   TransportListener,
-  ConnectionState,
-  CloseInfo,
 } from "./types.js";
-import { TransportError } from "./errors.js";
+
+/** Default maximum message size: 1 MiB */
+const DEFAULT_MAX_MESSAGE_SIZE = 1024 * 1024;
 
 /**
- * In-memory transport implementation using channels.
+ * Loopback transport implementation using channels.
  * Pairs of connections are created by endpoint string.
  */
-export class MemoryTransport implements Transport {
-  readonly kind = "memory";
+class LoopbackTransport implements Transport {
+  readonly kind = "loopback";
 
   private endpoints = new Map<
     string,
     {
       handler: ConnectionHandler;
-      channels: Array<MemoryChannel>;
+      channels: Array<LoopbackChannel>;
     }
   >();
 
@@ -66,13 +66,13 @@ export class MemoryTransport implements Transport {
       (options?.maxMessageSize as number | undefined) ??
       DEFAULT_MAX_MESSAGE_SIZE;
 
-    const clientChannel = new MemoryChannel(
+    const clientChannel = new LoopbackChannel(
       asConnectionId(`client-${Math.random()}`),
       endpoint,
       maxMessageSize,
     );
 
-    const serverChannel = new MemoryChannel(
+    const serverChannel = new LoopbackChannel(
       asConnectionId(`server-${Math.random()}`),
       endpoint,
       maxMessageSize,
@@ -115,15 +115,17 @@ export class MemoryTransport implements Transport {
   }
 }
 
+export { LoopbackTransport };
+
 /**
- * Internal in-memory channel implementation.
+ * Internal loopback channel implementation.
  */
-class MemoryChannel implements TransportConnection {
+class LoopbackChannel implements TransportConnection {
   readonly id: ConnectionId;
   readonly endpoint: TransportEndpoint;
   private readonly maxMessageSize: number;
 
-  peer?: MemoryChannel;
+  peer?: LoopbackChannel;
   private _state: ConnectionState = "open";
   private buffer: Uint8Array[] = [];
   private resolvers: Array<() => void> = [];
@@ -197,8 +199,8 @@ class MemoryChannel implements TransportConnection {
       }
       this.peer.resolvers.forEach((r) => r());
       const peerCloseInfo: CloseInfo = {
-        wasClean: !this.peer._closeError,
-        code: options?.code ?? (this._closeError ? 1006 : 1000),
+        graceful: !this.peer._closeError,
+        closeCode: options?.closeCode ?? (this._closeError ? 1006 : 1000),
         reason: options?.reason,
         error: this.peer._closeError,
       };
@@ -206,8 +208,8 @@ class MemoryChannel implements TransportConnection {
     }
 
     const closeInfo: CloseInfo = {
-      wasClean: !this._closeError,
-      code: options?.code ?? (this._closeError ? 1006 : 1000),
+      graceful: !this._closeError,
+      closeCode: options?.closeCode ?? (this._closeError ? 1006 : 1000),
       reason: options?.reason,
       error: this._closeError,
     };

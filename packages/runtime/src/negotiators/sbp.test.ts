@@ -105,7 +105,7 @@ describe("SbpNegotiator", () => {
       const negotiator = new SbpNegotiator({ peerId: localPeerId });
       const conn = createMockConnection([]);
 
-      await negotiator.terminate(conn, "test close");
+      await negotiator.terminate(conn, { reason: "test close" });
       expect(conn.send).toHaveBeenCalled();
     });
 

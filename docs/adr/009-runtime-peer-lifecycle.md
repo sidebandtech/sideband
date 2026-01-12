@@ -140,7 +140,7 @@ interface Negotiator {
   negotiate(conn: TransportConnection): Promise<NegotiationResult>;
 
   /** Protocol-specific close; MUST be idempotent */
-  terminate(conn: TransportConnection, reason?: string): Promise<void>;
+  terminate(conn: TransportConnection, options?: CloseOptions): Promise<void>;
 
   /** Classify an error as fatal or retryable */
   classifyError(error: Error): "fatal" | "retryable";
@@ -269,7 +269,7 @@ interface SessionEvents {
   negotiating: { transport: TransportConnection };
   active: { peerId: PeerId; capabilities: string[] };
   retrying: { attempt: number; delayMs: number; lastError: Error };
-  closed: { reason: string; wasClean: boolean; fatal: boolean };
+  closed: { reason: string; graceful: boolean; fatal: boolean };
 
   // Security events (from negotiator)
   identity_established: { identity: VerifiedIdentity; trusted: boolean };
@@ -286,17 +286,17 @@ Note: `identity_established` (not `identity_verified`) because TOFU is trust est
 Termination follows a strict ordering to ensure proper cleanup:
 
 ```ts
-async function terminate(reason?: string): Promise<void> {
+async function terminate(options?: CloseOptions): Promise<void> {
   // 1. Protocol-level signaling via negotiator (uses raw transport)
-  await negotiator.terminate(transport, reason);
+  await negotiator.terminate(transport, options);
 
   // 2. Close session channel (if distinct from transport)
   if (channel !== transport) {
-    await channel.close(reason);
+    await channel.close(options);
   }
 
   // 3. Close underlying transport
-  await transport.close(reason);
+  await transport.close(options);
 
   // 4. Transition to Idle
   state = "idle";

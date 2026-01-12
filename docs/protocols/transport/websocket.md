@@ -4,7 +4,7 @@
 > **Purpose**: WebSocket-specific transport rules and constraints.
 > **See also**: [transport/abi.md](./abi.md), [transport/errors.md](./errors.md), [RFC 6455](https://datatracker.ietf.org/doc/html/rfc6455)
 
-WebSocket-specific behaviors for `@sideband/transport-browser` and `@sideband/transport-node`. Complements the transport ABI with WebSocket protocol constraints.
+WebSocket-specific behaviors for `@sideband/transport-ws`. Complements the transport ABI with WebSocket protocol constraints.
 
 ## Binary-Only Frame Rule
 
@@ -86,13 +86,13 @@ type TlsOptions = Partial<import("tls").ConnectionOptions>;
 WebSocket subprotocol negotiation rules:
 
 - Default `protocols`: `["sideband.v1"]`
-- If server responds without selecting any requested subprotocol: fail with `TransportError(kind: "protocol_mismatch")`
-- Implementations MAY expose `readonly protocol?: string` on `TransportConnection` to indicate the negotiated subprotocol
+- If server responds without selecting any requested subprotocol: fail with `TransportError(kind: "subprotocol_mismatch")`
+- Implementations MAY expose `readonly subprotocol?: string` on `TransportConnection` to indicate the negotiated subprotocol
 
 ```typescript
 export interface TransportConnection {
   // ... existing members
-  readonly protocol?: string; // Negotiated WebSocket subprotocol
+  readonly subprotocol?: string; // Negotiated WebSocket subprotocol
 }
 ```
 
@@ -133,7 +133,7 @@ Standard WebSocket close codes and their semantics:
 
 | Close Code | `TransportErrorKind`                     | Notes                       |
 | ---------- | ---------------------------------------- | --------------------------- |
-| 1000       | (clean close)                            | `CloseInfo.wasClean = true` |
+| 1000       | (clean close)                            | `CloseInfo.graceful = true` |
 | 1001       | `abnormal_close`                         | Peer going away             |
 | 1002       | `transport_failure`                      | Protocol error              |
 | 1003       | `transport_failure`                      | Text frame (we sent binary) |
@@ -209,7 +209,7 @@ export interface ListenOptions {
 
 ## Implementation Notes
 
-### Browser Transport (`@sideband/transport-browser`)
+### Browser Environment
 
 - Uses native `WebSocket` API
 - Cannot set custom headers; use `query` option for auth tokens
@@ -217,7 +217,7 @@ export interface ListenOptions {
 - Check `navigator.onLine` for `network_offline` error classification
 - Message size check must occur after receive (`MessageEvent.data.byteLength`)
 
-### Node/Bun Transport (`@sideband/transport-node`)
+### Node/Bun Environment
 
 - Use `ws` package or Bun native WebSocket
 - Configure `maxPayload` for message size limits

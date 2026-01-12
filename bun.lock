@@ -31,26 +31,27 @@
     },
     "packages/protocol": {
       "name": "@sideband/protocol",
-      "version": "0.0.6",
+      "version": "0.0.7",
     },
     "packages/rpc": {
       "name": "@sideband/rpc",
-      "version": "0.0.4",
+      "version": "0.0.5",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
       },
     },
     "packages/runtime": {
       "name": "@sideband/runtime",
-      "version": "0.0.4",
+      "version": "0.1.0",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
         "@sideband/rpc": "workspace:^",
+        "@sideband/transport": "workspace:^",
       },
     },
     "packages/secure-relay": {
       "name": "@sideband/secure-relay",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "dependencies": {
         "@noble/ciphers": "^1.2.1",
         "@noble/curves": "^1.8.1",
@@ -63,22 +64,14 @@
     },
     "packages/transport": {
       "name": "@sideband/transport",
-      "version": "0.0.4",
+      "version": "0.0.5",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
       },
     },
-    "packages/transport-browser": {
-      "name": "@sideband/transport-browser",
-      "version": "0.0.2",
-      "dependencies": {
-        "@sideband/protocol": "workspace:^",
-        "@sideband/transport": "workspace:^",
-      },
-    },
-    "packages/transport-node": {
-      "name": "@sideband/transport-node",
-      "version": "0.0.2",
+    "packages/transport-ws": {
+      "name": "@sideband/transport-ws",
+      "version": "0.0.1",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
         "@sideband/transport": "workspace:^",
@@ -370,9 +363,7 @@
 
     "@sideband/transport": ["@sideband/transport@workspace:packages/transport"],
 
-    "@sideband/transport-browser": ["@sideband/transport-browser@workspace:packages/transport-browser"],
-
-    "@sideband/transport-node": ["@sideband/transport-node@workspace:packages/transport-node"],
+    "@sideband/transport-ws": ["@sideband/transport-ws@workspace:packages/transport-ws"],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

@@ -70,10 +70,11 @@ Sideband uses a layered protocol architecture:
           │           └───────────────┘       └───────────────┘
           │                     │
           │               ┌─────┴─────┐
-          │               ▼           ▼
-          │         ┌─────────┐ ┌─────────┐
-          │         │ browser │ │  node   │
-          │         └─────────┘ └─────────┘
+          │               │
+          │               ▼
+          │         ┌─────────┐
+          │         │   ws    │
+          │         └─────────┘
           │
     (standalone: @noble/*)
 ```
@@ -107,19 +108,13 @@ Abstract transport interface.
 | ------------------------------- | ---------------- |
 | `Transport` interface           | WebSocket impl   |
 | `TransportConnection` interface | Crypto           |
-| `MemoryTransport` (testing)     | Session logic    |
+| `LoopbackTransport` (testing)   | Session logic    |
 
 **Depends on:** protocol
 
-#### `@sideband/transport-browser`
+#### `@sideband/transport-ws`
 
-Browser WebSocket transport.
-
-**Depends on:** protocol, transport
-
-#### `@sideband/transport-node`
-
-Node/Bun WebSocket transport.
+WebSocket transport for Browser/Node/Bun.
 
 **Depends on:** protocol, transport
 
@@ -207,7 +202,7 @@ const peer = new Peer({
 | Pub/sub helpers           | Crypto primitives   |
 | RPC client                | Transport internals |
 
-**Depends on:** runtime, rpc, transport-\*, secure-relay
+**Depends on:** runtime, rpc, transport-ws, secure-relay
 
 ### Tooling
 
@@ -259,7 +254,7 @@ Browser                    Relay Server                   Daemon
    Inside DATA frames: encrypted SBP frames (protocol)
 ```
 
-1. Transport layer: `transport-browser` / `transport-node` handle WebSocket
+1. Transport layer: `transport-ws` handles WebSocket
 2. Session layer: `secure-relay` encrypts/decrypts, manages handshake
 3. Application layer: `protocol` frames (Message, Control, etc.)
 4. RPC layer: `rpc` envelopes inside Message frames
@@ -269,18 +264,17 @@ Browser                    Relay Server                   Daemon
 
 ### Ship now (10 packages)
 
-| #   | Package                       | Layer | Description                                  |
-| --- | ----------------------------- | ----- | -------------------------------------------- |
-| 1   | `@sideband/protocol`          | 0     | Application framing & wire contract (SBP)    |
-| 2   | `@sideband/transport`         | 1     | Abstract I/O interfaces                      |
-| 3   | `@sideband/transport-browser` | 1     | Browser WebSocket adapter                    |
-| 4   | `@sideband/transport-node`    | 1     | Node/Bun WebSocket adapter                   |
-| 5   | `@sideband/rpc`               | 2     | RPC envelope & correlation                   |
-| 6   | `@sideband/runtime`           | 2     | Coordination engine (routing, lifecycle)     |
-| 7   | `@sideband/secure-relay`      | 3     | Cryptographic session layer for relay (SBRP) |
-| 8   | `@sideband/peer`              | 4     | User-facing SDK                              |
-| 9   | `@sideband/cli`               | Tool  | Developer tooling                            |
-| 10  | `@sideband/testing`           | Tool  | Test utilities & fixtures                    |
+| #   | Package                  | Layer | Description                                  |
+| --- | ------------------------ | ----- | -------------------------------------------- |
+| 1   | `@sideband/protocol`     | 0     | Application framing & wire contract (SBP)    |
+| 2   | `@sideband/transport`    | 1     | Abstract I/O interfaces                      |
+| 3   | `@sideband/transport-ws` | 1     | WebSocket adapter (Browser/Node/Bun)         |
+| 4   | `@sideband/rpc`          | 2     | RPC envelope & correlation                   |
+| 5   | `@sideband/runtime`      | 2     | Coordination engine (routing, lifecycle)     |
+| 6   | `@sideband/secure-relay` | 3     | Cryptographic session layer for relay (SBRP) |
+| 7   | `@sideband/peer`         | 4     | User-facing SDK                              |
+| 8   | `@sideband/cli`          | Tool  | Developer tooling                            |
+| 9   | `@sideband/testing`      | Tool  | Test utilities & fixtures                    |
 
 ### Add later (when P2P needed)
 

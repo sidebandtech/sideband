@@ -50,11 +50,11 @@
 
 ### 3. Control operations and payloads
 
-| Domain concept    | Type / Enum name   | Field / Property | Wire key | Notes                                         |
-| ----------------- | ------------------ | ---------------- | -------- | --------------------------------------------- |
-| Control op        | `ControlOp`        | `op`             | `c`      | `Handshake`, `Ping`, `Pong`, `Close`          |
-| Control data      | -                  | `data`           | -        | Optional opaque binary                        |
-| Handshake payload | `HandshakePayload` | -                | -        | Contains `peerId`, `capabilities`, `metadata` |
+| Domain concept    | Type / Enum name   | Field / Property | Wire key | Notes                                 |
+| ----------------- | ------------------ | ---------------- | -------- | ------------------------------------- |
+| Control op        | `ControlOp`        | `op`             | `c`      | `Handshake`, `Ping`, `Pong`, `Close`  |
+| Control data      | -                  | `data`           | -        | Optional opaque binary                |
+| Handshake payload | `HandshakePayload` | -                | -        | Contains `peerId`, `caps`, `metadata` |
 
 > `c` is scoped to `ControlFrame` payloads only; never used in other frame types.
 > `data` is an optional binary blob used for control frame metadata or handshake extensions.
@@ -104,13 +104,12 @@
 
 > **SBP** is the base protocol used by all session layers. SBRP wraps SBP frames with E2EE for relay mode; SBDP (future) will secure SBP frames for direct P2P.
 
-| Package                       | Notes                                    |
-| ----------------------------- | ---------------------------------------- |
-| `@sideband/transport`         | Shared interfaces, no env-specific logic |
-| `@sideband/transport-node`    | Node.js / Bun WebSocket adapters         |
-| `@sideband/transport-browser` | Browser / ServiceWorker adapters         |
-| `@sideband/runtime`           | Peer lifecycle, routing, subscriptions   |
-| `@sideband/peer`              | High-level publish/subscribe/RPC API     |
+| Package                  | Notes                                    |
+| ------------------------ | ---------------------------------------- |
+| `@sideband/transport`    | Shared interfaces, no env-specific logic |
+| `@sideband/transport-ws` | WebSocket transport (Browser/Node/Bun)   |
+| `@sideband/runtime`      | Peer lifecycle, routing, subscriptions   |
+| `@sideband/peer`         | High-level publish/subscribe/RPC API     |
 
 ### 8. RPC and pub/sub (higher level)
 

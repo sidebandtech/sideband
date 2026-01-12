@@ -4,7 +4,7 @@
 > **Purpose**: Conformance test matrix and harness specification for transport implementations.
 > **See also**: transport/abi.md, transport/errors.md, transport/websocket.md
 
-This document defines the conformance requirements and test infrastructure for transport implementations. All transports (`browser`, `node`, `memory`) must pass the applicable tests to be considered conformant.
+This document defines the conformance requirements and test infrastructure for transport implementations. All transports (`browser`, `node`, `loopback`) must pass the applicable tests to be considered conformant.
 
 ## 1. Test Matrix
 
@@ -16,44 +16,44 @@ The matrix uses requirement levels:
 
 ### 1.1 Lifecycle Tests
 
-| Test                                               | browser | node | memory | Notes                                                             |
-| -------------------------------------------------- | ------- | ---- | ------ | ----------------------------------------------------------------- |
-| Connect returns valid connection                   | MUST    | MUST | MUST   | Connection has valid `id`, `endpoint`, `inbound`, `send`, `close` |
-| Connect rejects invalid endpoint                   | MUST    | MUST | MUST   | Invalid URL format, unreachable host                              |
-| Connect respects timeout                           | MUST    | MUST | SHOULD | `timeoutMs` option honored                                        |
-| Connect rejects with kind `aborted` on AbortSignal | MUST    | MUST | SHOULD | `signal` option cancels in-flight connect                         |
-| Connect fails on subprotocol mismatch              | MUST    | MUST | N/A    | Server doesn't accept requested subprotocol                       |
-| State transitions correctly                        | MUST    | MUST | MUST   | `connecting` -> `open` -> `closing` -> `closed`                   |
-| Listen returns listener                            | N/A     | MUST | MUST   | Browser cannot listen                                             |
-| Close is idempotent                                | MUST    | MUST | MUST   | Multiple `close()` calls succeed                                  |
+| Test                                               | browser | node | loopback | Notes                                                             |
+| -------------------------------------------------- | ------- | ---- | -------- | ----------------------------------------------------------------- |
+| Connect returns valid connection                   | MUST    | MUST | MUST     | Connection has valid `id`, `endpoint`, `inbound`, `send`, `close` |
+| Connect rejects invalid endpoint                   | MUST    | MUST | MUST     | Invalid URL format, unreachable host                              |
+| Connect respects timeout                           | MUST    | MUST | SHOULD   | `timeoutMs` option honored                                        |
+| Connect rejects with kind `aborted` on AbortSignal | MUST    | MUST | SHOULD   | `signal` option cancels in-flight connect                         |
+| Connect fails on subprotocol mismatch              | MUST    | MUST | N/A      | Server doesn't accept requested subprotocol                       |
+| State transitions correctly                        | MUST    | MUST | MUST     | `connecting` -> `open` -> `closing` -> `closed`                   |
+| Listen returns listener                            | N/A     | MUST | MUST     | Browser cannot listen                                             |
+| Close is idempotent                                | MUST    | MUST | MUST     | Multiple `close()` calls succeed                                  |
 
 ### 1.2 Data Transfer Tests
 
-| Test                                   | browser | node | memory | Notes                                       |
-| -------------------------------------- | ------- | ---- | ------ | ------------------------------------------- |
-| Send delivers bytes                    | MUST    | MUST | MUST   | Sent bytes received intact                  |
-| Order preserved                        | MUST    | MUST | MUST   | Sequential sends arrive in order            |
-| Large messages (64 KB)                 | MUST    | MUST | MUST   | 65536-byte message transfers correctly      |
-| Max message size (1 MiB boundary)      | MUST    | MUST | MUST   | 1048576 bytes succeeds; 1048577 fails       |
-| Concurrent sends preserve order        | MUST    | MUST | MUST   | Parallel `send()` calls maintain call order |
-| Buffered messages delivered post-close | MUST    | MUST | MUST   | In-flight messages drain before completion  |
+| Test                                   | browser | node | loopback | Notes                                       |
+| -------------------------------------- | ------- | ---- | -------- | ------------------------------------------- |
+| Send delivers bytes                    | MUST    | MUST | MUST     | Sent bytes received intact                  |
+| Order preserved                        | MUST    | MUST | MUST     | Sequential sends arrive in order            |
+| Large messages (64 KB)                 | MUST    | MUST | MUST     | 65536-byte message transfers correctly      |
+| Max message size (1 MiB boundary)      | MUST    | MUST | MUST     | 1048576 bytes succeeds; 1048577 fails       |
+| Concurrent sends preserve order        | MUST    | MUST | MUST     | Parallel `send()` calls maintain call order |
+| Buffered messages delivered post-close | MUST    | MUST | MUST     | In-flight messages drain before completion  |
 
 ### 1.3 Error Handling Tests
 
-| Test                               | browser | node | memory | Notes                                                 |
-| ---------------------------------- | ------- | ---- | ------ | ----------------------------------------------------- |
-| Send after close rejects           | MUST    | MUST | MUST   | `send()` on closed connection throws `TransportError` |
-| Inbound completes after close      | MUST    | MUST | MUST   | Iterator yields `done: true` on graceful close        |
-| Text frame triggers error          | MUST    | MUST | N/A    | WebSocket text frames rejected with code 1003         |
-| Handler throw doesn't crash server | N/A     | MUST | MUST   | Exception in `ConnectionHandler` logs, closes conn    |
+| Test                               | browser | node | loopback | Notes                                                 |
+| ---------------------------------- | ------- | ---- | -------- | ----------------------------------------------------- |
+| Send after close rejects           | MUST    | MUST | MUST     | `send()` on closed connection throws `TransportError` |
+| Inbound completes after close      | MUST    | MUST | MUST     | Iterator yields `done: true` on graceful close        |
+| Text frame triggers error          | MUST    | MUST | N/A      | WebSocket text frames rejected with code 1003         |
+| Handler throw doesn't crash server | N/A     | MUST | MUST     | Exception in `ConnectionHandler` logs, closes conn    |
 
 ### 1.4 Iterator Semantics Tests
 
-| Test                                  | browser | node   | memory | Notes                                           |
-| ------------------------------------- | ------- | ------ | ------ | ----------------------------------------------- |
-| Single consumer enforced              | MUST    | MUST   | MUST   | Second iterator throws `TransportError`         |
-| Early break doesn't close connection  | MUST    | MUST   | MUST   | `break` from `for await` leaves connection open |
-| Resumes and drains buffer after break | SHOULD  | SHOULD | MUST   | Subsequent iteration yields buffered messages   |
+| Test                                  | browser | node   | loopback | Notes                                           |
+| ------------------------------------- | ------- | ------ | -------- | ----------------------------------------------- |
+| Single consumer enforced              | MUST    | MUST   | MUST     | Second iterator throws `TransportError`         |
+| Early break doesn't close connection  | MUST    | MUST   | MUST     | `break` from `for await` leaves connection open |
+| Resumes and drains buffer after break | SHOULD  | SHOULD | MUST     | Subsequent iteration yields buffered messages   |
 
 ---
 
@@ -69,9 +69,9 @@ import type {
   TransportConnection,
   TransportListener,
   TransportEndpoint,
+  TransportError,
   ConnectionHandler,
 } from "@sideband/transport";
-import type { TransportError } from "@sideband/transport/errors";
 
 /**
  * Echo server that reflects received messages back to sender.
@@ -185,8 +185,8 @@ export interface ConformanceSuiteOptions {
 Each transport package exports a harness factory:
 
 ```typescript
-// @sideband/testing/memory
-export function createMemoryHarness(): TransportTestHarness;
+// @sideband/testing/loopback
+export function createLoopbackHarness(): TransportTestHarness;
 
 // @sideband/testing/node
 export function createNodeHarness(
@@ -249,8 +249,8 @@ test("browser connects to node server", async ({ page }) => {
 
   // Inject test code into browser context
   const result = await page.evaluate(async (endpoint) => {
-    const { BrowserTransport } = await import("@sideband/transport-browser");
-    const transport = new BrowserTransport();
+    const { createWebSocketTransport } = await import("@sideband/transport-ws");
+    const transport = createWebSocketTransport();
     const conn = await transport.connect(endpoint);
     const success = conn.id !== undefined;
     await conn.close();
@@ -264,8 +264,8 @@ test("bidirectional message exchange", async ({ page }) => {
   await page.goto("/test-page.html");
 
   const result = await page.evaluate(async (endpoint) => {
-    const { BrowserTransport } = await import("@sideband/transport-browser");
-    const transport = new BrowserTransport();
+    const { createWebSocketTransport } = await import("@sideband/transport-ws");
+    const transport = createWebSocketTransport();
     const conn = await transport.connect(endpoint);
 
     // Send message
@@ -287,8 +287,8 @@ test("large message transfer (1 MiB)", async ({ page }) => {
   await page.goto("/test-page.html");
 
   const result = await page.evaluate(async (endpoint) => {
-    const { BrowserTransport } = await import("@sideband/transport-browser");
-    const transport = new BrowserTransport();
+    const { createWebSocketTransport } = await import("@sideband/transport-ws");
+    const transport = createWebSocketTransport();
     const conn = await transport.connect(endpoint);
 
     // Send 1 MiB message
@@ -324,12 +324,12 @@ packages/testing/
   src/
     harness.ts          # TransportTestHarness interface
     suite.ts            # createConformanceSuite implementation
-    memory.ts           # Memory transport harness
+    loopback.ts         # Loopback transport harness
     node.ts             # Node transport harness
     browser.ts          # Browser harness (Playwright helper)
     interop/            # Interoperability test utilities
   tests/
-    memory.test.ts      # Memory conformance tests
+    loopback.test.ts    # Loopback conformance tests
     node.test.ts        # Node conformance tests
     interop.test.ts     # Playwright interop tests
 ```
@@ -341,7 +341,7 @@ packages/testing/
 bun test packages/testing
 
 # Run specific transport
-bun test packages/testing/tests/memory.test.ts
+bun test packages/testing/tests/loopback.test.ts
 bun test packages/testing/tests/node.test.ts
 
 # Run interop tests (requires Playwright)
@@ -364,8 +364,8 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Memory transport conformance
-        run: bun test packages/testing/tests/memory.test.ts
+      - name: Loopback transport conformance
+        run: bun test packages/testing/tests/loopback.test.ts
 
       - name: Node transport conformance
         run: bun test packages/testing/tests/node.test.ts

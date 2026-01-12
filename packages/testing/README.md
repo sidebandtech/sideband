@@ -12,7 +12,7 @@ For development use only. Do not import in production code.
 - Frame generators for test scenarios
 - Shared test utilities for runtime and transport packages
 
-For the in-memory transport used in tests, see `MemoryTransport` in [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport).
+For the loopback transport used in tests, see `LoopbackTransport` in [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport).
 
 ## Install
 

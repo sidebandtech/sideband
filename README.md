@@ -15,17 +15,16 @@ Sideband is for apps that run a local process (daemon, agent, service) and need 
 
 Most apps only need `@sideband/peer`. Lower-level packages are for custom transports and advanced use cases.
 
-| Package                                                                                    | Role                                   |
-| ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| [`@sideband/peer`](https://www.npmjs.com/package/@sideband/peer)                           | High-level SDK                         |
-| [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)                   | Wire format, frame types, codecs       |
-| [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport)                 | Transport ABI and shared utilities     |
-| [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)                     | Peer lifecycle, routing, subscriptions |
-| [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc)                             | Typed RPC layer                        |
-| [`@sideband/secure-relay`](https://www.npmjs.com/package/@sideband/secure-relay)           | E2EE relay protocol                    |
-| [`@sideband/transport-browser`](https://www.npmjs.com/package/@sideband/transport-browser) | Browser WebSocket transport            |
-| [`@sideband/transport-node`](https://www.npmjs.com/package/@sideband/transport-node)       | Node/Bun transport                     |
-| [`@sideband/cli`](https://www.npmjs.com/package/@sideband/cli)                             | Developer CLI                          |
+| Package                                                                          | Role                                   |
+| -------------------------------------------------------------------------------- | -------------------------------------- |
+| [`@sideband/peer`](https://www.npmjs.com/package/@sideband/peer)                 | High-level SDK                         |
+| [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)         | Wire format, frame types, codecs       |
+| [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport)       | Transport ABI and shared utilities     |
+| [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)           | Peer lifecycle, routing, subscriptions |
+| [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc)                   | Typed RPC layer                        |
+| [`@sideband/secure-relay`](https://www.npmjs.com/package/@sideband/secure-relay) | E2EE relay protocol                    |
+| [`@sideband/transport-ws`](https://www.npmjs.com/package/@sideband/transport-ws) | WebSocket transport (Browser/Node/Bun) |
+| [`@sideband/cli`](https://www.npmjs.com/package/@sideband/cli)                   | Developer CLI                          |
 
 ## Develop
 

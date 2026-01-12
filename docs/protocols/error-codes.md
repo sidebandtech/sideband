@@ -36,7 +36,7 @@ For the full transport error taxonomy, see [transport/errors.md](./transport/err
 | `policy_violation`      | No        | CSP, CORS, or browser security policy  |
 | `authentication_failed` | No        | Relay-level auth (NOT E2EE auth)       |
 | `aborted`               | No        | Explicit AbortSignal cancellation      |
-| `protocol_mismatch`     | No        | Subprotocol negotiation failed         |
+| `subprotocol_mismatch`  | No        | Subprotocol negotiation failed         |
 | `transport_failure`     | Yes       | Catch-all for unmapped errors          |
 
 > **Scope distinction**:

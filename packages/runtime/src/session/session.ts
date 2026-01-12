@@ -5,6 +5,7 @@ import { decodeFrame, encodeFrame } from "@sideband/protocol";
 import type { SessionState, Unsubscribe, VerifiedIdentity } from "../types.js";
 import { calculateBackoff } from "./backoff.js";
 import type {
+  CloseOptions,
   Negotiator,
   RetryPolicy,
   SessionChannel,
@@ -123,7 +124,7 @@ export class SessionManager {
       // Guard: terminate() may have been called while awaiting transport creation.
       // Close the newly created transport and abort before negotiation.
       if (this.terminated) {
-        await this.transport.close("terminated").catch(() => {});
+        await this.transport.close({ reason: "terminated" }).catch(() => {});
         this.setState("idle");
         throw new Error("Session terminated");
       }
@@ -171,7 +172,7 @@ export class SessionManager {
       this.setState("idle");
       this.emit("closed", {
         reason: "terminated",
-        wasClean: true,
+        graceful: true,
         fatal: false,
       });
       throw error;
@@ -184,7 +185,7 @@ export class SessionManager {
       this.setState("idle");
       this.emit("closed", {
         reason: error.message,
-        wasClean: false,
+        graceful: false,
         fatal: classification === "fatal",
       });
       throw error;
@@ -198,7 +199,7 @@ export class SessionManager {
       this.setState("idle");
       this.emit("closed", {
         reason: "Max retry attempts exceeded",
-        wasClean: false,
+        graceful: false,
         fatal: false,
       });
       throw error;
@@ -280,7 +281,7 @@ export class SessionManager {
   /**
    * Terminate the session.
    */
-  async terminate(reason?: string): Promise<void> {
+  async terminate(options?: CloseOptions): Promise<void> {
     this.terminated = true;
 
     // Cancel retry timer and reject pending delay
@@ -289,14 +290,14 @@ export class SessionManager {
       this.retryTimeout = undefined;
     }
     if (this.retryReject) {
-      this.retryReject(new Error(reason ?? "terminated"));
+      this.retryReject(new Error(options?.reason ?? "terminated"));
       this.retryReject = undefined;
     }
 
     // Terminate via negotiator (uses raw transport for protocol-level close)
     if (this.transport) {
       try {
-        await this.config.negotiator.terminate(this.transport, reason);
+        await this.config.negotiator.terminate(this.transport, options);
       } catch {
         // Ignore termination errors
       }
@@ -305,7 +306,7 @@ export class SessionManager {
     // Close channel if it differs from transport (session-layer cleanup)
     if (this.channel && this.channel !== this.transport) {
       try {
-        await this.channel.close(reason);
+        await this.channel.close(options);
       } catch {
         // Ignore channel close errors
       }
@@ -314,7 +315,7 @@ export class SessionManager {
     // Close underlying transport
     if (this.transport) {
       try {
-        await this.transport.close(reason);
+        await this.transport.close(options);
       } catch {
         // Ignore transport close errors
       }
@@ -323,8 +324,8 @@ export class SessionManager {
     this.channel = undefined;
     this.setState("idle");
     this.emit("closed", {
-      reason: reason ?? "terminated",
-      wasClean: true,
+      reason: options?.reason ?? "terminated",
+      graceful: true,
       fatal: false,
     });
   }

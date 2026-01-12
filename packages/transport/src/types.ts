@@ -8,11 +8,28 @@
  */
 
 import type { ConnectionId } from "@sideband/protocol";
-import type { CloseInfo } from "./errors.js";
+import type { TransportError } from "./errors.js";
 
-export type { ConnectionId };
-export type { CloseInfo } from "./errors.js";
 export { asConnectionId } from "@sideband/protocol";
+export type { ConnectionId };
+
+/**
+ * Describes how a connection was closed.
+ * Returned by the `closed` promise on `TransportConnection`.
+ */
+export interface CloseInfo {
+  /** True if the connection closed cleanly via close handshake. */
+  graceful: boolean;
+
+  /** Transport-specific close code (e.g., WebSocket 1000-4999). */
+  closeCode?: number;
+
+  /** Human-readable close reason. */
+  reason?: string;
+
+  /** Optional; present when the close was abnormal or carries error context. */
+  error?: TransportError;
+}
 
 /**
  * Abstract endpoint representation for transport connections.
@@ -21,9 +38,11 @@ export { asConnectionId } from "@sideband/protocol";
 export type TransportEndpoint = string & { readonly __transportEndpoint: true };
 
 /**
- * Helper to create a TransportEndpoint.
+ * @unsafe Brands a string as TransportEndpoint without validation.
+ * Different transports expect different formats (ws:// vs unix:// vs pipe://).
+ * Prefer transport-specific helpers (e.g., asWebSocketEndpoint) when available.
  */
-export function asTransportEndpoint(value: string): TransportEndpoint {
+export function unsafeAsTransportEndpoint(value: string): TransportEndpoint {
   return value as TransportEndpoint;
 }
 
@@ -37,8 +56,11 @@ export type ConnectionState = "connecting" | "open" | "closing" | "closed";
  * Options for closing a connection.
  */
 export interface CloseOptions {
-  /** WebSocket close code (1000-4999). Default: 1000. */
-  code?: number;
+  /**
+   * Transport-specific close code. For WebSocket: 1000-4999.
+   * Transports that don't support close codes MAY ignore this.
+   */
+  closeCode?: number;
   /** Human-readable reason. */
   reason?: string;
 }
@@ -85,7 +107,15 @@ export interface TransportConnection {
   readonly id: ConnectionId;
 
   /**
-   * The endpoint this connection is connected to.
+   * Connection target identifier. Immutable after connection establishment.
+   *
+   * - Client connections: MUST be the exact value passed to connect()
+   * - Accepted connections: SHOULD be the remote peer address when the
+   *   transport exposes one; otherwise MUST be an opaque identifier that
+   *   is stable for the connection lifetime and unique within the listener
+   *
+   * Used for logging, metrics, and diagnostics only.
+   * MUST NOT be used for identity, authentication, or trust decisions.
    */
   readonly endpoint: TransportEndpoint;
 
@@ -104,12 +134,12 @@ export interface TransportConnection {
   /**
    * Negotiated subprotocol, if applicable.
    */
-  readonly protocol?: string;
+  readonly subprotocol?: string;
 
   /**
    * Bytes queued for sending. Undefined if transport doesn't expose this.
    */
-  readonly bufferedAmount?: number;
+  readonly pendingSendBytes?: number;
 
   /**
    * Send raw bytes over this connection.
@@ -161,7 +191,7 @@ export interface TransportListener {
  */
 export interface Transport {
   /**
-   * Transport kind (e.g., "browser:ws", "node:ws", "memory").
+   * Transport kind (e.g., "browser:ws", "node:ws", "loopback").
    * Used for logging, debugging, and transport selection.
    */
   readonly kind: string;

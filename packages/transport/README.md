@@ -1,6 +1,6 @@
 # @sideband/transport
 
-Transport ABI + shared helpers for Sideband. Defines the contract concrete transports must implement (browser/node WebSocket, custom TCP, in-memory, etc.). No runtime/RPC coupling.
+Transport ABI + shared helpers for Sideband. Defines the contract concrete transports must implement (WebSocket, loopback, custom TCP, etc.). No runtime/RPC coupling.
 
 ## Install
 
@@ -11,10 +11,13 @@ bun add @sideband/transport
 ## Quick use
 
 ```ts
-import { MemoryTransport, asTransportEndpoint } from "@sideband/transport";
+import {
+  LoopbackTransport,
+  unsafeAsTransportEndpoint,
+} from "@sideband/transport";
 
-const transport = new MemoryTransport();
-const endpoint = asTransportEndpoint("memory://loop");
+const transport = new LoopbackTransport();
+const endpoint = unsafeAsTransportEndpoint("loopback://test");
 
 // Server side
 await transport.listen(endpoint, async (conn) => {
@@ -35,8 +38,8 @@ for await (const bytes of conn.inbound) {
 ## What it provides
 
 - `Transport`/`TransportConnection`/`TransportListener` interfaces for byte-level links
-- Endpoint branding helper (`asTransportEndpoint`) and shared option/handler types
-- Reference `MemoryTransport` for tests and local loops
+- Endpoint branding helper (`unsafeAsTransportEndpoint`) and shared option/handler types
+- Reference `LoopbackTransport` for tests and local loops
 - Safe to use in browser or Node transports; depends only on [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)
 
 ## License

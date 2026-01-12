@@ -33,7 +33,7 @@ export type TransportErrorKind =
   | "policy_violation" // CSP, CORS, or browser security policy
   | "authentication_failed" // Relay-level auth (headers/tokens); NOT E2EE auth
   | "aborted" // Explicit AbortSignal cancellation
-  | "protocol_mismatch" // Subprotocol negotiation failed
+  | "subprotocol_mismatch" // Subprotocol negotiation failed
   | "transport_failure"; // Catch-all for unmapped errors
 ```
 
@@ -51,7 +51,7 @@ export type TransportErrorKind =
 | `policy_violation`      | Browser security policy (CSP, CORS, mixed content) blocked the connection or operation.                                                                   |
 | `authentication_failed` | Transport-level authentication failed (e.g., HTTP headers, tokens). This is NOT E2EE authentication; SBRP handshake failures use endpoint codes (0xE0xx). |
 | `aborted`               | The operation was explicitly cancelled via `AbortSignal`.                                                                                                 |
-| `protocol_mismatch`     | WebSocket subprotocol negotiation failed; server did not select a requested protocol.                                                                     |
+| `subprotocol_mismatch`  | WebSocket subprotocol negotiation failed; server did not select a requested protocol.                                                                     |
 | `transport_failure`     | Catch-all for errors that do not map to a specific kind.                                                                                                  |
 
 ### TransportError
@@ -87,10 +87,10 @@ Describes how a connection was closed. Returned by the `closed` promise on `Tran
 ```typescript
 export interface CloseInfo {
   /** True if the connection closed cleanly via close handshake. */
-  wasClean: boolean;
+  graceful: boolean;
 
-  /** WebSocket close code (1000-4999) if applicable. */
-  code?: number;
+  /** Transport-specific close code (e.g., WebSocket 1000-4999) if applicable. */
+  closeCode?: number;
 
   /** Human-readable close reason. */
   reason?: string;
@@ -102,9 +102,9 @@ export interface CloseInfo {
 
 **Normative rules**:
 
-1. `wasClean` MUST be `true` only if the close handshake completed successfully
-2. `code` SHOULD be present for WebSocket transports
-3. `error` MUST be present when `wasClean` is `false` and the close was triggered by an error
+1. `graceful` MUST be `true` only if the close handshake completed successfully
+2. `closeCode` SHOULD be present when the transport provides close code semantics (e.g., WebSocket)
+3. `error` MUST be present when `graceful` is `false` and the close was triggered by an error
 4. `reason` SHOULD be truncated to 123 bytes for WebSocket transports (RFC 6455 limit)
 
 ## Error Classification Matrix
@@ -123,7 +123,7 @@ Implementations and runtime layers SHOULD use this matrix to determine retry beh
 | `policy_violation`      | **No**    | CSP/CORS policies are permanent for the page                     |
 | `authentication_failed` | **No**    | Credentials are invalid; requires user action                    |
 | `aborted`               | **No**    | User-initiated cancellation                                      |
-| `protocol_mismatch`     | **No**    | Server does not support required subprotocol                     |
+| `subprotocol_mismatch`  | **No**    | Server does not support required subprotocol                     |
 | `transport_failure`     | Yes       | Unknown cause; conservative retry                                |
 
 **Retryability rules**:
@@ -138,9 +138,11 @@ Implementations and runtime layers SHOULD use this matrix to determine retry beh
 
 ### Helper Functions
 
-Implementations SHOULD provide these helper functions for error normalization.
+WebSocket transports SHOULD provide these helper functions for error normalization. These are **not** part of `@sideband/transport` core; they belong in `@sideband/transport-ws`.
 
 ```typescript
+// @sideband/transport-ws only (not exported from @sideband/transport)
+
 /**
  * Normalize a platform error to TransportError.
  *
@@ -156,28 +158,28 @@ export function normalizeError(
 /**
  * Infer TransportErrorKind from a WebSocket close code.
  *
- * @param code - WebSocket close code (1000-4999)
+ * @param closeCode - WebSocket close code (1000-4999)
  * @returns The corresponding TransportErrorKind
  */
-export function kindFromCloseCode(code: number): TransportErrorKind;
+export function errorKindFromWsCloseCode(closeCode: number): TransportErrorKind;
 ```
 
 ### Browser Mapping (Heuristic)
 
 Browser WebSocket errors are opaque by design (security). Implementations MUST use heuristics to classify errors.
 
-| Condition                                  | Kind                 | Rationale                                |
-| ------------------------------------------ | -------------------- | ---------------------------------------- |
-| `navigator.onLine === false`               | `network_offline`    | Browser reports no network               |
-| Close code 1006 + no prior frames received | `connection_refused` | Connection failed before data exchange   |
-| Close code 1006 + had successful frames    | `abnormal_close`     | Connection dropped after establishment   |
-| Close code 1008                            | `policy_violation`   | Policy violation (e.g., origin rejected) |
-| Close code 1009                            | `message_too_large`  | Message too big                          |
-| Close code 1002                            | `transport_failure`  | Protocol error                           |
-| Close code 1003                            | `transport_failure`  | Unsupported data                         |
-| `AbortError` or signal aborted             | `aborted`            | AbortSignal triggered                    |
-| No subprotocol selected                    | `protocol_mismatch`  | Subprotocol negotiation failed           |
-| Other/unknown                              | `transport_failure`  | Catch-all                                |
+| Condition                                  | Kind                   | Rationale                                |
+| ------------------------------------------ | ---------------------- | ---------------------------------------- |
+| `navigator.onLine === false`               | `network_offline`      | Browser reports no network               |
+| Close code 1006 + no prior frames received | `connection_refused`   | Connection failed before data exchange   |
+| Close code 1006 + had successful frames    | `abnormal_close`       | Connection dropped after establishment   |
+| Close code 1008                            | `policy_violation`     | Policy violation (e.g., origin rejected) |
+| Close code 1009                            | `message_too_large`    | Message too big                          |
+| Close code 1002                            | `transport_failure`    | Protocol error                           |
+| Close code 1003                            | `transport_failure`    | Unsupported data                         |
+| `AbortError` or signal aborted             | `aborted`              | AbortSignal triggered                    |
+| No subprotocol selected                    | `subprotocol_mismatch` | Subprotocol negotiation failed           |
+| Other/unknown                              | `transport_failure`    | Catch-all                                |
 
 **Browser heuristic rules**:
 
@@ -186,6 +188,8 @@ Browser WebSocket errors are opaque by design (security). Implementations MUST u
 3. Close code 1006 with no prior frames typically indicates connection failure
 4. Close code 1006 with prior frames indicates unexpected disconnect
 5. When in doubt, use `transport_failure` as the catch-all
+
+> **Implementation note**: Rules 2-4 and subprotocol detection require connection-level context (frame exchange history, handshake state) that may not be available to standalone error normalization functions. Implementations MAY classify all 1006 errors as `abnormal_close` and rely on `transport_failure` as the fallback when connection context is unavailable. The browser WebSocket API does not reliably expose subprotocol negotiation failures; only explicit close code 1010 is detectable.
 
 ### Node/Bun Mapping
 
@@ -217,22 +221,22 @@ Node.js and Bun provide detailed error codes. Implementations SHOULD map these c
 
 Standard WebSocket close codes and their classification.
 
-| Code      | Name                | Kind                | Notes                         |
-| --------- | ------------------- | ------------------- | ----------------------------- |
-| 1000      | Normal Closure      | (clean close)       | `wasClean: true`              |
-| 1001      | Going Away          | `abnormal_close`    | Endpoint going away           |
-| 1002      | Protocol Error      | `transport_failure` | Protocol violation            |
-| 1003      | Unsupported Data    | `transport_failure` | Text frame received           |
-| 1006      | Abnormal Closure    | (see heuristic)     | No close frame; use heuristic |
-| 1007      | Invalid Payload     | `transport_failure` | Encoding error                |
-| 1008      | Policy Violation    | `policy_violation`  | Origin/policy rejected        |
-| 1009      | Message Too Big     | `message_too_large` | Frame exceeds limit           |
-| 1010      | Mandatory Extension | `protocol_mismatch` | Required extension missing    |
-| 1011      | Internal Error      | `transport_failure` | Server internal error         |
-| 1012      | Service Restart     | `abnormal_close`    | Server restarting             |
-| 1013      | Try Again Later     | `abnormal_close`    | Temporary overload            |
-| 1015      | TLS Handshake       | `tls_failure`       | TLS failure (never sent)      |
-| 4000-4999 | Private Use         | `transport_failure` | Application-defined           |
+| Code      | Name                | Kind                   | Notes                         |
+| --------- | ------------------- | ---------------------- | ----------------------------- |
+| 1000      | Normal Closure      | (clean close)          | `graceful: true`              |
+| 1001      | Going Away          | `abnormal_close`       | Endpoint going away           |
+| 1002      | Protocol Error      | `transport_failure`    | Protocol violation            |
+| 1003      | Unsupported Data    | `transport_failure`    | Text frame received           |
+| 1006      | Abnormal Closure    | (see heuristic)        | No close frame; use heuristic |
+| 1007      | Invalid Payload     | `transport_failure`    | Encoding error                |
+| 1008      | Policy Violation    | `policy_violation`     | Origin/policy rejected        |
+| 1009      | Message Too Big     | `message_too_large`    | Frame exceeds limit           |
+| 1010      | Mandatory Extension | `subprotocol_mismatch` | Required extension missing    |
+| 1011      | Internal Error      | `transport_failure`    | Server internal error         |
+| 1012      | Service Restart     | `abnormal_close`       | Server restarting             |
+| 1013      | Try Again Later     | `abnormal_close`       | Temporary overload            |
+| 1015      | TLS Handshake       | `tls_failure`          | TLS failure (never sent)      |
+| 4000-4999 | Private Use         | `transport_failure`    | Application-defined           |
 
 ## Implementation Notes
 

@@ -14,6 +14,7 @@ import {
   ProtocolError,
 } from "@sideband/protocol";
 import type {
+  CloseOptions,
   NegotiationResult,
   Negotiator,
   TransportConnection,
@@ -106,9 +107,14 @@ export class SbpNegotiator implements Negotiator {
     });
   }
 
-  async terminate(conn: TransportConnection, reason?: string): Promise<void> {
+  async terminate(
+    conn: TransportConnection,
+    options?: CloseOptions,
+  ): Promise<void> {
     try {
-      const reasonBytes = reason ? new TextEncoder().encode(reason) : undefined;
+      const reasonBytes = options?.reason
+        ? new TextEncoder().encode(options.reason)
+        : undefined;
       const closeFrame = createCloseFrame(reasonBytes);
       await conn.send(encodeFrame(closeFrame));
     } catch {

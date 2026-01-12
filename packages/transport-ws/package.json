@@ -1,12 +1,12 @@
 {
-  "name": "@sideband/transport-browser",
-  "version": "0.0.3",
-  "description": "Browser transport implementation of the Sideband Transport interface using WebSocket primitives with reconnect/error handling for real-time apps.",
+  "name": "@sideband/transport-ws",
+  "version": "0.0.1",
+  "description": "WebSocket transport for Sideband with browser and Node.js/Bun support.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sidebandtech/sideband.git",
-    "directory": "packages/transport-browser"
+    "directory": "packages/transport-ws"
   },
   "bugs": {
     "url": "https://github.com/sidebandtech/sideband/issues"
@@ -19,10 +19,10 @@
   "keywords": [
     "sideband",
     "transport",
-    "browser",
     "websocket",
-    "reconnect",
-    "client",
+    "browser",
+    "node",
+    "bun",
     "p2p"
   ],
   "type": "module",
@@ -30,8 +30,20 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/browser.js",
       "bun": "./src/index.ts",
+      "node": "./dist/node.js",
       "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "bun": "./src/browser.ts",
+      "default": "./dist/browser.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "bun": "./src/node.ts",
+      "default": "./dist/node.js"
     },
     "./package.json": "./package.json"
   },
