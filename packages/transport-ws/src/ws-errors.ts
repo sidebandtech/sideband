@@ -46,7 +46,7 @@ export function errorKindFromWsCloseCode(
     case 1010:
       return "subprotocol_mismatch"; // Mandatory extension
     case 1011:
-      return "transport_failure"; // Internal error
+      return "buffer_overflow"; // Internal error / resource exhaustion
     case 1012:
       return "abnormal_close"; // Service restart
     case 1013:
@@ -160,4 +160,35 @@ function errorKindFromNodeCode(code: string | undefined): TransportErrorKind {
       }
       return "transport_failure";
   }
+}
+
+/**
+ * I/O diagnostics for close kind derivation.
+ */
+export interface CloseDiagnostics {
+  ioBytes: { sent: number; received: number };
+}
+
+/**
+ * Derive error kind from close code and connection diagnostics.
+ * Deterministically handles ambiguous codes like 1006 based on traffic history.
+ *
+ * - 1006 + no frames exchanged → "connection_refused"
+ * - 1006 + had frames → "abnormal_close"
+ * - Other codes → delegates to errorKindFromWsCloseCode()
+ *
+ * @param closeCode - WebSocket close code
+ * @param diagnostics - Connection traffic diagnostics
+ * @returns The inferred TransportErrorKind
+ */
+export function deriveCloseKind(
+  closeCode: number,
+  diagnostics: CloseDiagnostics,
+): TransportErrorKind {
+  if (closeCode === 1006) {
+    const hadTraffic =
+      diagnostics.ioBytes.sent + diagnostics.ioBytes.received > 0;
+    return hadTraffic ? "abnormal_close" : "connection_refused";
+  }
+  return errorKindFromWsCloseCode(closeCode) ?? "abnormal_close";
 }

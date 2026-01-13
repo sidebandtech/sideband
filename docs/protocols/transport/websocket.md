@@ -56,22 +56,91 @@ WebSocket transports extend the base `ConnectOptions` (defined in `transport/abi
 ```typescript
 import type { ConnectOptions as BaseConnectOptions } from "@sideband/transport";
 
+interface SubprotocolOptions {
+  /**
+   * Subprotocols to offer during handshake.
+   * Default: undefined (no subprotocol requested)
+   *
+   * For Sideband connections, set explicitly:
+   * @example { offer: ["sideband.v1"], requireSelection: true }
+   */
+  offer?: string[];
+
+  /**
+   * Whether to fail if server doesn't select a requested subprotocol.
+   * Default: false (transport is generic; Sideband policy is opt-in)
+   *
+   * Note: This is a CLIENT-SIDE option. Server uses `select` callback.
+   */
+  requireSelection?: boolean;
+
+  /**
+   * Server-side: custom subprotocol selection logic.
+   * Called with the client's offered subprotocols.
+   * Return the selected subprotocol, or undefined to accept without subprotocol.
+   *
+   * Default: select first client offer that appears in server's `offer` list.
+   *
+   * @example
+   * // Accept any version, prefer latest
+   * select: (offered) => offered.includes("sideband.v2") ? "sideband.v2" : "sideband.v1"
+   */
+  select?: (clientOffers: string[]) => string | undefined;
+}
+
 export interface ConnectOptions extends BaseConnectOptions {
   // Inherited from base: timeoutMs?, signal?
 
-  // WebSocket-specific
-  protocols?: string | string[]; // WebSocket subprotocols, default: ["sideband.v1"]
-  maxMessageSize?: number; // Default: 1048576 (1 MiB)
+  /**
+   * Subprotocol negotiation options.
+   */
+  subprotocols?: SubprotocolOptions;
 
-  // Node/Bun only (ignored in browser)
-  headers?: Record<string, string>;
-  tls?: TlsOptions; // Passthrough to Node tls.connect
+  /**
+   * Connection limits.
+   */
+  limits?: {
+    /** Max single message size. Default: 1 MiB */
+    maxMessageSize?: number;
+    /** Max bytes queued for sending. Default: 16 MiB */
+    maxSendBufferBytes?: number;
+    /** Max bytes buffered for inbound. Default: 16 MiB */
+    maxInboundBufferBytes?: number;
+  };
 
-  // Browser workaround (auth via URL when headers unavailable)
-  query?: Record<string, string>;
+  /**
+   * Authentication token. Mutually exclusive with advanced.headers.Authorization.
+   *
+   * - Node/Bun: sent via Authorization header (default)
+   * - Browser: sent via query param (browsers cannot set WS headers)
+   */
+  auth?: {
+    token: string;
+    /**
+     * How to send the token.
+     * - "header": Authorization header (Node/Bun only, throws in browser)
+     * - "query": URL query parameter
+     * Default: "header" in Node/Bun, throws in browser (forces explicit choice)
+     */
+    mode?: "header" | "query";
+    /** Header name when mode="header". Default: "Authorization" */
+    headerName?: string;
+    /** Query param name when mode="query". Default: "token" */
+    queryParam?: string;
+  };
 
-  // Escape hatch for transport-specific options
-  [key: string]: unknown;
+  /**
+   * Advanced/escape-hatch options. Use intent-based options above when possible.
+   * Conflicts with higher-level options cause validation errors.
+   */
+  advanced?: {
+    /** Custom headers (Node/Bun only, ignored in browser) */
+    headers?: Record<string, string>;
+    /** Query params to append to URL */
+    query?: Record<string, string>;
+    /** TLS options passthrough (Node only) */
+    tls?: TlsOptions;
+  };
 }
 
 // Passthrough to Node's tls.connect options
@@ -79,15 +148,41 @@ export interface ConnectOptions extends BaseConnectOptions {
 type TlsOptions = Partial<import("tls").ConnectionOptions>;
 ```
 
-**Browser header limitation**: Browser WebSocket API does not support custom headers. Use `query` to pass authentication tokens via URL query parameters as a workaround.
+**Browser header limitation**: Browser WebSocket API does not support custom headers. Use `auth: { mode: "query" }` to pass authentication tokens via URL query parameters. In browser, specifying `auth` without `mode: "query"` throws a configuration error.
+
+**Validation rules**:
+
+- If `auth` is set and `advanced.headers.Authorization` is set: throw configuration error
+- If `auth.mode === "header"` in browser: throw with message "Browsers cannot set WebSocket headers. Use `auth: { mode: 'query' }` explicitly."
 
 ## Subprotocol Negotiation
 
 WebSocket subprotocol negotiation rules:
 
-- Default `protocols`: `["sideband.v1"]`
-- If server responds without selecting any requested subprotocol: fail with `TransportError(kind: "subprotocol_mismatch")`
-- Implementations MAY expose `readonly subprotocol?: string` on `TransportConnection` to indicate the negotiated subprotocol
+**Client-side**:
+
+- Default `subprotocols.offer`: `undefined` (no subprotocol requested)
+- Default `subprotocols.requireSelection`: `false` (transport is generic)
+- If `requireSelection: true` and server doesn't select a requested subprotocol: fail with `TransportError(kind: "subprotocol_mismatch")`
+
+**Server-side**:
+
+- If `subprotocols.select` callback provided: use it for custom selection logic
+- Otherwise, if `subprotocols.offer` provided: select first client offer that appears in server's offer list
+- If no match and no custom logic: accept without subprotocol (RFC 6455 allows this)
+
+**Sideband-recommended configuration** (explicit opt-in to protocol enforcement):
+
+```typescript
+const conn = await transport.connect(endpoint, {
+  subprotocols: {
+    offer: ["sideband.v1"],
+    requireSelection: true, // Fail if server doesn't support Sideband
+  },
+});
+```
+
+Implementations MUST expose `readonly subprotocol?: string` on `TransportConnection` to indicate the negotiated subprotocol (undefined if none selected).
 
 ```typescript
 export interface TransportConnection {
@@ -131,17 +226,17 @@ Standard WebSocket close codes and their semantics:
 
 **Mapping to `TransportError.kind`**:
 
-| Close Code | `TransportErrorKind`                     | Notes                       |
-| ---------- | ---------------------------------------- | --------------------------- |
-| 1000       | (clean close)                            | `CloseInfo.graceful = true` |
-| 1001       | `abnormal_close`                         | Peer going away             |
-| 1002       | `transport_failure`                      | Protocol error              |
-| 1003       | `transport_failure`                      | Text frame (we sent binary) |
-| 1006       | `abnormal_close` or `connection_refused` | Abnormal closure (see note) |
-| 1009       | `message_too_large`                      | Size limit exceeded         |
-| 1011       | `transport_failure`                      | Server error                |
-| 1012       | `abnormal_close`                         | Service restart             |
-| 1013       | `abnormal_close`                         | Try again later             |
+| Close Code | `TransportErrorKind`                     | Notes                                 |
+| ---------- | ---------------------------------------- | ------------------------------------- |
+| 1000       | (clean close)                            | `CloseInfo.graceful = true`           |
+| 1001       | `abnormal_close`                         | Peer going away                       |
+| 1002       | `transport_failure`                      | Protocol error                        |
+| 1003       | `transport_failure`                      | Text frame (we sent binary)           |
+| 1006       | `abnormal_close` or `connection_refused` | Abnormal closure (see note)           |
+| 1009       | `message_too_large`                      | Single message exceeds size limit     |
+| 1011       | `buffer_overflow`                        | Resource exhaustion (buffer overflow) |
+| 1012       | `abnormal_close`                         | Service restart                       |
+| 1013       | `abnormal_close`                         | Try again later                       |
 
 **Note on code 1006**: This code indicates abnormal closure (no close frame received). Heuristic:
 
@@ -174,23 +269,58 @@ Server-side origin validation for DNS rebinding protection:
 ```typescript
 export interface ListenOptions {
   // ... existing members
-  allowedOrigins?: string[] | null; // Validate Origin header; null = allow any
+
+  /**
+   * Origin validation policy for DNS rebinding protection.
+   *
+   * Default behavior:
+   * - Localhost listeners: "localhost" (allow localhost origins only)
+   * - Non-localhost listeners: "any" (allow any origin)
+   *
+   * IMPORTANT: Connections without Origin header (non-browser clients) are
+   * always allowed. Origin is a browser-only header and is not suitable
+   * for authentication. Use proper authentication mechanisms.
+   */
+  originPolicy?:
+    | "any" // Allow any origin (including absent)
+    | "localhost" // Allow localhost origins (absent OK)
+    | { allow: string[] } // Allow specific origins (absent OK)
+    | ((origin: string | undefined, request: unknown) => boolean); // Custom
+
+  subprotocols?: SubprotocolOptions;
+
+  limits?: {
+    maxMessageSize?: number;
+    maxSendBufferBytes?: number;
+    maxInboundBufferBytes?: number;
+  };
 }
 ```
 
 **Normative rules**:
 
-- If `allowedOrigins` is specified (non-null), MUST reject connections with non-matching `Origin` header
+- Connections without `Origin` header (non-browser clients like CLI tools, other servers) MUST be allowed. Origin is a browser-only header and is not suitable for authentication.
+- If `originPolicy` is specified, MUST validate `Origin` header according to policy
+- If `originPolicy` callback throws, MUST reject connection with `TransportError(kind: "transport_failure")`
 - SHOULD log rejected connections for debugging
 
 **Default behavior**:
 
-| Endpoint Type                               | Default `allowedOrigins`    |
-| ------------------------------------------- | --------------------------- |
-| Localhost (`127.0.0.1`, `::1`, `localhost`) | Restricted list (see below) |
-| Non-localhost                               | `null` (no restriction)     |
+| Endpoint Type                               | Default `originPolicy` |
+| ------------------------------------------- | ---------------------- |
+| Localhost (`127.0.0.1`, `::1`, `localhost`) | `"localhost"`          |
+| Non-localhost                               | `"any"`                |
 
-**Default localhost origins**:
+**Policy semantics**:
+
+| Policy value               | Behavior                                             |
+| -------------------------- | ---------------------------------------------------- |
+| `"any"`                    | Accept any origin, including absent                  |
+| `"localhost"`              | Accept localhost origins (see list below), absent OK |
+| `{ allow: [...] }`         | Accept listed origins, absent OK                     |
+| `(origin, req) => boolean` | Custom validation; return `true` to accept           |
+
+**Localhost origins** (when `originPolicy: "localhost"`):
 
 ```typescript
 [
@@ -203,9 +333,9 @@ export interface ListenOptions {
 ];
 ```
 
-**Disabling origin validation**: Explicitly set `allowedOrigins: null`.
+**Security rationale**: DNS rebinding attacks allow malicious websites to connect to localhost services by manipulating DNS responses. The `"localhost"` default for localhost listeners protects daemon use-cases where a local WebSocket server accepts connections from browser clients.
 
-**Security rationale**: DNS rebinding attacks allow malicious websites to connect to localhost services by manipulating DNS responses. Secure-by-default protects daemon use-cases where a local WebSocket server accepts connections from browser clients.
+**Important**: Origin validation protects against DNS rebinding, not against malicious clients. Use proper authentication for security.
 
 ## Implementation Notes
 
@@ -221,9 +351,10 @@ export interface ListenOptions {
 
 - Use `ws` package or Bun native WebSocket
 - Configure `maxPayload` for message size limits
-- Support `headers` and `tls` options
+- Support `advanced.headers` and `advanced.tls` options
 - MAY configure automatic WebSocket ping interval
-- Implement `allowedOrigins` validation on server accept
+- Implement `originPolicy` validation on server accept
+- Allow connections without `Origin` header (non-browser clients)
 
 ### Error Normalization
 

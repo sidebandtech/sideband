@@ -172,13 +172,20 @@ for await (const message of conn.inbound) {
 
 ### 4.1 Normative Rules
 
-1. **Buffer pressure tolerance**: `send()` MUST NOT reject solely due to buffer pressure. Implementations MUST buffer messages when the network is slow.
+1. **Buffer pressure tolerance**: `send()` MUST NOT reject solely due to transient buffer pressure. Implementations MUST buffer messages when the network is slow.
 
 2. **Send buffer limit**: Implementations SHOULD enforce a maximum send buffer size:
-   - Default: 16 MiB
-   - When exceeded: MAY reject `send()` with `TransportError(kind: "transport_failure")` OR close the connection
+   - Default: 16 MiB (configurable via `limits.maxSendBufferBytes`)
+   - **Recommended behavior**: When exceeded, reject `send()` with `TransportError(kind: "buffer_overflow")`
+   - Alternative: MAY close the connection with `buffer_overflow`
+   - Using `buffer_overflow` (instead of `transport_failure`) enables distinct handling in retry logic
 
-3. **Buffered amount exposure**: Implementations SHOULD expose `pendingSendBytes` when the underlying transport provides it:
+3. **Inbound buffer limit**: Implementations SHOULD enforce a maximum inbound buffer size:
+   - Default: 16 MiB (configurable via `limits.maxInboundBufferBytes`)
+   - When exceeded: MUST close connection with close code 1011 (WebSocket) and `TransportError(kind: "buffer_overflow")`
+   - This prevents OOM when consumers are slow
+
+4. **Buffered amount exposure**: Implementations SHOULD expose `pendingSendBytes` when the underlying transport provides it:
 
    ```typescript
    interface TransportConnection {
@@ -189,8 +196,11 @@ for await (const message of conn.inbound) {
 
 ### 4.2 Clarification: Buffer Size vs Message Size
 
-- **`maxMessageSize`**: Limits individual message size (default: 1 MiB). A single message exceeding this is rejected immediately.
-- **Send buffer limit**: Limits total bytes queued across multiple messages. Allows temporary bursts of many messages.
+| Limit                   | Scope                 | Default | Error kind          | Behavior                             |
+| ----------------------- | --------------------- | ------- | ------------------- | ------------------------------------ |
+| `maxMessageSize`        | Single message        | 1 MiB   | `message_too_large` | Reject immediately (close with 1009) |
+| `maxSendBufferBytes`    | Total queued outbound | 16 MiB  | `buffer_overflow`   | Reject send (or close)               |
+| `maxInboundBufferBytes` | Total queued inbound  | 16 MiB  | `buffer_overflow`   | Close connection (1011)              |
 
 These limits are independent. A valid message may be rejected if it would exceed the send buffer limit.
 
@@ -339,3 +349,5 @@ await listener.close();
 | Handler isolation   | One connection's error doesn't affect others   |
 | State observability | `state` property always reflects current state |
 | Close notification  | `closed` promise resolves for all close types  |
+| Outbound overflow   | Reject with `buffer_overflow` (or close)       |
+| Inbound overflow    | Close with `buffer_overflow` (prevents OOM)    |

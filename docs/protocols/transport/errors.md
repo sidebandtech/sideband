@@ -30,6 +30,7 @@ export type TransportErrorKind =
   | "network_offline" // Network unavailable
   | "abnormal_close" // Connection dropped unexpectedly
   | "message_too_large" // Message exceeds size limit
+  | "buffer_overflow" // Buffer pressure exceeded limit
   | "policy_violation" // CSP, CORS, or browser security policy
   | "authentication_failed" // Relay-level auth (headers/tokens); NOT E2EE auth
   | "aborted" // Explicit AbortSignal cancellation
@@ -47,7 +48,8 @@ export type TransportErrorKind =
 | `timeout`               | The operation exceeded its time limit. May indicate network congestion, slow server, or unreachable host.                                                 |
 | `network_offline`       | The local network interface is unavailable. Browser: `navigator.onLine === false`.                                                                        |
 | `abnormal_close`        | The connection was established but closed unexpectedly without a proper close handshake.                                                                  |
-| `message_too_large`     | The message exceeds the configured `maxMessageSize` limit.                                                                                                |
+| `message_too_large`     | A single message exceeds the configured `maxMessageSize` limit.                                                                                           |
+| `buffer_overflow`       | Accumulated buffer pressure exceeded the limit. Distinct from `message_too_large` (single-frame violation).                                               |
 | `policy_violation`      | Browser security policy (CSP, CORS, mixed content) blocked the connection or operation.                                                                   |
 | `authentication_failed` | Transport-level authentication failed (e.g., HTTP headers, tokens). This is NOT E2EE authentication; SBRP handshake failures use endpoint codes (0xE0xx). |
 | `aborted`               | The operation was explicitly cancelled via `AbortSignal`.                                                                                                 |
@@ -111,20 +113,21 @@ export interface CloseInfo {
 
 Implementations and runtime layers SHOULD use this matrix to determine retry behavior.
 
-| Kind                    | Retryable | Rationale                                                        |
-| ----------------------- | --------- | ---------------------------------------------------------------- |
-| `connection_refused`    | Yes       | Server may come online                                           |
-| `dns_failure`           | Yes       | Cap at 2-3 attempts; DNS may recover                             |
-| `tls_failure`           | **No**    | Certificate issues do not self-resolve                           |
-| `timeout`               | Yes       | Transient network congestion                                     |
-| `network_offline`       | Yes       | Wait for online event before retry                               |
-| `abnormal_close`        | Yes       | Transient disconnection                                          |
-| `message_too_large`     | **No**    | Configuration mismatch; message must be split or limit increased |
-| `policy_violation`      | **No**    | CSP/CORS policies are permanent for the page                     |
-| `authentication_failed` | **No**    | Credentials are invalid; requires user action                    |
-| `aborted`               | **No**    | User-initiated cancellation                                      |
-| `subprotocol_mismatch`  | **No**    | Server does not support required subprotocol                     |
-| `transport_failure`     | Yes       | Unknown cause; conservative retry                                |
+| Kind                    | Retryable | Rationale                                                           |
+| ----------------------- | --------- | ------------------------------------------------------------------- |
+| `connection_refused`    | Yes       | Server may come online                                              |
+| `dns_failure`           | Yes       | Cap at 2-3 attempts; DNS may recover                                |
+| `tls_failure`           | **No**    | Certificate issues do not self-resolve                              |
+| `timeout`               | Yes       | Transient network congestion                                        |
+| `network_offline`       | Yes       | Wait for online event before retry                                  |
+| `abnormal_close`        | Yes       | Transient disconnection                                             |
+| `message_too_large`     | **No**    | Configuration mismatch; message must be split or limit increased    |
+| `buffer_overflow`       | **No**    | Consumer too slow or limit too low; requires consumer or config fix |
+| `policy_violation`      | **No**    | CSP/CORS policies are permanent for the page                        |
+| `authentication_failed` | **No**    | Credentials are invalid; requires user action                       |
+| `aborted`               | **No**    | User-initiated cancellation                                         |
+| `subprotocol_mismatch`  | **No**    | Server does not support required subprotocol                        |
+| `transport_failure`     | Yes       | Unknown cause; conservative retry                                   |
 
 **Retryability rules**:
 
@@ -221,22 +224,22 @@ Node.js and Bun provide detailed error codes. Implementations SHOULD map these c
 
 Standard WebSocket close codes and their classification.
 
-| Code      | Name                | Kind                   | Notes                         |
-| --------- | ------------------- | ---------------------- | ----------------------------- |
-| 1000      | Normal Closure      | (clean close)          | `graceful: true`              |
-| 1001      | Going Away          | `abnormal_close`       | Endpoint going away           |
-| 1002      | Protocol Error      | `transport_failure`    | Protocol violation            |
-| 1003      | Unsupported Data    | `transport_failure`    | Text frame received           |
-| 1006      | Abnormal Closure    | (see heuristic)        | No close frame; use heuristic |
-| 1007      | Invalid Payload     | `transport_failure`    | Encoding error                |
-| 1008      | Policy Violation    | `policy_violation`     | Origin/policy rejected        |
-| 1009      | Message Too Big     | `message_too_large`    | Frame exceeds limit           |
-| 1010      | Mandatory Extension | `subprotocol_mismatch` | Required extension missing    |
-| 1011      | Internal Error      | `transport_failure`    | Server internal error         |
-| 1012      | Service Restart     | `abnormal_close`       | Server restarting             |
-| 1013      | Try Again Later     | `abnormal_close`       | Temporary overload            |
-| 1015      | TLS Handshake       | `tls_failure`          | TLS failure (never sent)      |
-| 4000-4999 | Private Use         | `transport_failure`    | Application-defined           |
+| Code      | Name                | Kind                   | Notes                                 |
+| --------- | ------------------- | ---------------------- | ------------------------------------- |
+| 1000      | Normal Closure      | (clean close)          | `graceful: true`                      |
+| 1001      | Going Away          | `abnormal_close`       | Endpoint going away                   |
+| 1002      | Protocol Error      | `transport_failure`    | Protocol violation                    |
+| 1003      | Unsupported Data    | `transport_failure`    | Text frame received                   |
+| 1006      | Abnormal Closure    | (see heuristic)        | No close frame; use heuristic         |
+| 1007      | Invalid Payload     | `transport_failure`    | Encoding error                        |
+| 1008      | Policy Violation    | `policy_violation`     | Origin/policy rejected                |
+| 1009      | Message Too Big     | `message_too_large`    | Single frame exceeds limit            |
+| 1010      | Mandatory Extension | `subprotocol_mismatch` | Required extension missing            |
+| 1011      | Internal Error      | `buffer_overflow`      | Resource exhaustion (buffer overflow) |
+| 1012      | Service Restart     | `abnormal_close`       | Server restarting                     |
+| 1013      | Try Again Later     | `abnormal_close`       | Temporary overload                    |
+| 1015      | TLS Handshake       | `tls_failure`          | TLS failure (never sent)              |
+| 4000-4999 | Private Use         | `transport_failure`    | Application-defined                   |
 
 ## Implementation Notes
 
@@ -261,6 +264,13 @@ throw new TransportError(
 throw new TransportError(
   "message_too_large",
   `Message size ${size} exceeds limit ${maxMessageSize}`,
+  undefined,
+);
+
+// Buffer overflow (inbound or outbound)
+throw new TransportError(
+  "buffer_overflow",
+  `Inbound buffer overflow: ${bufferedBytes} exceeds limit ${maxInboundBufferBytes}`,
   undefined,
 );
 

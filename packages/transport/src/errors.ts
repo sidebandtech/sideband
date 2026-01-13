@@ -18,6 +18,7 @@ export type TransportErrorKind =
   | "network_offline" // Network unavailable
   | "abnormal_close" // Connection dropped unexpectedly
   | "message_too_large" // Message exceeds size limit
+  | "buffer_overflow" // Send/receive buffer limit exceeded
   | "policy_violation" // CSP, CORS, or browser security policy
   | "authentication_failed" // Relay-level auth (headers/tokens); NOT E2EE auth
   | "aborted" // Explicit AbortSignal cancellation
@@ -53,6 +54,7 @@ export function isRetryable(kind: TransportErrorKind): boolean {
       return true;
     case "tls_failure":
     case "message_too_large":
+    case "buffer_overflow":
     case "policy_violation":
     case "authentication_failed":
     case "aborted":
