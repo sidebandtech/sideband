@@ -10,7 +10,7 @@ This document is reserved for future streaming RPC semantics. v1 does not suppor
 
 ## Non-Goals for v1
 
-- Server-sent events (use `event/` subject prefix instead)
+- Server-sent events (use `event` channel instead)
 - Bidirectional streaming
 - Chunked responses
 

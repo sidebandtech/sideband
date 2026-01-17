@@ -76,7 +76,7 @@ interface InboundMessage {
   /** Send a response message (generates fresh frameId) */
   send(subject: Subject, data: Uint8Array): Promise<void>;
 
-  /** RPC context (only present for rpc/ subjects with valid envelope) */
+  /** RPC context (only present for `rpc` channel with valid envelope) */
   readonly rpc?: RpcContext;
 }
 
@@ -106,11 +106,14 @@ Subject prefixes are **policy-driven**, not type-locked:
 
 ```ts
 interface SubjectPolicy {
-  /** Required prefixes (default: ["rpc/", "event/", "stream/", "app/"]) */
-  allowedPrefixes: string[];
+  /** Exact-match channels (default: ["rpc", "event", "stream"]) */
+  allowedChannels: string[];
 
-  /** Prefixes that are reserved/rejected (default: ["stream/"]) */
-  reservedPrefixes: string[];
+  /** Channels that are reserved/rejected (default: ["stream"]) */
+  reservedChannels: string[];
+
+  /** Allowed prefixes (default: ["app/"]) */
+  allowedPrefixes: string[];
 
   /** Custom classifier for dispatch semantics */
   classify?(subject: string): SubjectKind;
@@ -121,33 +124,36 @@ type SubjectKind = "rpc" | "event" | "custom" | "reserved";
 
 **Validation order:**
 
-1. Check `reservedPrefixes` → reject with `ErrorFrame{code: 1003}` (UnsupportedFeature)
-2. Check `allowedPrefixes` → reject with `ErrorFrame{code: 1002}` (InvalidFrame) if no match
+1. Check `reservedChannels` → reject with `ErrorFrame{code: 1003}` (UnsupportedFeature)
+2. Check `allowedChannels` (exact match) or `allowedPrefixes` (prefix match) → reject with `ErrorFrame{code: 1002}` (InvalidFrame) if no match
 3. Run `classify()` if provided → determines dispatch semantics
 
-**Precedence:** `reservedPrefixes` always takes precedence over `allowedPrefixes`. If a prefix appears in both, it is reserved.
+**Precedence:** `reservedChannels` always takes precedence over `allowedChannels`. If a channel appears in both, it is reserved.
 
 **Classification invariant:** If `classify()` returns `"rpc"`, the message MUST contain a valid RPC envelope; otherwise the message is rejected with `ErrorFrame{code: 1002}` (InvalidFrame: malformed payload). This prevents semantic spoofing where non-RPC messages bypass envelope validation.
 
 **Default validation:**
 
-| Prefix    | Kind       | Default mode | Behavior                     |
-| --------- | ---------- | ------------ | ---------------------------- |
-| `rpc/`    | `rpc`      | `exclusive`  | Single handler, must reply   |
-| `event/`  | `event`    | `broadcast`  | Fan-out, no reply            |
-| `stream/` | `reserved` | —            | Reject with ErrorFrame(1003) |
-| `app/`    | `custom`   | `broadcast`  | User-defined semantics       |
+| Subject  | Kind       | Default mode | Behavior                     |
+| -------- | ---------- | ------------ | ---------------------------- |
+| `rpc`    | `rpc`      | `exclusive`  | Single handler, must reply   |
+| `event`  | `event`    | `broadcast`  | Fan-out, no reply            |
+| `stream` | `reserved` | —            | Reject with ErrorFrame(1003) |
+| `app/*`  | `custom`   | `broadcast`  | User-defined semantics       |
 
-**Future extensibility:** Reserved prefixes (e.g., `stream/`) may be reclassified by negotiators in future protocol versions. V2 negotiators can advertise streaming capability and override the default reserved status.
+Note: `rpc`, `event`, and `stream` are exact-match channels. `app/` is a prefix supporting arbitrary sub-paths.
+
+**Future extensibility:** Reserved channels (e.g., `stream`) may be reclassified by negotiators in future protocol versions. V2 negotiators can advertise streaming capability and override the default reserved status.
 
 **Extensibility:**
 
 ```ts
-// Allow custom prefix
+// Allow custom prefixes for app protocols
 const router = createRouter({
   subjectPolicy: {
-    allowedPrefixes: ["rpc/", "event/", "app/", "debug/", "admin/"],
-    reservedPrefixes: ["stream/"],
+    allowedChannels: ["rpc", "event"],
+    reservedChannels: ["stream"],
+    allowedPrefixes: ["app/", "debug/", "admin/"],
   },
 });
 
@@ -177,18 +183,20 @@ When multiple handlers match, dispatch follows deterministic rules:
 
 **Why sequential broadcast?** Handlers are awaited sequentially—the next handler is invoked only after the previous one resolves. This ensures deterministic side-effects. Concurrent invocation would introduce race conditions and make debugging harder. If parallel execution is needed, handlers can spawn their own async tasks.
 
-**Example:**
+**Example (for `app/` prefix subjects):**
 
 ```ts
-router.route("event/user.joined", handlerA); // exact
-router.routePrefix("event/user.", handlerB); // prefix (longer)
-router.routePrefix("event/", handlerC); // prefix (shorter)
+router.route("app/metrics/cpu", handlerA); // exact
+router.routePrefix("app/metrics/", handlerB); // prefix (longer)
+router.routePrefix("app/", handlerC); // prefix (shorter)
 
-// Incoming: "event/user.joined"
+// Incoming: "app/metrics/cpu"
 // Dispatch order: handlerA (exact), then handlerB (longer prefix), then handlerC
 // For broadcast mode: all three called in order
 // For exclusive mode: only handlerA called
 ```
+
+Note: For `rpc` and `event` channels, dispatch is determined by envelope fields (`m` for RPC methods, `e` for event names), not by subject matching. The example above applies to `app/` prefix subjects and any custom prefixes.
 
 ### 5. RPC Dispatch Rules
 
@@ -212,7 +220,7 @@ interface RouterConfig {
 
 ### 6. Event Dispatch Rules
 
-For `event/` subjects:
+For the `event` channel:
 
 1. Decode envelope (expect `RpcNotification`)
 2. If decode fails → log warning, drop (no response)
@@ -275,12 +283,14 @@ const router = createRouter({
 Handlers can be registered at two levels:
 
 ```ts
-// Global: survives session reconnects
-runtime.router.route("rpc/getStatus", handler);
+// Global: survives session reconnects (app/ prefix example)
+runtime.router.route("app/metrics/status", handler);
 
 // Per-session: auto-cleared on session close
-session.router.route("rpc/sessionSpecific", handler);
+session.router.routePrefix("app/session/", handler);
 ```
+
+Note: For RPC and events, use the higher-level `rpc.handle()` and `events.on()` APIs which route by envelope method/event name. The Router API is primarily for custom `app/` protocols.
 
 **Use cases:**
 

@@ -7,7 +7,7 @@
 
 ## Context
 
-ADR-006 mandates that all `MessageFrame.subject` values start with one of four reserved prefixes: `rpc/`, `event/`, `stream/`, or `app/`.
+ADR-006 mandates that all `MessageFrame.subject` values use exact channel matches (`rpc`, `event`, `stream`) or the `app/` prefix.
 
 The protocol layer did not enforce this contract. The wire codec accepted any string; validation only existed in `@sideband/rpc` (optional). This violated ADR-006 and the principle of correctness-first design.
 
@@ -19,7 +19,7 @@ Move subject validation into `@sideband/protocol` — the only package owning th
 
 2. **Add `asSubject()` validator**: Runtime validation enforcing:
    - 1–256 UTF-8 bytes (measured correctly, not code units)
-   - Reserved prefix (`rpc/`, `event/`, `stream/`, or `app/`)
+   - Valid channel (`rpc`, `event`, `stream` exact match, or `app/` prefix)
    - No null bytes or empty strings
    - Throws `ProtocolError(ProtocolViolation)` on violation
 
@@ -35,7 +35,7 @@ Move subject validation into `@sideband/protocol` — the only package owning th
 
 **UTF-8 byte length**: Validator measures via `TextEncoder` (not JavaScript `.length`, which counts code units). Correctly handles multi-byte characters.
 
-**Prefix list extensibility**: Stored as const array, enabling future extensions (e.g., `signal/`) without API breakage. Update `RESERVED_SUBJECT_PREFIXES`, release minor version.
+**Channel list extensibility**: Stored as const arrays (`RESERVED_CHANNELS` for exact matches, `RESERVED_PREFIXES` for prefix-based), enabling future extensions (e.g., `signal`) without API breakage. Update the relevant array, release minor version.
 
 **Error semantics**: Invalid subjects are fatal. On send: synchronous throw. On receive: `ProtocolError(ProtocolViolation)` → `ErrorFrame` → close connection.
 

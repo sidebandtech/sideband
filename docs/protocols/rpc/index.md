@@ -7,7 +7,7 @@ RPC is a **semantic layer** carried inside SBP Message frames. It does not defin
 
 ## Relationship to SBP
 
-RPC envelopes are encoded in `MessageFrame.data`. Subject prefixes determine envelope semantics: `rpc/` for request/response, `event/` for notifications. See [envelope.md#subject-namespacing](./envelope.md#subject-namespacing).
+RPC envelopes are encoded in `MessageFrame.data`. Channel subjects determine envelope semantics: `rpc` for request/response, `event` for notifications. See [envelope.md#subject-namespacing](./envelope.md#subject-namespacing).
 
 ## Delegation
 

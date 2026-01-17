@@ -32,9 +32,12 @@ import {
 
 const router = createRouter();
 
-router.route("rpc/user.get", async (msg) => {
-  const userId = (msg.rpc?.params as { id: number }).id;
-  await msg.rpc?.reply({ id: userId, name: "Ada" });
+router.route("rpc", async (msg) => {
+  // Dispatch by method name from envelope (msg.rpc.method)
+  if (msg.rpc?.method === "user.get") {
+    const userId = (msg.rpc.params as { id: number }).id;
+    await msg.rpc.reply({ id: userId, name: "Ada" });
+  }
 });
 
 let activeSession: Session | undefined;
@@ -107,8 +110,9 @@ const response = await pending;
 
 **Subject policy defaults**
 
-- Allowed prefixes: `rpc/`, `event/`, `stream/`, `app/`
-- Reserved prefixes: `stream/` (rejected with `ErrorCode.UnsupportedFeature`)
+- Allowed channels: `rpc`, `event` (exact-match)
+- Reserved channels: `stream` (rejected with `ErrorCode.UnsupportedFeature`)
+- Allowed prefixes: `app/` (for custom sub-paths)
 - Use `createRouter(config, subjectPolicy)` to override.
 
 **Negotiators**

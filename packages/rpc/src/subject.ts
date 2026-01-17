@@ -3,15 +3,15 @@
 /**
  * RPC subject types and utilities.
  *
- * All RPC and event messages must use a subject with a reserved prefix:
- * - "rpc/" for RPC requests/responses
- * - "event/" for pub/sub notifications
- * - "stream/" for streaming (reserved for v2)
- * - "app/" for vendor-specific use
+ * Subjects are transport-level mux keys per ADR-006:
+ * - `rpc` — exact-match channel for RPC requests/responses
+ * - `event` — exact-match channel for fire-and-forget events
+ * - `stream` — exact-match channel for streaming (reserved for v2)
+ * - `app/` — prefix for vendor-specific sub-paths
  *
+ * Method/event dispatch happens via envelope fields (`m` for methods, `e` for events).
  * Subject validation is enforced at the protocol layer per ADR-006 and ADR-008.
- * This module re-exports the protocol Subject type and validator for RPC convenience.
- * See ADR-002 and ADR-006 for the specification.
+ * See ADR-002 for the naming matrix.
  */
 
 import type { Subject } from "@sideband/protocol";
@@ -24,16 +24,21 @@ import { asSubject } from "@sideband/protocol";
 export type RpcSubject = Subject;
 
 /**
- * Reserved subject prefixes and their purposes.
- * Re-exported for backwards compatibility.
+ * Channel subjects (exact-match) per ADR-006.
+ */
+export const SUBJECT_CHANNELS = {
+  /** RPC requests and responses */
+  RPC: "rpc",
+  /** Fire-and-forget events */
+  EVENT: "event",
+  /** Streaming (reserved for v2) */
+  STREAM: "stream",
+} as const;
+
+/**
+ * Subject prefixes for custom sub-paths per ADR-006.
  */
 export const SUBJECT_PREFIXES = {
-  /** RPC requests and responses */
-  RPC: "rpc/",
-  /** Pub/sub events and notifications */
-  EVENT: "event/",
-  /** Streaming (reserved for v2) */
-  STREAM: "stream/",
   /** Vendor-specific / custom */
   APP: "app/",
 } as const;

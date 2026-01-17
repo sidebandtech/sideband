@@ -47,8 +47,8 @@ export type StreamId = Brand<string, "StreamId">;
 
 /**
  * Subject (routing key) for MessageFrame.
- * Must start with one of the reserved prefixes: "rpc/", "event/", "stream/", "app/".
- * Per ADR-006, all subjects are namespaced to prevent collisions and disambiguate intent.
+ * Must be an exact-match channel (`rpc`, `event`, `stream`) or use the `app/` prefix.
+ * Per ADR-006, subjects are transport-level mux keys; method/event identity lives in the envelope.
  */
 export type Subject = Brand<string, "Subject">;
 
@@ -91,15 +91,16 @@ export function asStreamId(value: string): StreamId {
 }
 
 /**
- * Reserved subject prefixes per ADR-006 and ADR-008.
- * All MessageFrame subjects must start with one of these.
+ * Reserved channel subjects per ADR-006 and ADR-008.
+ * These are exact-match subjects (not prefixes).
  */
-const RESERVED_SUBJECT_PREFIXES = [
-  "rpc/",
-  "event/",
-  "stream/",
-  "app/",
-] as const;
+const RESERVED_CHANNELS = ["rpc", "event", "stream"] as const;
+
+/**
+ * Reserved subject prefixes per ADR-006 and ADR-008.
+ * Only `app/` uses prefix semantics for custom sub-paths.
+ */
+const RESERVED_PREFIXES = ["app/"] as const;
 
 /**
  * Maximum length of a subject in UTF-8 bytes.
@@ -113,7 +114,7 @@ export const MAX_SUBJECT_BYTES = 256;
  * A valid subject:
  * - Must be 1–MAX_SUBJECT_BYTES UTF-8 bytes in length
  * - Must not contain null bytes
- * - Must start with one of the reserved prefixes: "rpc/", "event/", "stream/", "app/"
+ * - Must be an exact-match channel (`rpc`, `event`, `stream`) or use `app/` prefix
  *
  * Violations throw ProtocolError with code ProtocolViolation.
  * This enforces the wire contract defined in ADR-006 and ADR-008.
@@ -152,15 +153,14 @@ export function asSubject(value: string): Subject {
     );
   }
 
-  // Check reserved prefix
-  const hasValidPrefix = RESERVED_SUBJECT_PREFIXES.some((p) =>
-    value.startsWith(p),
+  // Check exact-match channels OR app/ prefix
+  const isChannel = RESERVED_CHANNELS.includes(
+    value as (typeof RESERVED_CHANNELS)[number],
   );
-  if (!hasValidPrefix) {
+  const hasValidPrefix = RESERVED_PREFIXES.some((p) => value.startsWith(p));
+  if (!isChannel && !hasValidPrefix) {
     throw new ProtocolError(
-      `Subject must start with one of: ${RESERVED_SUBJECT_PREFIXES.join(
-        ", ",
-      )} (got "${value}")`,
+      `Subject must be a channel (${RESERVED_CHANNELS.join(", ")}) or use app/ prefix (got "${value}")`,
       ErrorCode.ProtocolViolation,
     );
   }

@@ -14,16 +14,18 @@ Encoded as JSON (v1) or CBOR (v2+).
 
 ## Subject Namespacing
 
-RPC envelope semantics apply to `rpc/` and `event/` namespaces. The `MessageFrame.subject` prefix determines which envelope types are valid.
+RPC envelope semantics apply to `rpc` and `event` channel subjects. The `MessageFrame.subject` determines which envelope types are valid.
 
-| Subject Prefix | Allowed `t`         | Semantics                                  |
-| -------------- | ------------------- | ------------------------------------------ |
-| `rpc/`         | `"r"`, `"R"`, `"E"` | Bidirectional request/response             |
-| `event/`       | `"N"`               | Fire-and-forget notification               |
-| `stream/`      | —                   | Reserved (v2); reject per SBP              |
-| `app/`         | —                   | Vendor-defined; not parsed as RPC envelope |
+| Subject  | Allowed `t`         | Semantics                                  |
+| -------- | ------------------- | ------------------------------------------ |
+| `rpc`    | `"r"`, `"R"`, `"E"` | Bidirectional request/response             |
+| `event`  | `"N"`               | Fire-and-forget notification               |
+| `stream` | —                   | Reserved (v2); reject per SBP              |
+| `app/*`  | —                   | Vendor-defined; not parsed as RPC envelope |
 
-Receivers MUST validate envelope `t` against subject prefix for `rpc/` and `event/` subjects. Mismatched envelopes MUST be dropped; receivers SHOULD log. This is non-fatal; continue processing subsequent frames.
+Note: `rpc`, `event`, and `stream` are exact-match channel subjects. Method/event dispatch happens via envelope fields (`m` for RPC methods, `e` for event names). The `app/` prefix supports arbitrary sub-paths.
+
+Receivers MUST validate envelope `t` against subject channel for `rpc` and `event` subjects. Mismatched envelopes MUST be dropped; receivers SHOULD log. This is non-fatal; continue processing subsequent frames.
 
 Rationale: There is no valid subject to reply on. The sender receives a timeout, which signals failure; the receiver log provides diagnostics.
 
@@ -99,6 +101,6 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 - **Subject**: Must match allowed `t` per [Subject Namespacing](#subject-namespacing)
 - **Request**: `t: "r"`, `m` and `cid` required
 - **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
-- **Notification**: `t: "N"`, `e` required; uses `event/` subjects
+- **Notification**: `t: "N"`, `e` required; uses `event` channel
 
 Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).

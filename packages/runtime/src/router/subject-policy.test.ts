@@ -10,36 +10,42 @@ import {
 
 describe("validateSubject", () => {
   describe("with default policy", () => {
-    it("accepts rpc/ subjects", () => {
-      const result = validateSubject("rpc/getUser");
+    it("accepts rpc channel (exact match)", () => {
+      const result = validateSubject("rpc");
       expect(result.valid).toBe(true);
       expect(result.kind).toBe("rpc");
     });
 
-    it("accepts event/ subjects", () => {
-      const result = validateSubject("event/user.joined");
+    it("accepts event channel (exact match)", () => {
+      const result = validateSubject("event");
       expect(result.valid).toBe(true);
       expect(result.kind).toBe("event");
     });
 
-    it("accepts app/ subjects", () => {
+    it("accepts app/ prefix subjects", () => {
       const result = validateSubject("app/custom.data");
       expect(result.valid).toBe(true);
       expect(result.kind).toBe("custom");
     });
 
-    it("rejects stream/ as reserved (code 1003)", () => {
-      const result = validateSubject("stream/data");
+    it("rejects stream channel as reserved (code 1003)", () => {
+      const result = validateSubject("stream");
       expect(result.valid).toBe(false);
       expect(result.errorCode).toBe(1003);
-      expect(result.errorMessage).toContain("stream/");
+      expect(result.errorMessage).toContain("stream");
     });
 
-    it("rejects unknown prefix (code 1002)", () => {
+    it("rejects unknown subject (code 1002)", () => {
       const result = validateSubject("unknown/path");
       expect(result.valid).toBe(false);
       expect(result.errorCode).toBe(1002);
       expect(result.errorMessage).toBe("Invalid subject namespace");
+    });
+
+    it("rejects old prefix-style subjects", () => {
+      const result = validateSubject("rpc/getUser");
+      expect(result.valid).toBe(false);
+      expect(result.errorCode).toBe(1002);
     });
 
     it("rejects empty subject", () => {
@@ -51,43 +57,48 @@ describe("validateSubject", () => {
 
   describe("with custom policy", () => {
     const customPolicy: SubjectPolicy = {
-      allowedPrefixes: ["rpc/", "debug/", "admin/"],
-      reservedPrefixes: ["admin/dangerous/"],
+      allowedChannels: ["rpc", "debug"],
+      reservedChannels: ["admin"],
+      allowedPrefixes: ["app/", "custom/"],
     };
 
-    it("accepts custom allowed prefixes", () => {
-      const result = validateSubject("debug/trace", customPolicy);
+    it("accepts custom allowed channels", () => {
+      const result = validateSubject("debug", customPolicy);
       expect(result.valid).toBe(true);
       expect(result.kind).toBe("custom");
     });
 
-    it("rejects reserved sub-prefix", () => {
-      const result = validateSubject("admin/dangerous/nuke", customPolicy);
+    it("accepts custom allowed prefixes", () => {
+      const result = validateSubject("custom/trace", customPolicy);
+      expect(result.valid).toBe(true);
+      expect(result.kind).toBe("custom");
+    });
+
+    it("rejects reserved channel", () => {
+      const result = validateSubject("admin", customPolicy);
       expect(result.valid).toBe(false);
       expect(result.errorCode).toBe(1003);
     });
 
-    it("accepts non-reserved admin prefix", () => {
-      const result = validateSubject("admin/safe", customPolicy);
+    it("accepts non-reserved channels", () => {
+      const result = validateSubject("rpc", customPolicy);
       expect(result.valid).toBe(true);
     });
   });
 
   describe("with custom classifier", () => {
     const policyWithClassifier: SubjectPolicy = {
-      allowedPrefixes: ["rpc/", "event/", "custom/"],
-      reservedPrefixes: [],
+      allowedChannels: ["rpc", "event"],
+      reservedChannels: [],
+      allowedPrefixes: ["app/"],
       classify: (subject) => {
-        if (subject.startsWith("custom/rpc.")) return "rpc";
+        if (subject.startsWith("app/rpc.")) return "rpc";
         return "custom";
       },
     };
 
-    it("uses custom classifier", () => {
-      const result = validateSubject(
-        "custom/rpc.special",
-        policyWithClassifier,
-      );
+    it("uses custom classifier for prefixed subjects", () => {
+      const result = validateSubject("app/rpc.special", policyWithClassifier);
       expect(result.valid).toBe(true);
       expect(result.kind).toBe("rpc");
     });
@@ -113,14 +124,16 @@ describe("getDefaultMode", () => {
 });
 
 describe("defaultSubjectPolicy", () => {
-  it("has correct allowed prefixes", () => {
-    expect(defaultSubjectPolicy.allowedPrefixes).toContain("rpc/");
-    expect(defaultSubjectPolicy.allowedPrefixes).toContain("event/");
-    expect(defaultSubjectPolicy.allowedPrefixes).toContain("app/");
-    expect(defaultSubjectPolicy.allowedPrefixes).toContain("stream/");
+  it("has correct allowed channels", () => {
+    expect(defaultSubjectPolicy.allowedChannels).toContain("rpc");
+    expect(defaultSubjectPolicy.allowedChannels).toContain("event");
   });
 
-  it("has stream/ as reserved", () => {
-    expect(defaultSubjectPolicy.reservedPrefixes).toContain("stream/");
+  it("has stream as reserved channel", () => {
+    expect(defaultSubjectPolicy.reservedChannels).toContain("stream");
+  });
+
+  it("has app/ as allowed prefix", () => {
+    expect(defaultSubjectPolicy.allowedPrefixes).toContain("app/");
   });
 });

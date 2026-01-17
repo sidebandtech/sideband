@@ -38,7 +38,7 @@ export {
 } from "./envelope.js";
 
 // Subject validation
-export { asRpcSubject, SUBJECT_PREFIXES } from "./subject.js";
+export { asRpcSubject, SUBJECT_CHANNELS, SUBJECT_PREFIXES } from "./subject.js";
 export type { RpcSubject } from "./subject.js";
 
 // Codec

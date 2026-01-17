@@ -19,7 +19,7 @@ import {
   encodeRpcEnvelope,
   decodeRpcEnvelope,
   isRpcResponse,
-  SUBJECT_PREFIXES,
+  SUBJECT_CHANNELS,
   asRpcSubject,
 } from "@sideband/rpc";
 import {
@@ -37,14 +37,15 @@ const methodName = "echo";
 const request = createRpcRequest(methodName, cid, { text: "hi" });
 const envelopeBytes = encodeRpcEnvelope(request);
 
-// Wrap in a MessageFrame with rpc/ subject
-const subject = asSubject(`${SUBJECT_PREFIXES.RPC}${methodName}`); // "rpc/echo"
+// Wrap in a MessageFrame with `rpc` channel subject
+// Method name lives in the envelope, not the subject
+const subject = asSubject(SUBJECT_CHANNELS.RPC); // "rpc"
 const messageFrame = createMessageFrame(subject, envelopeBytes);
 const frameBytes = encodeFrame(messageFrame);
 
 // ...send frameBytes over transport...
 
-// On receive: decode frame, extract envelope, dispatch by subject
+// On receive: decode frame, extract envelope, dispatch by envelope.m
 const decodedFrame = decodeFrame(frameBytes);
 if (decodedFrame.kind === FrameKind.Message) {
   const envelope = decodeRpcEnvelope(decodedFrame.data);
@@ -55,19 +56,18 @@ if (decodedFrame.kind === FrameKind.Message) {
 
 // Craft responses/notifications
 const responseEnvelope = createRpcSuccessResponse(cid, { text: "hi back" });
-const notifyEnvelope = createRpcNotification(
-  `${SUBJECT_PREFIXES.EVENT}user.joined`,
-  { userId: "123" },
-);
+// Notifications use `event` channel; event name lives in envelope.e
+const notifyEnvelope = createRpcNotification("user.joined", { userId: "123" });
 
-// Validate reserved subjects for routing (rpc/, event/, stream/, app/)
-const validSubject = asRpcSubject(`${SUBJECT_PREFIXES.RPC}echo`);
+// Validate reserved subjects for routing
+const validRpcSubject = asRpcSubject(SUBJECT_CHANNELS.RPC); // "rpc"
+const validAppSubject = asRpcSubject("app/custom"); // custom sub-path
 ```
 
 ## What it provides
 
 - Typed RPC envelopes with helpers and discriminated unions for requests, responses, and notifications
-- Reserved subject helpers (`rpc/`, `event/`, `stream/`, `app/`) plus validator re-export (`asRpcSubject`)
+- Channel subjects (`rpc`, `event`, `stream`) and `app/` prefix constants, plus validator re-export (`asRpcSubject`)
 - JSON encoder/decoder that handles FrameId ↔ hex, emits protocol errors on malformed input
 - Integrates with runtime correlation ([`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)) and any transport carrying MessageFrames
 

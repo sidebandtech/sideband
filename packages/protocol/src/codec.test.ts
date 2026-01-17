@@ -218,24 +218,24 @@ describe("Control Frame Codec", () => {
 describe("Message Frame Codec", () => {
   it("should encode and decode message frame with valid subject", () => {
     const data = new TextEncoder().encode("hello world");
-    const frame = createMessageFrame("rpc/getUser", data);
+    const frame = createMessageFrame("rpc", data);
 
     const encoded = encodeFrame(frame);
     const decoded = decodeFrame(encoded);
 
     if (!isMessageFrame(decoded)) throw new Error("Not a message frame");
-    expect(decoded.subject).toBe(asSubject("rpc/getUser"));
+    expect(decoded.subject).toBe(asSubject("rpc"));
     expect(decoded.data).toEqual(data);
   });
 
   it("should handle empty message data", () => {
-    const frame = createMessageFrame("event/userJoined", new Uint8Array());
+    const frame = createMessageFrame("event", new Uint8Array());
 
     const encoded = encodeFrame(frame);
     const decoded = decodeFrame(encoded);
 
     if (!isMessageFrame(decoded)) throw new Error("Not a message frame");
-    expect(decoded.subject).toBe(asSubject("event/userJoined"));
+    expect(decoded.subject).toBe(asSubject("event"));
     expect(decoded.data.length).toBe(0);
   });
 
@@ -275,22 +275,22 @@ describe("Message Frame Codec", () => {
 });
 
 describe("Subject Validation (ADR-006, ADR-008)", () => {
-  it("should accept valid RPC subject", () => {
-    const subject = asSubject("rpc/getUserById");
-    expect(subject).toBe(asSubject("rpc/getUserById"));
+  it("should accept valid RPC channel subject", () => {
+    const subject = asSubject("rpc");
+    expect(subject).toBe(asSubject("rpc"));
   });
 
-  it("should accept valid event subject", () => {
-    const subject = asSubject("event/user.created");
-    expect(subject).toBe(asSubject("event/user.created"));
+  it("should accept valid event channel subject", () => {
+    const subject = asSubject("event");
+    expect(subject).toBe(asSubject("event"));
   });
 
-  it("should accept valid stream subject", () => {
-    const subject = asSubject("stream/chat/abc123");
-    expect(subject).toBe(asSubject("stream/chat/abc123"));
+  it("should accept valid stream channel subject", () => {
+    const subject = asSubject("stream");
+    expect(subject).toBe(asSubject("stream"));
   });
 
-  it("should accept valid app subject", () => {
+  it("should accept valid app prefix subject", () => {
     const subject = asSubject("app/vendor/custom");
     expect(subject).toBe(asSubject("app/vendor/custom"));
   });
@@ -299,36 +299,46 @@ describe("Subject Validation (ADR-006, ADR-008)", () => {
     expect(() => asSubject("")).toThrow(ProtocolError);
   });
 
-  it("should reject subject without reserved prefix", () => {
+  it("should reject subject without valid channel or prefix", () => {
     expect(() => asSubject("invalid/subject")).toThrow(
-      /Subject must start with one of: rpc\/, event\/, stream\/, app\//,
+      /Subject must be a channel.*or use app\/ prefix/,
     );
   });
 
-  it("should reject subject with wrong prefix", () => {
+  it("should reject subject with wrong format", () => {
     expect(() => asSubject("foo/bar")).toThrow(
-      /Subject must start with one of: rpc\/, event\/, stream\/, app\//,
+      /Subject must be a channel.*or use app\/ prefix/,
+    );
+  });
+
+  it("should reject prefix-style channel subjects", () => {
+    // Old prefix-style subjects are no longer valid
+    expect(() => asSubject("rpc/test")).toThrow(
+      /Subject must be a channel.*or use app\/ prefix/,
+    );
+    expect(() => asSubject("event/test")).toThrow(
+      /Subject must be a channel.*or use app\/ prefix/,
     );
   });
 
   it("should reject subject exceeding 256 UTF-8 bytes", () => {
-    const longSubject = "rpc/" + "x".repeat(300);
+    const longSubject = "app/" + "x".repeat(300);
     expect(() => asSubject(longSubject)).toThrow(
       /Subject exceeds 256 UTF-8 bytes/,
     );
   });
 
   it("should reject subject containing null bytes", () => {
-    const invalidSubject = "rpc/test\x00invalid";
+    const invalidSubject = "app/test\x00invalid";
     expect(() => asSubject(invalidSubject)).toThrow(
       /Subject must not contain null bytes/,
     );
   });
 
   it("should enforce subject validation on message frame creation", () => {
-    // Valid subject should work
-    const frame = createMessageFrame("rpc/test", new Uint8Array());
-    expect(frame.subject).toBe(asSubject("rpc/test"));
+    // Valid channel subject should work
+    const frame = createMessageFrame("rpc", new Uint8Array());
+    expect(frame.subject).toBe(asSubject("rpc"));
 
     // Invalid subject should throw
     expect(() => createMessageFrame("invalid/test", new Uint8Array())).toThrow(
@@ -355,7 +365,7 @@ describe("Subject Validation (ADR-006, ADR-008)", () => {
 
     // Decode should reject the invalid subject
     expect(() => decodeFrame(buffer)).toThrow(
-      /Subject must start with one of: rpc\/, event\/, stream\/, app\//,
+      /Subject must be a channel.*or use app\/ prefix/,
     );
   });
 
@@ -509,7 +519,7 @@ describe("Frame Immutability (ADR 007)", () => {
     // frame.data[0] = 0xff;                // ✗ Cannot assign to readonly index
 
     const data = new TextEncoder().encode("hello world");
-    const frame = createMessageFrame("rpc/testMethod", data);
+    const frame = createMessageFrame("rpc", data);
 
     const encoded = encodeFrame(frame);
     const decoded = decodeFrame(encoded);
@@ -522,7 +532,7 @@ describe("Frame Immutability (ADR 007)", () => {
 
     // Type-narrow to MessageFrame to access subject and data
     if (!isMessageFrame(decoded)) throw new Error("Not a message frame");
-    expect(String(decoded.subject)).toBe("rpc/testMethod");
+    expect(String(decoded.subject)).toBe("rpc");
     expect(decoded.data).toEqual(data);
 
     // Note: Attempting to mutate a readonly property will fail at TypeScript compile time.
@@ -547,7 +557,7 @@ describe("Frame Immutability (ADR 007)", () => {
 
   it("should produce readonly data arrays in decoded frames", () => {
     const originalData = new TextEncoder().encode("test payload");
-    const frame = createMessageFrame("rpc/test", originalData);
+    const frame = createMessageFrame("rpc", originalData);
 
     const encoded = encodeFrame(frame);
     const decoded = decodeFrame(encoded);
@@ -639,7 +649,7 @@ describe("Conformance: Round-trip Encoding", () => {
     const frames = [
       createPingFrame(),
       createPongFrame(),
-      createMessageFrame("rpc/test", new Uint8Array([1, 2, 3])),
+      createMessageFrame("rpc", new Uint8Array([1, 2, 3])),
       {
         kind: 3,
         frameId: generateFrameId(),
@@ -664,7 +674,7 @@ describe("Conformance: Round-trip Encoding", () => {
     const frames = [
       createPingFrame({ timestamp: now }),
       createPongFrame({ timestamp: now }),
-      createMessageFrame("rpc/test", new Uint8Array([1, 2, 3]), {
+      createMessageFrame("rpc", new Uint8Array([1, 2, 3]), {
         timestamp: now,
       }),
       createHandshakeFrame(new TextEncoder().encode("{}"), {
@@ -697,8 +707,8 @@ describe("Conformance: Round-trip Encoding", () => {
 
   it("should preserve order in sequence of frames", () => {
     const frames = [
-      createMessageFrame("rpc/first", new Uint8Array([1])),
-      createMessageFrame("event/second", new Uint8Array([2])),
+      createMessageFrame("rpc", new Uint8Array([1])),
+      createMessageFrame("event", new Uint8Array([2])),
       createMessageFrame("app/third", new Uint8Array([3])),
     ];
 
@@ -709,8 +719,8 @@ describe("Conformance: Round-trip Encoding", () => {
     if (!isMessageFrame(decoded[1]!)) throw new Error("Not a message frame");
     if (!isMessageFrame(decoded[2]!)) throw new Error("Not a message frame");
 
-    expect(decoded[0].subject).toBe(asSubject("rpc/first"));
-    expect(decoded[1].subject).toBe(asSubject("event/second"));
+    expect(decoded[0].subject).toBe(asSubject("rpc"));
+    expect(decoded[1].subject).toBe(asSubject("event"));
     expect(decoded[2].subject).toBe(asSubject("app/third"));
   });
 });
@@ -784,7 +794,7 @@ describe("Conformance: Negative Fuzzing", () => {
 describe("Conformance: UTF-8 Handling", () => {
   it("should accept valid UTF-8 subjects with multi-byte characters", () => {
     // Test with emoji (4 bytes per character in UTF-8)
-    const subject = asSubject("rpc/🎉test");
+    const subject = asSubject("app/🎉test");
     const frame = createMessageFrame(subject, new Uint8Array());
 
     const encoded = encodeFrame(frame);
@@ -828,7 +838,7 @@ describe("Conformance: UTF-8 Handling", () => {
       0x02,
     ]);
 
-    const frame = createMessageFrame("event/binary", binaryData);
+    const frame = createMessageFrame("event", binaryData);
     const encoded = encodeFrame(frame);
     const decoded = decodeFrame(encoded);
 

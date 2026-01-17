@@ -8,18 +8,18 @@ describe("HandlerRegistry", () => {
     it("matches exact subject", () => {
       const registry = new HandlerRegistry();
       const handler = async () => {};
-      registry.routeExact("rpc/getUser", handler, "exclusive");
+      registry.routeExact("rpc", handler, "exclusive");
 
-      const matches = registry.getMatching("rpc/getUser");
+      const matches = registry.getMatching("rpc");
       expect(matches).toHaveLength(1);
       expect(matches[0]!.handler).toBe(handler);
     });
 
     it("does not match different subject", () => {
       const registry = new HandlerRegistry();
-      registry.routeExact("rpc/getUser", async () => {}, "exclusive");
+      registry.routeExact("rpc", async () => {}, "exclusive");
 
-      const matches = registry.getMatching("rpc/deleteUser");
+      const matches = registry.getMatching("event");
       expect(matches).toHaveLength(0);
     });
 
@@ -27,10 +27,10 @@ describe("HandlerRegistry", () => {
       const registry = new HandlerRegistry();
       const h1 = async () => {};
       const h2 = async () => {};
-      registry.routeExact("rpc/getUser", h1, "broadcast");
-      registry.routeExact("rpc/getUser", h2, "broadcast");
+      registry.routeExact("rpc", h1, "broadcast");
+      registry.routeExact("rpc", h2, "broadcast");
 
-      const matches = registry.getMatching("rpc/getUser");
+      const matches = registry.getMatching("rpc");
       expect(matches).toHaveLength(2);
     });
   });
@@ -39,9 +39,9 @@ describe("HandlerRegistry", () => {
     it("matches prefix", () => {
       const registry = new HandlerRegistry();
       const handler = async () => {};
-      registry.routePrefix("rpc/", handler, "exclusive");
+      registry.routePrefix("app/", handler, "exclusive");
 
-      const matches = registry.getMatching("rpc/getUser");
+      const matches = registry.getMatching("app/getUser");
       expect(matches).toHaveLength(1);
     });
 
@@ -49,10 +49,10 @@ describe("HandlerRegistry", () => {
       const registry = new HandlerRegistry();
       const shortHandler = async () => {};
       const longHandler = async () => {};
-      registry.routePrefix("event/", shortHandler, "broadcast");
-      registry.routePrefix("event/user.", longHandler, "broadcast");
+      registry.routePrefix("app/", shortHandler, "broadcast");
+      registry.routePrefix("app/user.", longHandler, "broadcast");
 
-      const matches = registry.getMatching("event/user.joined");
+      const matches = registry.getMatching("app/user.joined");
       expect(matches).toHaveLength(2);
       // Longer prefix should come first
       expect(matches[0]!.handler).toBe(longHandler);
@@ -65,10 +65,10 @@ describe("HandlerRegistry", () => {
       const registry = new HandlerRegistry();
       const exact = async () => {};
       const prefix = async () => {};
-      registry.routePrefix("rpc/", prefix, "broadcast");
-      registry.routeExact("rpc/getUser", exact, "broadcast");
+      registry.routePrefix("app/", prefix, "broadcast");
+      registry.routeExact("app/getUser", exact, "broadcast");
 
-      const matches = registry.getMatching("rpc/getUser");
+      const matches = registry.getMatching("app/getUser");
       expect(matches).toHaveLength(2);
       expect(matches[0]!.handler).toBe(exact);
       expect(matches[1]!.handler).toBe(prefix);
@@ -79,11 +79,11 @@ describe("HandlerRegistry", () => {
       const h1 = async () => {};
       const h2 = async () => {};
       const h3 = async () => {};
-      registry.routeExact("rpc/test", h1, "broadcast");
-      registry.routeExact("rpc/test", h2, "broadcast");
-      registry.routeExact("rpc/test", h3, "broadcast");
+      registry.routeExact("app/test", h1, "broadcast");
+      registry.routeExact("app/test", h2, "broadcast");
+      registry.routeExact("app/test", h3, "broadcast");
 
-      const matches = registry.getMatching("rpc/test");
+      const matches = registry.getMatching("app/test");
       expect(matches[0]!.handler).toBe(h1);
       expect(matches[1]!.handler).toBe(h2);
       expect(matches[2]!.handler).toBe(h3);
@@ -94,41 +94,41 @@ describe("HandlerRegistry", () => {
     it("removes exact handler", () => {
       const registry = new HandlerRegistry();
       const handler = async () => {};
-      const unsub = registry.routeExact("rpc/test", handler, "exclusive");
+      const unsub = registry.routeExact("app/test", handler, "exclusive");
 
-      expect(registry.getMatching("rpc/test")).toHaveLength(1);
+      expect(registry.getMatching("app/test")).toHaveLength(1);
       unsub();
-      expect(registry.getMatching("rpc/test")).toHaveLength(0);
+      expect(registry.getMatching("app/test")).toHaveLength(0);
     });
 
     it("removes prefix handler", () => {
       const registry = new HandlerRegistry();
       const handler = async () => {};
-      const unsub = registry.routePrefix("rpc/", handler, "exclusive");
+      const unsub = registry.routePrefix("app/", handler, "exclusive");
 
-      expect(registry.getMatching("rpc/test")).toHaveLength(1);
+      expect(registry.getMatching("app/test")).toHaveLength(1);
       unsub();
-      expect(registry.getMatching("rpc/test")).toHaveLength(0);
+      expect(registry.getMatching("app/test")).toHaveLength(0);
     });
   });
 
   describe("unroute", () => {
     it("removes all handlers for subject", () => {
       const registry = new HandlerRegistry();
-      registry.routeExact("rpc/test", async () => {}, "broadcast");
-      registry.routeExact("rpc/test", async () => {}, "broadcast");
+      registry.routeExact("app/test", async () => {}, "broadcast");
+      registry.routeExact("app/test", async () => {}, "broadcast");
 
-      expect(registry.getMatching("rpc/test")).toHaveLength(2);
-      registry.unroute("rpc/test");
-      expect(registry.getMatching("rpc/test")).toHaveLength(0);
+      expect(registry.getMatching("app/test")).toHaveLength(2);
+      registry.unroute("app/test");
+      expect(registry.getMatching("app/test")).toHaveLength(0);
     });
   });
 
   describe("clear", () => {
     it("removes all handlers", () => {
       const registry = new HandlerRegistry();
-      registry.routeExact("rpc/a", async () => {}, "exclusive");
-      registry.routePrefix("event/", async () => {}, "broadcast");
+      registry.routeExact("rpc", async () => {}, "exclusive");
+      registry.routePrefix("app/", async () => {}, "broadcast");
 
       expect(registry.hasHandlers()).toBe(true);
       registry.clear();

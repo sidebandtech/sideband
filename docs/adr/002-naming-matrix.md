@@ -70,12 +70,14 @@
 
 **Subject namespace rules** (see ADR-006 for full RPC envelope spec):
 
-| Prefix    | Purpose                       | Example                  | Semantics        |
-| --------- | ----------------------------- | ------------------------ | ---------------- |
-| `rpc/`    | RPC request/response          | `rpc/getUser`            | Request/Response |
-| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      | Notification     |
-| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    | (future)         |
-| `app/`    | Vendor-specific / custom      | `app/com.example/mydata` | Custom           |
+| Subject  | Purpose                     | Dispatch by    | Semantics        |
+| -------- | --------------------------- | -------------- | ---------------- |
+| `rpc`    | All RPC request/response    | `envelope.m`   | Request/Response |
+| `event`  | All fire-and-forget events  | `envelope.e`   | Notification     |
+| `stream` | Streaming (reserved for v2) | —              | (future)         |
+| `app/*`  | Vendor-specific / custom    | Subject/custom | Custom           |
+
+Note: `rpc`, `event`, and `stream` are exact-match channels. The `app/` prefix supports arbitrary sub-paths. Subjects are transport-level mux keys; method and event identity MUST live in the envelope (`m`, `e`), not in the subject.
 
 ### 5. Errors
 
@@ -138,7 +140,7 @@
 ### AI usage hints (suitable as code comments)
 
 > - Use `Frame` / `FrameKind` / `kind` for protocol-level variants.
-> - Use `AppMessage` for application/pubsub semantics.
+> - Use `AppMessage` for application/event semantics.
 > - Use `peerId` for stable peer identity; `connectionId` is per link, `sessionId` spans reconnects.
 > - Use `frameId` to identify frames; `correlationId` (or `traceId`) to link frames.
 > - Map wire fields (`t`, `id`, `peerId`, `caps`, `s`, `b`) only inside encode/decode; never expose them in public TS types.
