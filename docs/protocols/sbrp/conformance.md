@@ -5,7 +5,7 @@
 
 Use this checklist to verify conformance with SBRP. Requirements reference:
 
-- [cryptography-and-wire.md](./cryptography-and-wire.md) — crypto primitives and wire format
+- [wire-crypto.md](./wire-crypto.md) — crypto primitives and wire format
 - [state-machine.md](./state-machine.md) — state transitions and control semantics
 - [control-codes.md](./control-codes.md) — code values
 - [authentication.md](./authentication.md) — token validation

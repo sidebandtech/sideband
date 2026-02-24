@@ -10,19 +10,37 @@ import type {
   TransportConnection,
 } from "./types.js";
 
-// Mock transport using generator pattern (completes immediately)
-function createMockTransport(id = "test-transport"): TransportConnection {
-  return {
+// Mock transport whose inbound stays open until close() is called.
+// This accurately models real transport behavior: the channel stays alive
+// until explicitly closed (e.g. via terminate()). Tests that need the
+// channel to close early can call the returned `closeChannel` callback.
+function createMockTransport(id = "test-transport"): TransportConnection & {
+  closeChannel(): void;
+} {
+  let closeResolve: (() => void) | undefined;
+  const closedPromise = new Promise<void>((resolve) => {
+    closeResolve = resolve;
+  });
+
+  const transport = {
     id,
     endpoint: "ws://localhost:8080",
     send: mock(() => Promise.resolve()),
-    close: mock(() => Promise.resolve()),
+    close: mock(() => {
+      closeResolve?.();
+      return Promise.resolve();
+    }),
     inbound: {
       async *[Symbol.asyncIterator]() {
-        // Empty generator - completes immediately
+        // Stay open until close() is called (mirrors LoopbackTransport behavior).
+        await closedPromise;
       },
     },
+    closeChannel() {
+      closeResolve?.();
+    },
   };
+  return transport;
 }
 
 // Mock negotiator
@@ -193,7 +211,7 @@ describe("SessionManager", () => {
 
       expect(closedEvent).toBeDefined();
       expect(closedEvent!.fatal).toBe(true);
-      expect(closedEvent!.wasClean).toBe(false);
+      expect(closedEvent!.graceful).toBe(false);
     });
 
     it("does not retry on fatal error even with retry policy", async () => {
@@ -469,12 +487,12 @@ describe("SessionManager", () => {
       await manager.connect();
       expect(manager.state).toBe("active");
 
-      await manager.terminate("user requested");
+      await manager.terminate({ reason: "user requested" });
 
       expect(manager.state).toBe("idle");
       expect(closedEvent).toBeDefined();
       expect(closedEvent!.reason).toBe("user requested");
-      expect(closedEvent!.wasClean).toBe(true);
+      expect(closedEvent!.graceful).toBe(true);
     });
 
     it("calls negotiator.terminate and transport.close", async () => {
@@ -487,10 +505,12 @@ describe("SessionManager", () => {
       const manager = new SessionManager(config);
 
       await manager.connect();
-      await manager.terminate("shutdown");
+      await manager.terminate({ reason: "shutdown" });
 
-      expect(negotiator.terminate).toHaveBeenCalledWith(transport, "shutdown");
-      expect(transport.close).toHaveBeenCalledWith("shutdown");
+      expect(negotiator.terminate).toHaveBeenCalledWith(transport, {
+        reason: "shutdown",
+      });
+      expect(transport.close).toHaveBeenCalledWith({ reason: "shutdown" });
     });
 
     it("ignores errors during termination", async () => {
@@ -551,7 +571,7 @@ describe("SessionManager", () => {
       await retryPromise;
 
       // Terminate during retry wait
-      await manager.terminate("cancelled");
+      await manager.terminate({ reason: "cancelled" });
 
       // Connect should reject
       await expect(connectPromise).rejects.toThrow();
@@ -681,7 +701,7 @@ describe("SessionManager", () => {
       const connectPromise = manager.connect();
 
       // Terminate while transport is being created
-      const terminatePromise = manager.terminate("cancelled");
+      const terminatePromise = manager.terminate({ reason: "cancelled" });
 
       // Now resolve the transport factory
       resolveTransport!(transport);
@@ -691,7 +711,7 @@ describe("SessionManager", () => {
       await expect(connectPromise).rejects.toThrow("Session terminated");
 
       // Transport should have been closed
-      expect(transport.close).toHaveBeenCalledWith("terminated");
+      expect(transport.close).toHaveBeenCalledWith({ reason: "terminated" });
       expect(manager.state).toBe("idle");
     });
   });

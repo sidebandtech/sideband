@@ -46,14 +46,14 @@ function createRpcRequestFrame(method: string, params?: unknown): MessageFrame {
   const cid = generateFrameId();
   const envelope = createRpcRequest(method, cid, params);
   const data = encodeRpcEnvelope(envelope);
-  return createMessageFrame(asSubject("rpc/test"), data);
+  return createMessageFrame(asSubject("rpc"), data);
 }
 
 // Helper to create notification frame
 function createNotificationFrame(event: string, data?: unknown): MessageFrame {
   const envelope = createRpcNotification(event, data);
   const payload = encodeRpcEnvelope(envelope);
-  return createMessageFrame(asSubject("event/test"), payload);
+  return createMessageFrame(asSubject("event"), payload);
 }
 
 // Helper to create custom message frame
@@ -71,16 +71,16 @@ describe("Router", () => {
   });
 
   describe("route registration", () => {
-    it("registers exact match handler", () => {
+    it("registers exact match handler for channel", () => {
       const handler = mock(async () => {});
-      const unsub = router.route("rpc/getUser", handler);
+      const unsub = router.route("rpc", handler);
 
       expect(typeof unsub).toBe("function");
     });
 
-    it("registers prefix handler", () => {
+    it("registers prefix handler for app/", () => {
       const handler = mock(async () => {});
-      const unsub = router.routePrefix("rpc/", handler);
+      const unsub = router.routePrefix("app/", handler);
 
       expect(typeof unsub).toBe("function");
     });
@@ -101,10 +101,10 @@ describe("Router", () => {
       );
     });
 
-    it("rejects reserved prefix (stream/)", () => {
+    it("rejects reserved channel (stream)", () => {
       const handler = mock(async () => {});
 
-      expect(() => router.route("stream/test", handler)).toThrow(
+      expect(() => router.route("stream", handler)).toThrow(
         /Unsupported feature/,
       );
     });
@@ -116,7 +116,7 @@ describe("Router", () => {
         await msg.rpc?.reply("ok");
       });
 
-      const unsub = router.route("rpc/test", handler);
+      const unsub = router.route("rpc", handler);
       const frame = createRpcRequestFrame("test");
 
       // First dispatch - handler called
@@ -147,10 +147,10 @@ describe("Router", () => {
       const h1 = mock(async () => {});
       const h2 = mock(async () => {});
 
-      router.route("rpc/test", h1);
-      router.route("rpc/test", h2);
+      router.route("rpc", h1);
+      router.route("rpc", h2);
 
-      router.unroute("rpc/test");
+      router.unroute("rpc");
 
       const frame = createRpcRequestFrame("test");
       await router.dispatch(frame, session);
@@ -167,8 +167,8 @@ describe("Router", () => {
     });
 
     it("clear removes all handlers", async () => {
-      router.route("rpc/a", async () => {});
-      router.routePrefix("event/", async () => {});
+      router.route("rpc", async () => {});
+      router.routePrefix("app/", async () => {});
 
       router.clear();
 
@@ -195,12 +195,12 @@ describe("Router", () => {
         await msg.rpc!.reply({ name: "Alice" });
       });
 
-      router.route("rpc/test", handler);
+      router.route("rpc", handler);
 
       const cid = generateFrameId();
       const envelope = createRpcRequest("getUser", cid, { id: 123 });
       const frame = createMessageFrame(
-        asSubject("rpc/test"),
+        asSubject("rpc"),
         encodeRpcEnvelope(envelope),
       );
 
@@ -223,7 +223,7 @@ describe("Router", () => {
         await msg.rpc!.error(2001, "User not found", { userId: 123 });
       });
 
-      router.route("rpc/test", handler);
+      router.route("rpc", handler);
       const frame = createRpcRequestFrame("getUser", { id: 123 });
 
       await router.dispatch(frame, session);
@@ -260,7 +260,7 @@ describe("Router", () => {
         throw new Error("Database connection failed");
       });
 
-      router.route("rpc/test", handler);
+      router.route("rpc", handler);
       const frame = createRpcRequestFrame("test");
 
       await router.dispatch(frame, session);
@@ -296,7 +296,7 @@ describe("Router", () => {
         },
       });
 
-      customRouter.route("rpc/test", async () => {
+      customRouter.route("rpc", async () => {
         throw new ValidationError("Invalid email");
       });
 
@@ -314,7 +314,7 @@ describe("Router", () => {
     it("returns timeout error when handler exceeds timeout", async () => {
       const shortTimeoutRouter = createRouter({ rpcTimeoutMs: 50 });
 
-      shortTimeoutRouter.route("rpc/test", async () => {
+      shortTimeoutRouter.route("rpc", async () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
       });
 
@@ -332,11 +332,11 @@ describe("Router", () => {
     });
 
     it("returns ErrorFrame for malformed envelope", async () => {
-      router.route("rpc/test", async () => {});
+      router.route("rpc", async () => {});
 
       // Create frame with invalid envelope data
       const frame = createMessageFrame(
-        asSubject("rpc/test"),
+        asSubject("rpc"),
         new TextEncoder().encode("not valid json {{{"),
       );
 
@@ -350,14 +350,14 @@ describe("Router", () => {
     });
 
     it("ignores RPC responses (handled by correlation manager)", async () => {
-      router.route("rpc/test", async () => {});
+      router.route("rpc", async () => {});
 
       // Create a response envelope instead of request
       // Use hex-encoded cid for proper JSON serialization
       const cid = generateFrameId();
       const responseEnvelope = { t: "R", cid: frameIdToHex(cid), result: "ok" };
       const frame = createMessageFrame(
-        asSubject("rpc/test"),
+        asSubject("rpc"),
         new TextEncoder().encode(JSON.stringify(responseEnvelope)),
       );
 
@@ -373,8 +373,8 @@ describe("Router", () => {
       const h1 = mock(async () => {});
       const h2 = mock(async () => {});
 
-      router.route("event/test", h1);
-      router.route("event/test", h2);
+      router.route("event", h1);
+      router.route("event", h2);
 
       const frame = createNotificationFrame("user.joined", { userId: 1 });
 
@@ -390,8 +390,8 @@ describe("Router", () => {
       });
       const h2 = mock(async () => {});
 
-      router.route("event/test", h1);
-      router.route("event/test", h2);
+      router.route("event", h1);
+      router.route("event", h2);
 
       const frame = createNotificationFrame("user.joined");
 
@@ -404,11 +404,11 @@ describe("Router", () => {
 
     it("drops event with invalid envelope (no ErrorFrame)", async () => {
       const handler = mock(async () => {});
-      router.route("event/test", handler);
+      router.route("event", handler);
 
       // Create frame with invalid envelope
       const frame = createMessageFrame(
-        asSubject("event/test"),
+        asSubject("event"),
         new TextEncoder().encode("invalid json"),
       );
 
@@ -421,13 +421,13 @@ describe("Router", () => {
 
     it("drops event with non-notification envelope", async () => {
       const handler = mock(async () => {});
-      router.route("event/test", handler);
+      router.route("event", handler);
 
       // Create frame with request envelope instead of notification
       const cid = generateFrameId();
       const requestEnvelope = createRpcRequest("test", cid);
       const frame = createMessageFrame(
-        asSubject("event/test"),
+        asSubject("event"),
         encodeRpcEnvelope(requestEnvelope),
       );
 
@@ -439,7 +439,7 @@ describe("Router", () => {
 
     it("does not provide rpc context for events", async () => {
       let receivedMsg: InboundMessage | null = null;
-      router.route("event/test", async (msg) => {
+      router.route("event", async (msg) => {
         receivedMsg = msg;
       });
 
@@ -486,9 +486,9 @@ describe("Router", () => {
   });
 
   describe("subject validation", () => {
-    it("returns ErrorFrame for reserved subject (stream/)", async () => {
-      // We cannot route stream/, but we can dispatch to it to test validation
-      const frame = createCustomFrame("stream/test", new Uint8Array([1]));
+    it("returns ErrorFrame for reserved channel (stream)", async () => {
+      // We cannot route stream, but we can dispatch to it to test validation
+      const frame = createCustomFrame("stream", new Uint8Array([1]));
 
       const result = await router.dispatch(frame, session);
 
@@ -502,7 +502,7 @@ describe("Router", () => {
   describe("InboundMessage", () => {
     it("provides correct properties", async () => {
       let receivedMsg: InboundMessage | null = null;
-      router.route("rpc/test", async (msg) => {
+      router.route("rpc", async (msg) => {
         receivedMsg = msg;
         await msg.rpc!.reply("ok");
       });
@@ -511,7 +511,7 @@ describe("Router", () => {
       await router.dispatch(frame, session);
 
       expect(receivedMsg).not.toBeNull();
-      expect(receivedMsg!.subject).toBe(asSubject("rpc/test"));
+      expect(receivedMsg!.subject).toBe(asSubject("rpc"));
       expect(receivedMsg!.peerId).toBe(session.peerId);
       expect(receivedMsg!.session).toBe(session);
       expect(receivedMsg!.frame).toBeDefined();
@@ -520,7 +520,7 @@ describe("Router", () => {
 
     it("frame is readonly", async () => {
       let receivedMsg: InboundMessage | null = null;
-      router.route("rpc/test", async (msg) => {
+      router.route("rpc", async (msg) => {
         receivedMsg = msg;
         await msg.rpc!.reply("ok");
       });
@@ -533,8 +533,8 @@ describe("Router", () => {
     });
 
     it("send() generates new frameId", async () => {
-      router.route("rpc/test", async (msg) => {
-        await msg.send(asSubject("rpc/response"), new Uint8Array([1, 2, 3]));
+      router.route("rpc", async (msg) => {
+        await msg.send(asSubject("app/response"), new Uint8Array([1, 2, 3]));
         await msg.rpc!.reply("ok");
       });
 
@@ -564,14 +564,15 @@ describe("Router", () => {
 
     it("creates router with custom subject policy", () => {
       const customPolicy = {
-        allowedPrefixes: ["rpc/", "event/", "app/", "debug/"],
-        reservedPrefixes: ["stream/"],
+        allowedChannels: ["rpc", "event", "debug"],
+        reservedChannels: ["stream"],
+        allowedPrefixes: ["app/"],
       };
       const r = createRouter({}, customPolicy);
 
-      // Should allow debug/ prefix
+      // Should allow debug channel
       const handler = mock(async () => {});
-      expect(() => r.route("debug/test", handler)).not.toThrow();
+      expect(() => r.route("debug", handler)).not.toThrow();
     });
   });
 });

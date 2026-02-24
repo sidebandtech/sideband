@@ -20,7 +20,7 @@ export interface BaseFrame {
 /**
  * Base control frame: shared structure across all control operations.
  * Discrimination is done via the `op` field to the specific variant.
- * Per ADR 002: each control op has specific data invariants:
+ * Per ADR-002: each control op has specific data invariants:
  * - Handshake: data is required (JSON-encoded HandshakePayload)
  * - Ping/Pong: data must not be present
  * - Close: data is optional (UTF-8 reason string)
@@ -82,7 +82,7 @@ export type ControlFrame =
  * Supports both request/response (RPC) and pub/sub patterns via the subject routing.
  *
  * Per ADR-006 and ADR-008, subject is validated at the protocol layer.
- * All subjects must start with one of: "rpc/", "event/", "stream/", "app/".
+ * Must be an exact-match channel (`rpc`, `event`, `stream`) or use the `app/` prefix.
  */
 export interface MessageFrame extends BaseFrame {
   readonly kind: FrameKind.Message;
@@ -101,7 +101,7 @@ export interface AckFrame extends BaseFrame {
 /**
  * Error frame for protocol and application errors.
  * code is a number to allow each layer (SBP, RPC, app) to use its own enum;
- * see architecture.md#error-code-ownership for range allocations.
+ * see docs/protocols/stack.md#error-code-ownership for range allocations.
  */
 export interface ErrorFrame extends BaseFrame {
   readonly kind: FrameKind.Error;
@@ -114,7 +114,7 @@ export interface ErrorFrame extends BaseFrame {
  * Discriminated union of all frame types.
  * Used for type-safe frame handling throughout the protocol.
  * All variants are deeply readonly to prevent accidental mutation of decoded frames.
- * See ADR 007 for rationale.
+ * See ADR-007 for rationale.
  */
 export type Frame = Readonly<
   ControlFrame | MessageFrame | AckFrame | ErrorFrame
@@ -216,9 +216,9 @@ export interface ErrorFrameOptions {
 
 /**
  * Create an Error frame.
- * Carries facts only; receiver applies fatality policy per sbp/errors.md.
+ * Carries facts only; receiver applies fatality policy per docs/protocols/sbp/errors.md.
  *
- * @param code - Error code (see architecture.md#error-code-ownership for ranges)
+ * @param code - Error code (see docs/protocols/stack.md#error-code-ownership for ranges)
  * @param message - Human-readable error message
  * @param details - Optional binary details (e.g., JSON metadata)
  * @param opts - Optional frame configuration (frameId auto-generated if omitted)
@@ -252,7 +252,7 @@ export interface MessageFrameOptions {
  * Create a Message frame for application payloads.
  * Validates the subject against reserved prefixes per ADR-006 and ADR-008.
  *
- * @param subject - Routing key: must start with "rpc/", "event/", "stream/", or "app/"
+ * @param subject - Channel subject: exact-match (`rpc`, `event`, `stream`) or `app/` prefix
  * @param data - Opaque message payload
  * @param opts - Optional frame configuration (frameId auto-generated if omitted)
  * @returns A validated MessageFrame

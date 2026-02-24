@@ -1,10 +1,9 @@
-# ADR 010: Explicit RPC Correlation via `cid` in the Envelope
+# ADR-010: Explicit RPC Correlation via `cid` in the Envelope
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
 - **Applies to**: RPC
 - **Tags**: rpc, correctness, future-proofing, layering
-- **Supersedes**: Incorrect correlation text in `docs/protocols/rpc/envelope.md`
 
 ## Context
 

@@ -24,8 +24,8 @@ This document will cover:
 
 ## Subject-Envelope Validation
 
-- [ ] `t:"r"`, `t:"R"`, `t:"E"` envelopes MUST use `rpc/` subjects
-- [ ] `t:"N"` envelopes MUST use `event/` subjects
+- [ ] `t:"r"`, `t:"R"`, `t:"E"` envelopes MUST use `rpc` channel
+- [ ] `t:"N"` envelopes MUST use `event` channel
 - [ ] Mismatched envelopes MUST be dropped (log recommended)
 - [ ] Rejection is non-fatal (continue processing subsequent frames)
 - [ ] Subject format rules are validated by SBP (see [SBP Behavior](../sbp/behavior.md#subject-namespace))

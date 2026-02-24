@@ -1,0 +1,14 @@
+{
+  "context": {
+    "fileName": ["AGENTS.md", "AGENTS.local.md"]
+  },
+  "general": {
+    "defaultApprovalMode": "auto_edit"
+  },
+  "tools": {
+    "useRipgrep": true
+  },
+  "privacy": {
+    "usageStatisticsEnabled": false
+  }
+}

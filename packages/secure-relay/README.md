@@ -12,7 +12,7 @@ Implements authenticated handshake, key derivation, and message encryption for s
 - **TOFU identity pinning** — Trust-on-first-use with key change detection
 - **Replay protection** — Bitmap-based sequence window
 
-## Non-Goals
+## Non-goals
 
 This package intentionally does NOT:
 
@@ -20,6 +20,23 @@ This package intentionally does NOT:
 - Manage session lifecycle or reconnection
 - Persist identity keys or TOFU pins
 - Implement relay authentication or tokens
+
+## Threat model
+
+This package protects the **payload** of messages between a browser client and a daemon via an untrusted relay. Specifically:
+
+- The relay cannot read or tamper with message content (authenticated encryption).
+- A MITM cannot impersonate the daemon without its Ed25519 private key (signature verification on handshake).
+- Replayed messages are rejected within the sequence window.
+
+It does **not** protect against:
+
+- Compromise of the daemon's identity key (store it securely; if lost, all clients see a TOFU mismatch).
+- Traffic analysis (message sizes and timing are visible to the relay).
+- Key storage security — this package has no opinion on where keys live; that's the caller's responsibility.
+- Denial of service from a malicious relay (the relay can drop or delay messages).
+
+This implementation has not undergone a formal third-party security audit. Use accordingly.
 
 ## Install
 
@@ -78,7 +95,7 @@ const encrypted = encryptClientToDaemon(daemonSession, plaintext);
 const decrypted = decryptClientToDaemon(clientSession, encrypted);
 ```
 
-## TOFU Security
+## TOFU security
 
 Identity keys use trust-on-first-use (TOFU) pinning:
 
@@ -86,7 +103,7 @@ Identity keys use trust-on-first-use (TOFU) pinning:
 - Never accept key changes silently — `identity_key_changed` indicates potential MITM
 - On mismatch, present both fingerprints and require explicit user approval
 
-### Detecting Identity Key Changes
+### Detecting identity key changes
 
 Compare the daemon's current identity key against your stored pin before handshake:
 
@@ -123,7 +140,7 @@ if (!pinnedKey) {
 }
 ```
 
-## Error Handling
+## Error handling
 
 All errors throw `SbrpError` with a specific `code`:
 

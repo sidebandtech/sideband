@@ -1,4 +1,4 @@
-# ADR 002: Naming Matrix for Protocol Types
+# ADR-002: Naming Matrix for Protocol Types
 
 - **Date**: 2025-11-22
 - **Status**: Accepted
@@ -45,47 +45,48 @@
 | Ack frame          | `AckFrame`       | `kind: FrameKind.Ack`; `ackFrameId` | `t=2`    | Acknowledges another frame²                        |
 | Error frame        | `ErrorFrame`     | `kind: FrameKind.Error`             | `t=3`    | Represents protocol or app errors                  |
 
-> 1. Message frames carry routable application data (RPC + pub/sub). Do not confuse with `AppMessage` (SDK type), which wraps decoded payloads.
+> 1. Message frames carry routable application data (RPC + events). The peer SDK works with frames directly — there is no separate wrapper type.
 > 2. `ackFrameId` references the target's `frameId`.
 
 ### 3. Control operations and payloads
 
-| Domain concept    | Type / Enum name   | Field / Property | Wire key | Notes                                         |
-| ----------------- | ------------------ | ---------------- | -------- | --------------------------------------------- |
-| Control op        | `ControlOp`        | `op`             | `c`      | `Handshake`, `Ping`, `Pong`, `Close`          |
-| Control data      | -                  | `data`           | -        | Optional opaque binary                        |
-| Handshake payload | `HandshakePayload` | -                | -        | Contains `peerId`, `capabilities`, `metadata` |
+| Domain concept    | Type / Enum name   | Field / Property | Wire key | Notes                                 |
+| ----------------- | ------------------ | ---------------- | -------- | ------------------------------------- |
+| Control op        | `ControlOp`        | `op`             | `c`      | `Handshake`, `Ping`, `Pong`, `Close`  |
+| Control data      | -                  | `data`           | -        | Optional opaque binary                |
+| Handshake payload | `HandshakePayload` | -                | -        | Contains `peerId`, `caps`, `metadata` |
 
 > `c` is scoped to `ControlFrame` payloads only; never used in other frame types.
 > `data` is an optional binary blob used for control frame metadata or handshake extensions.
 
-### 4. Wire message vs application message
+### 4. Message frame and subjects
 
-| Domain concept          | Type / Enum name | Field / Property  | Wire key | Notes                                           |
-| ----------------------- | ---------------- | ----------------- | -------- | ----------------------------------------------- |
-| Routing key             | `Subject`        | `subject`         | `s`      | UTF-8 string; see subject namespace rules below |
-| Raw message bytes       | -                | `data`            | `b`      | `Uint8Array`; wire is opaque bytes              |
-| Wire message (frame)    | `MessageFrame`   | `subject`, `data` | `t=1`    | Routable, identity-bearing unit on the wire     |
-| App-level message (SDK) | `AppMessage`     | `subject`, `data` | -        | High-level concept in `@sideband/peer`          |
+| Domain concept       | Type / Enum name | Field / Property  | Wire key | Notes                                         |
+| -------------------- | ---------------- | ----------------- | -------- | --------------------------------------------- |
+| Routing key          | `Subject`        | `subject`         | `s`      | UTF-8 string; see channel subject rules below |
+| Raw message bytes    | -                | `data`            | `b`      | `Uint8Array`; wire is opaque bytes            |
+| Wire message (frame) | `MessageFrame`   | `subject`, `data` | `t=1`    | Routable, identity-bearing unit on the wire   |
 
-**Subject namespace rules** (see ADR-006 for full RPC envelope spec):
+**Channel subject rules** (see ADR-006 for full RPC envelope spec):
 
-| Prefix    | Purpose                       | Example                  | Semantics        |
-| --------- | ----------------------------- | ------------------------ | ---------------- |
-| `rpc/`    | RPC request/response          | `rpc/getUser`            | Request/Response |
-| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      | Notification     |
-| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    | (future)         |
-| `app/`    | Vendor-specific / custom      | `app/com.example/mydata` | Custom           |
+| Subject  | Purpose                     | Dispatch by    | Semantics        |
+| -------- | --------------------------- | -------------- | ---------------- |
+| `rpc`    | All RPC request/response    | `envelope.m`   | Request/Response |
+| `event`  | All fire-and-forget events  | `envelope.e`   | Notification     |
+| `stream` | Streaming (reserved for v2) | —              | (future)         |
+| `app/*`  | Vendor-specific / custom    | Subject/custom | Custom           |
+
+Note: `rpc`, `event`, and `stream` are exact-match channels. The `app/` prefix supports arbitrary sub-paths. Subjects are transport-level mux keys; method and event identity MUST live in the envelope (`m`, `e`), not in the subject.
 
 ### 5. Errors
 
-| Domain concept                    | Type / Enum name       | Field / Property     | Wire key | Notes                                        |
-| --------------------------------- | ---------------------- | -------------------- | -------- | -------------------------------------------- |
-| Protocol error code               | `ProtocolErrorCode`    | `code`               | -        | Enum, low range (e.g. 1000-1999)             |
-| Application error code (optional) | `ApplicationErrorCode` | `code`               | -        | App-defined, high range (e.g. 2000+)         |
-| Error frame details               | `ErrorFrame`           | `message`, `details` | -        | Optional `details` (binary); see note below. |
+| Domain concept      | Type / Enum name | Field / Property     | Wire key | Notes                                         |
+| ------------------- | ---------------- | -------------------- | -------- | --------------------------------------------- |
+| Error code enum     | `ErrorCode`      | `code`               | -        | Protocol range 1000–1099; RPC range 1100–1199 |
+| RPC error code enum | `RpcErrorCode`   | `code`               | -        | RPC-layer codes in `@sideband/rpc`            |
+| Error frame details | `ErrorFrame`     | `message`, `details` | -        | Optional `details` (binary); see note below   |
 
-> `details` is an optional binary/structured payload (e.g. JSON, CBOR) carried alongside the error message.
+> `details` is an optional binary/structured payload (e.g. JSON, CBOR) carried alongside the error message. Application errors use code range 2000+.
 
 ### 6. Capabilities and metadata
 
@@ -104,44 +105,43 @@
 
 > **SBP** is the base protocol used by all session layers. SBRP wraps SBP frames with E2EE for relay mode; SBDP (future) will secure SBP frames for direct P2P.
 
-| Package                       | Notes                                    |
-| ----------------------------- | ---------------------------------------- |
-| `@sideband/transport`         | Shared interfaces, no env-specific logic |
-| `@sideband/transport-node`    | Node.js / Bun WebSocket adapters         |
-| `@sideband/transport-browser` | Browser / ServiceWorker adapters         |
-| `@sideband/runtime`           | Peer lifecycle, routing, subscriptions   |
-| `@sideband/peer`              | High-level publish/subscribe/RPC API     |
+| Package                  | Notes                                    |
+| ------------------------ | ---------------------------------------- |
+| `@sideband/transport`    | Shared interfaces, no env-specific logic |
+| `@sideband/transport-ws` | WebSocket transport (Browser/Node/Bun)   |
+| `@sideband/rpc`          | Typed RPC envelope layer over SBP frames |
+| `@sideband/runtime`      | Peer lifecycle, routing, subscriptions   |
+| `@sideband/peer`         | High-level publish/subscribe/RPC API     |
 
 ### 8. RPC and pub/sub (higher level)
 
-| Domain concept             | Type / Enum name         | Field / Property                 | Notes                                              |
-| -------------------------- | ------------------------ | -------------------------------- | -------------------------------------------------- |
-| RPC envelope (wire format) | `RpcEnvelope`            | `t`, `m`, `p`, `result`, `error` | Binary structure in `MessageFrame.data` (ADR-006)  |
-| RPC request envelope       | `RpcRequest`             | `t: "r"`, `m`, `p?`              | Carries method name + params                       |
-| RPC response envelope      | `RpcResponse`            | `t: "R"`, `result?`, `error?`    | Success or error payload                           |
-| RPC notification envelope  | `RpcNotification`        | `t: "N"`, `e`, `d?`              | Fire-and-forget event                              |
-| Message handler kind       | `HandlerKind` (optional) | -                                | For internal routing (RPC, event, broadcast, etc.) |
+| Domain concept       | Type / Enum name     | Field / Property                   | Notes                                                |
+| -------------------- | -------------------- | ---------------------------------- | ---------------------------------------------------- |
+| RPC envelope (union) | `RpcEnvelope`        | `t` discriminant                   | Discriminated union in `MessageFrame.data` (ADR-006) |
+| RPC request          | `RpcRequest`         | `t: "r"`, `m`, `cid`, `p?`         | Method + params; `cid` = frame's `frameId`           |
+| RPC success response | `RpcSuccessResponse` | `t: "R"`, `cid`, `result?`         | Correlation via `cid` (ADR-010)                      |
+| RPC error response   | `RpcErrorResponse`   | `t: "E"`, `cid`, `code`, `message` | `data?` for structured error details                 |
+| RPC response (union) | `RpcResponse`        | —                                  | `RpcSuccessResponse \| RpcErrorResponse`             |
+| RPC notification     | `RpcNotification`    | `t: "N"`, `e`, `d?`                | Fire-and-forget; no `cid`                            |
 
 ### 9. Helper API verbs (for AI assistants)
 
-| Operation              | Function name          | Notes                                      |
-| ---------------------- | ---------------------- | ------------------------------------------ |
-| Generate frame ID      | `generateFrameId`      | `() -> FrameId` (16-byte binary)           |
-| Frame ID to hex        | `frameIdToHex`         | `(FrameId) -> string` (32-char lowercase)  |
-| Frame ID from hex      | `frameIdFromHex`       | `(string) -> FrameId` (validates 32 hex)   |
-| Encode frame to bytes  | `encodeFrame`          | `Frame -> Uint8Array`                      |
-| Decode bytes to frame  | `decodeFrame`          | `ArrayBufferView -> Frame`                 |
-| Create message frame   | `createMessageFrame`   | `(subject, data, opts) -> MessageFrame`    |
-| Create ack frame       | `createAckFrame`       | `(frameId, opts) -> AckFrame`              |
-| Create error frame     | `createErrorFrame`     | `(code, message, opts) -> ErrorFrame`      |
-| Create handshake frame | `createHandshakeFrame` | `(HandshakePayload, opts) -> ControlFrame` |
+| Operation              | Function name          | Notes                                                |
+| ---------------------- | ---------------------- | ---------------------------------------------------- |
+| Generate frame ID      | `generateFrameId`      | `() -> FrameId` (16-byte binary)                     |
+| Frame ID to hex        | `frameIdToHex`         | `(FrameId) -> string` (32-char lowercase)            |
+| Frame ID from hex      | `frameIdFromHex`       | `(string) -> FrameId` (validates 32 hex)             |
+| Encode frame to bytes  | `encodeFrame`          | `Frame -> Uint8Array`                                |
+| Decode bytes to frame  | `decodeFrame`          | `ArrayBufferView -> Frame`                           |
+| Create message frame   | `createMessageFrame`   | `(subject, data, opts?) -> MessageFrame`             |
+| Create error frame     | `createErrorFrame`     | `(code, message, details?, opts?) -> ErrorFrame`     |
+| Create handshake frame | `createHandshakeFrame` | `(data: Uint8Array, opts?) -> HandshakeControlFrame` |
 
 ### AI usage hints (suitable as code comments)
 
 > - Use `Frame` / `FrameKind` / `kind` for protocol-level variants.
-> - Use `AppMessage` for application/pubsub semantics.
 > - Use `peerId` for stable peer identity; `connectionId` is per link, `sessionId` spans reconnects.
-> - Use `frameId` to identify frames; `correlationId` (or `traceId`) to link frames.
+> - Use `frameId` to identify frames; `cid` in RPC envelopes for request/response correlation (ADR-010).
 > - Map wire fields (`t`, `id`, `peerId`, `caps`, `s`, `b`) only inside encode/decode; never expose them in public TS types.
 
 ## Consequences

@@ -16,16 +16,23 @@
  */
 
 export type {
-  Transport,
-  TransportConnection,
-  TransportListener,
-  TransportEndpoint,
+  CloseInfo,
+  CloseOptions,
+  ConnectionHandler,
+  ConnectionId,
+  ConnectionState,
   ConnectOptions,
   ListenOptions,
-  ConnectionHandler,
+  Transport,
+  TransportConnection,
+  TransportEndpoint,
+  TransportListener,
 } from "./types.js";
 
-export { asTransportEndpoint } from "./types.js";
+export { asConnectionId, unsafeAsTransportEndpoint } from "./types.js";
 
-// Example / reference implementation
-export { MemoryTransport } from "./memory.js";
+export { isRetryable, TransportError } from "./errors.js";
+export type { TransportErrorKind } from "./errors.js";
+
+// Loopback transport for testing and local communication
+export { LoopbackTransport } from "./loopback.js";

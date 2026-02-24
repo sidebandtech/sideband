@@ -47,7 +47,7 @@ This protocol will define:
 
 ## Related Documents
 
-- [Protocol Architecture](../architecture.md): Layer stack, wrapping rules
+- [Protocol Architecture](../stack.md): Layer stack, wrapping rules
 - [SBP Specification](../sbp/): Application framing (will be used unchanged)
 - [SBRP Specification](../sbrp/): Reference implementation for session layer
 

@@ -16,8 +16,7 @@ What lives where, who depends on whom, and where to start.
 │  ├─ peer/
 │  ├─ secure-relay/        # E2EE relay protocol (SBRP)
 │  ├─ testing/             # Test helpers (when added)
-│  ├─ transport-browser/
-│  ├─ transport-node/
+│  ├─ transport-ws/         # WebSocket transport (browser + Node/Bun)
 │  └─ cli/
 ├─ README.md               # Top-level overview
 ├─ package.json            # Workspace root
@@ -52,12 +51,9 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 • Friendly API over runtime + injected or default transport; lifecycle utilities; convenience pub/sub/RPC helpers.
 • Depends on: protocol, runtime, transport-\* (as chosen). No protocol definitions or low-level routing.
 
-`@sideband/transport-browser` — Browser transport  
-• Implements the Transport interface via browser primitives (e.g., WebSocket); may handle reconnects/errors.  
-• Depends on: protocol, transport. Must not depend on runtime/rpc/peer.
-
-`@sideband/transport-node` — Node/Bun transport
-• Transport interface via Node/Bun networking (e.g., ws/Bun WS); server/client wiring.
+`@sideband/transport-ws` — WebSocket transport
+• Implements the Transport interface via WebSocket for both browser and Node/Bun.
+• Conditional exports: `./browser` for browsers, `./node` for Node/Bun server-side.
 • Depends on: protocol, transport. Must not depend on runtime/rpc/peer.
 
 `@sideband/secure-relay` — Sideband Relay Protocol (SBRP)
@@ -82,18 +78,21 @@ graph TD
   protocol --> runtime
   protocol --> transport
   transport --> runtime
-  protocol --> transport_browser
-  protocol --> transport_node
-  transport --> transport_browser
-  transport --> transport_node
+  protocol --> transport_ws
+  transport --> transport_ws
   runtime --> rpc
   runtime --> peer
-  transport_browser --> peer
-  transport_node --> peer
+  transport_ws --> peer
   secure_relay --> peer
   peer --> cli
   rpc --> cli
 ```
+
+## Dependency policy
+
+- **`dependencies`** — anything your published JS imports at runtime. All internal `@sideband/*` imports go here. Each package must be installable in isolation without consumers manually wiring internal pieces.
+- **`peerDependencies`** — only for host-provided integrations or optional feature adapters the consumer chooses to install (e.g., `@sideband/secure-relay` in peer).
+- Never use peer dependencies just to deduplicate installs across the monorepo; package managers already deduplicate compatible `^` ranges.
 
 ## Conventions
 

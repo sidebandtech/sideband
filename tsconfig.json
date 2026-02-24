@@ -6,8 +6,7 @@
     { "path": "./packages/runtime" },
     { "path": "./packages/rpc" },
     { "path": "./packages/peer" },
-    { "path": "./packages/transport-browser" },
-    { "path": "./packages/transport-node" },
+    { "path": "./packages/transport-ws" },
     { "path": "./packages/cli" },
     { "path": "./packages/testing" }
   ]

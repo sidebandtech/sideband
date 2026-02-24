@@ -1,9 +1,8 @@
-# ADR 009: Runtime Session Lifecycle
+# ADR-009: Runtime Session Lifecycle
 
 - **Date**: 2025-01-11
 - **Status**: Accepted
-- **Applies to**: Runtime
-- **Tags**: runtime, session, negotiation, lifecycle
+- **Affects**: Runtime
 
 ## Context
 
@@ -88,9 +87,9 @@ Note: `state` is intentionally exposed for observability (logging, UI indicators
 **Ownership invariant:**
 
 > A `Peer` owns zero or more `Session` instances over time.
-> At most one `Session` may be `Active` per peer in v1.
+> At most one `Session` may be active per peer.
 
-The `Peer` type is not exposed as a public class in v1, but this invariant guides internal design and prevents multi-session ambiguity.
+The `@sideband/peer` SDK exposes a `Peer` interface (see ADR-013) that manages session lifecycle internally. The runtime `Session` is a lower-level building block.
 
 ### 3. Session States
 
@@ -124,11 +123,11 @@ The `Peer` type is not exposed as a public class in v1, but this invariant guide
 
 | State         | Meaning                                                                  |
 | ------------- | ------------------------------------------------------------------------ |
-| `Idle`        | No session. Initial and terminal state.                                  |
-| `Connecting`  | Transport `connect()` in progress.                                       |
-| `Negotiating` | Transport open, negotiator establishing channel (handshake, E2EE, auth). |
-| `Active`      | Ready for message exchange.                                              |
-| `RetryWait`   | Waiting before retry attempt (if retry enabled).                         |
+| `idle`        | No session. Initial and terminal state.                                  |
+| `connecting`  | Transport `connect()` in progress.                                       |
+| `negotiating` | Transport open, negotiator establishing channel (handshake, E2EE, auth). |
+| `active`      | Ready for message exchange.                                              |
+| `retry-wait`  | Waiting before retry attempt (if retry enabled).                         |
 
 ### 4. Pluggable Negotiators
 
@@ -140,7 +139,7 @@ interface Negotiator {
   negotiate(conn: TransportConnection): Promise<NegotiationResult>;
 
   /** Protocol-specific close; MUST be idempotent */
-  terminate(conn: TransportConnection, reason?: string): Promise<void>;
+  terminate(conn: TransportConnection, options?: CloseOptions): Promise<void>;
 
   /** Classify an error as fatal or retryable */
   classifyError(error: Error): "fatal" | "retryable";
@@ -178,7 +177,7 @@ interface ResumableNegotiator extends Negotiator {
 > 1. **Custom Negotiator with `channel`**: Implement a negotiator that performs SBRP key exchange and returns a `NegotiationResult.channel` — a wrapped `TransportConnection` that encrypts outbound frames and decrypts inbound frames. The runtime uses this channel transparently.
 > 2. **Transport Adapter**: Embed SBRP logic in a custom transport that exposes decrypted SBP frames directly. Simpler but couples session and transport layers.
 >
-> See `docs/protocols/architecture.md` "Session Output Contract" for the normative interface.
+> See `docs/protocols/stack.md` "Session Output Contract" for the normative interface.
 
 **SBP negotiation sequence:**
 
@@ -219,10 +218,6 @@ Retry is **per-session** and **opt-in**:
 ```ts
 interface RetryPolicy {
   mode: "never" | "on-error"; // Default: "never"
-  backoff: BackoffPolicy;
-}
-
-interface BackoffPolicy {
   initialDelayMs: number; // Default: 1000
   maxDelayMs: number; // Default: 30000
   maxAttempts: number; // Retry attempts (excludes initial); 0 = unlimited
@@ -238,18 +233,18 @@ delay = min(initial * 2^attempt, max) * (1 + random(-jitter, +jitter))
 
 **Retry behavior:**
 
-1. Transport error in `Active` → transition to `RetryWait`
+1. Transport error in `active` → transition to `retry-wait`
 2. Wait backoff delay
-3. Transition to `Connecting`, attempt new connection
+3. Transition to `connecting`, attempt new connection
 4. On success: full re-negotiation (no session resume in v1)
-5. On max attempts: transition to `Idle`, emit `closed` event
+5. On max attempts: transition to `idle`, emit `closed` event
 
-**Attempt counting:** `maxAttempts` counts only retry attempts, not the initial connection. With `maxAttempts: 5`, a total of 6 connection attempts occur (1 initial + 5 retries). The attempt counter resets on successful transition to `Active`.
+**Attempt counting:** `maxAttempts` counts only retry attempts, not the initial connection. With `maxAttempts: 5`, a total of 6 connection attempts occur (1 initial + 5 retries). The attempt counter resets on successful transition to `active`.
 
 **Retry invariants:**
 
 - When retrying, a new Session replaces the previous Session for the same Peer; retries never create parallel sessions
-- Calling `terminate()` cancels any pending retries and transitions immediately to `Idle`
+- Calling `terminate()` cancels any pending retries and transitions immediately to `idle`
 
 **Channel and retry semantics:**
 
@@ -269,7 +264,7 @@ interface SessionEvents {
   negotiating: { transport: TransportConnection };
   active: { peerId: PeerId; capabilities: string[] };
   retrying: { attempt: number; delayMs: number; lastError: Error };
-  closed: { reason: string; wasClean: boolean; fatal: boolean };
+  closed: { reason: string; graceful: boolean; fatal: boolean };
 
   // Security events (from negotiator)
   identity_established: { identity: VerifiedIdentity; trusted: boolean };
@@ -286,19 +281,19 @@ Note: `identity_established` (not `identity_verified`) because TOFU is trust est
 Termination follows a strict ordering to ensure proper cleanup:
 
 ```ts
-async function terminate(reason?: string): Promise<void> {
+async function terminate(options?: CloseOptions): Promise<void> {
   // 1. Protocol-level signaling via negotiator (uses raw transport)
-  await negotiator.terminate(transport, reason);
+  await negotiator.terminate(transport, options);
 
   // 2. Close session channel (if distinct from transport)
   if (channel !== transport) {
-    await channel.close(reason);
+    await channel.close(options);
   }
 
   // 3. Close underlying transport
-  await transport.close(reason);
+  await transport.close(options);
 
-  // 4. Transition to Idle
+  // 4. Transition to idle
   state = "idle";
 }
 ```
@@ -322,12 +317,9 @@ This ensures session-layer cleanup (e.g., encryption state, pending operations) 
 **SbpNegotiator.terminate():**
 
 ```ts
-// Send Close control frame if transport is open
-if (conn.state === "open") {
-  await send(
-    createControlFrame({ op: ControlOp.Close, data: encodeReason(reason) }),
-  );
-}
+// Send Close frame (best-effort; ignores errors if transport already closed)
+const closeFrame = createCloseFrame(reasonBytes);
+await conn.send(encodeFrame(closeFrame));
 ```
 
 For SBRP termination semantics, see `docs/protocols/sbrp/state-machine.md`.
@@ -371,6 +363,6 @@ SBRP implementations (whether via custom negotiator or transport adapter) MUST i
 ## References
 
 - ADR-005 (Transport ABI)
+- ADR-013 (Peer SDK Core Design Decisions)
 - `docs/protocols/sbp/behavior.md` (handshake-first rule)
 - `docs/protocols/sbrp/` (E2EE handshake, TOFU)
-- `packages/secure-relay/src/handshake.ts` (SBRP implementation)

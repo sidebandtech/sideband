@@ -1,4 +1,4 @@
-# ADR 006: Canonical RPC Envelope over MessageFrame
+# ADR-006: Canonical RPC Envelope over MessageFrame
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
@@ -17,22 +17,30 @@ The question is where to fix this: at the protocol layer (new frame kinds) or at
 
 2. **Define a canonical RPC envelope** carried in `MessageFrame.data`: Request, Success Response, Error Response, Notification. Encoded as JSON (v1) or CBOR (v2+).
 
-3. **Enforce subject namespacing**: all messages must start with `rpc/`, `event/`, `stream/`, or `app/`. Invalid subjects → `ProtocolViolation`.
+3. **Enforce channel subject validation**: all messages must use channel subjects (`rpc`, `event`, `stream`) or the `app/` prefix. Invalid subjects → `ProtocolViolation`.
 
 4. **Zero protocol wire changes.** RPC semantics live at the `@sideband/rpc` layer, not the wire.
 
-### Subject Namespace (Mandatory, Runtime-Validated)
+### Channel Subjects (Mandatory, Runtime-Validated)
 
-All `MessageFrame.subject` values must match one of these prefixes:
+All `MessageFrame.subject` values must be exact channel matches or use the `app/` prefix:
 
-| Prefix    | Purpose                       | Example                  | Allowed senders | Semantics        |
-| --------- | ----------------------------- | ------------------------ | --------------- | ---------------- |
-| `rpc/`    | RPC request/response          | `rpc/getUser`            | both            | Request/Response |
-| `event/`  | Fire-and-forget pub/sub event | `event/user.joined`      | both            | Notification     |
-| `stream/` | Streaming (reserved for v2)   | `stream/abc123/chunk`    | reserved        | (future)         |
-| `app/`    | Vendor-specific (fallback)    | `app/com.example/mydata` | both            | Custom semantics |
+| Subject  | Purpose                     | Dispatch by    | Semantics        |
+| -------- | --------------------------- | -------------- | ---------------- |
+| `rpc`    | All RPC request/response    | `envelope.m`   | Request/Response |
+| `event`  | All fire-and-forget events  | `envelope.e`   | Notification     |
+| `stream` | Streaming (reserved for v2) | —              | (future)         |
+| `app/*`  | Vendor-specific (fallback)  | Subject/custom | Custom semantics |
 
-Subjects outside these prefixes are rejected at runtime with `ProtocolViolation`.
+**Channel subjects model:** `rpc`, `event`, and `stream` are exact-match channels. The subject identifies the message _class_, not the specific method or event. Method/event dispatch happens via envelope fields (`m` for RPC methods, `e` for event names).
+
+Benefits:
+
+- Single source of truth (envelope owns semantics)
+- No subject/envelope mismatch possible
+- Simpler subject cardinality
+
+Subjects outside these channels (or not prefixed with `app/`) are rejected at runtime with `ProtocolViolation`.
 
 ### Envelope Schema
 

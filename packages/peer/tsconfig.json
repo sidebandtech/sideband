@@ -10,5 +10,12 @@
     "composite": true
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    { "path": "../protocol/tsconfig.json" },
+    { "path": "../rpc/tsconfig.json" },
+    { "path": "../runtime/tsconfig.json" },
+    { "path": "../transport/tsconfig.json" },
+    { "path": "../transport-ws/tsconfig.json" }
+  ]
 }

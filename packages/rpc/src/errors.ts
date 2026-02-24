@@ -3,7 +3,7 @@
 /**
  * RPC-layer error codes (1100–1199 range).
  *
- * Each layer owns a non-overlapping code range; see error-codes.md.
+ * Each layer owns a non-overlapping code range; see docs/protocols/error-codes.md.
  */
 export enum RpcErrorCode {
   /** Envelope structure or encoding error */
@@ -14,6 +14,6 @@ export enum RpcErrorCode {
   CorrelationMismatch = 1102,
   /** Request timed out waiting for response */
   Timeout = 1103,
-  /** Envelope type incompatible with subject prefix */
+  /** Envelope type incompatible with subject channel */
   EnvelopeMismatch = 1104,
 }

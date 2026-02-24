@@ -35,7 +35,6 @@
     },
     "./package.json": "./package.json"
   },
-  "dependencies": {},
   "files": [
     "dist",
     "src"

@@ -1,4 +1,4 @@
-# ADR 001: Protocol Versioning & Compatibility
+# ADR-001: Protocol Versioning & Compatibility
 
 - **Date**: 2025-11-22
 - **Status**: Accepted
