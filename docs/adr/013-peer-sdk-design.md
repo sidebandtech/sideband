@@ -30,7 +30,7 @@ function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
 
 **Rationale:** `SbrpNegotiatorOptions` mixes client-only fields (TOFU pinning, `onFirstConnection`, `trustPolicy`, `controlPlaneUrl`) with daemon-only fields (`serverIdentity`, `resumable`, `pauseBufferLimitBytes`). Options A and B allow invalid combinations to compile and fail only at runtime — violating the "hard to misuse" design goal. Separate factories give each role a dedicated, focused type with unambiguous autocomplete and error messages.
 
-**Invariant:** `sbrpNegotiator()` is a deprecated alias retained only for migration. It MUST be removed in v2.
+**Note:** The single `sbrpNegotiator()` function was abandoned during design — it was never shipped. No migration/deprecation path is needed.
 
 ### 2. NATS-Style Event Pattern Syntax
 
@@ -62,7 +62,7 @@ SAFE_CHAR  = ALPHA | DIGIT | "-" | "_"
 
 **Normative rules:**
 
-1. Patterns are validated at `subscribePattern()` call time.
+1. Patterns are validated at `onPattern()` call time.
 2. Invalid patterns throw `PeerError` with code `invalid_pattern`.
 3. `**` MUST be rejected with an error directing the user to `>`.
 
@@ -70,12 +70,12 @@ SAFE_CHAR  = ALPHA | DIGIT | "-" | "_"
 
 ## Consequences
 
-- `@sideband/secure-relay` must expose `sbrpClientNegotiator` and `sbrpDaemonNegotiator`. `sbrpNegotiator()` is a deprecated wrapper removed in v2.
-- `@sideband/runtime` router MUST enforce the event pattern grammar above.
+- `@sideband/secure-relay` must expose `sbrpClientNegotiator` and `sbrpDaemonNegotiator` (Phase 5).
+- `@sideband/peer` validates event patterns client-side via `onPattern()` / `validatePattern()`.
 - All documentation and examples MUST use `>` (not `**`) for multi-segment wildcard patterns.
 
 ## References
 
 - `docs/sdk/peer.md` §6.4, §6.8 — Peer SDK RFC (SBRP negotiator and pub/sub API)
-- ADR-008: Subject Namespace Validation
+- ADR-008: Channel Subject Validation
 - ADR-006: RPC Envelope

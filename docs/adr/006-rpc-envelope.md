@@ -17,11 +17,11 @@ The question is where to fix this: at the protocol layer (new frame kinds) or at
 
 2. **Define a canonical RPC envelope** carried in `MessageFrame.data`: Request, Success Response, Error Response, Notification. Encoded as JSON (v1) or CBOR (v2+).
 
-3. **Enforce subject namespacing**: all messages must use channel subjects (`rpc`, `event`, `stream`) or the `app/` prefix. Invalid subjects → `ProtocolViolation`.
+3. **Enforce channel subject validation**: all messages must use channel subjects (`rpc`, `event`, `stream`) or the `app/` prefix. Invalid subjects → `ProtocolViolation`.
 
 4. **Zero protocol wire changes.** RPC semantics live at the `@sideband/rpc` layer, not the wire.
 
-### Subject Namespace (Mandatory, Runtime-Validated)
+### Channel Subjects (Mandatory, Runtime-Validated)
 
 All `MessageFrame.subject` values must be exact channel matches or use the `app/` prefix:
 

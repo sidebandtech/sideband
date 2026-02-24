@@ -1,4 +1,4 @@
-# ADR-008: Enforce Reserved Subject Namespace at the Protocol Layer
+# ADR-008: Enforce Channel Subject Validation at the Protocol Layer
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
@@ -7,7 +7,7 @@
 
 ## Context
 
-ADR-006 mandates that all `MessageFrame.subject` values use exact channel matches (`rpc`, `event`, `stream`) or the `app/` prefix.
+ADR-006 mandates that all `MessageFrame.subject` values use exact-match channel subjects (`rpc`, `event`, `stream`) or the `app/` prefix.
 
 The protocol layer did not enforce this contract. The wire codec accepted any string; validation only existed in `@sideband/rpc` (optional). This violated ADR-006 and the principle of correctness-first design.
 
@@ -29,7 +29,7 @@ Move subject validation into `@sideband/protocol` — the only package owning th
 
 5. **Update `decodeFrame()`**: Validate subject on wire decode. Invalid subjects → fatal protocol violation → connection close.
 
-6. **Update RPC layer**: Re-export protocol validator as `asRpcSubject()`. Remove duplicate validation. Keep `ProtocolViolation` class for backwards compatibility (extends `ProtocolError`).
+6. **Update RPC layer**: Re-export protocol validator as `asRpcSubject()`. Remove duplicate validation.
 
 ## Technical Details
 

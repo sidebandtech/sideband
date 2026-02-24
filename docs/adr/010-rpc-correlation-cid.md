@@ -4,7 +4,6 @@
 - **Status**: Accepted
 - **Applies to**: RPC
 - **Tags**: rpc, correctness, future-proofing, layering
-- **Supersedes**: Incorrect correlation text in `docs/protocols/rpc/envelope.md`
 
 ## Context
 

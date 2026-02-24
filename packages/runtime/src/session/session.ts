@@ -275,6 +275,22 @@ export class SessionManager {
         const error = err instanceof Error ? err : new Error(String(err));
         this.handleError(error).catch(() => {});
       }
+      return;
+    }
+
+    // Graceful channel close: the inbound iterator returned done without error.
+    // Emit "closed" so callers (e.g. peer runLoop) can react to the transport drop.
+    if (
+      !this.terminated &&
+      this._state === "active" &&
+      this.channel === activeChannel
+    ) {
+      this.setState("idle");
+      this.emit("closed", {
+        reason: "channel_closed",
+        graceful: true,
+        fatal: false,
+      });
     }
   }
 

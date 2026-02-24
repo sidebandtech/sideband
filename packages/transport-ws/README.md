@@ -2,15 +2,15 @@
 
 WebSocket transport for Sideband with browser and Node.js/Bun support.
 
-## Installation
+## Install
 
 ```bash
 bun add @sideband/transport-ws
 ```
 
-## Quick Start
+## Quick start
 
-```typescript
+```ts
 import { wsTransport, wsEndpoint } from "@sideband/transport-ws";
 
 const transport = wsTransport();
@@ -19,11 +19,11 @@ const conn = await transport.connect(wsEndpoint("wss://relay.example.com"), {
 });
 
 for await (const msg of conn.inbound) {
-  // Handle messages
+  // handle messages
 }
 ```
 
-## Platform Support
+## Platform support
 
 | Platform | Client | Server |
 | -------- | ------ | ------ |
@@ -31,177 +31,100 @@ for await (const msg of conn.inbound) {
 | Node.js  | Yes    | Yes    |
 | Bun      | Yes    | Yes    |
 
-Auto-detection: `wsTransport()` automatically detects the platform. Override with `{ platform: "browser" | "node" | "bun" }`.
+`wsTransport()` auto-detects the platform. Override with `{ platform: "browser" | "node" | "bun" }`.
 
-## API Reference
+## API
 
 ### `wsTransport(options?)`
 
-Create a WebSocket transport with automatic platform detection.
-
-```typescript
-const transport = wsTransport();
-// Or override platform detection
-const transport = wsTransport({ platform: "browser" });
-```
+Create a WebSocket transport. Auto-detects the platform.
 
 ### `wsEndpoint(url)`
 
-Create a validated WebSocket endpoint.
-
-```typescript
-const endpoint = wsEndpoint("wss://example.com");
-// Validates ws:/wss: scheme, strips hash fragment
-```
+Brand and validate a WebSocket URL (`ws://` or `wss://`). Throws on invalid scheme.
 
 ### `wsEndpointFromHttp(url)`
 
-Convert HTTP(S) URL to WebSocket URL.
+Convert an HTTP(S) URL to a `ws://`/`wss://` endpoint.
 
-```typescript
-const endpoint = wsEndpointFromHttp("https://example.com");
-// Returns wss://example.com
+## Connect options
+
+Key options for `transport.connect(endpoint, options)`:
+
+- **`auth`** — `{ token, mode?: "header" | "query" }`. Browsers must use `"query"` (WebSocket API doesn't allow custom headers).
+- **`subprotocols`** — `{ offer?, requireSelection? }`. Set `requireSelection: true` for protocol enforcement.
+- **`limits`** — `{ maxMessageSize?, maxSendBufferBytes?, maxInboundBufferBytes? }`. Defaults: 1 MiB / 16 MiB / 16 MiB.
+- **`timeoutMs`** / **`signal`** — connect deadline and abort signal.
+- **`advanced`** — Node/Bun only: `{ headers?, query?, tls? }`.
+
+## Listen options (server)
+
+Key options for `transport.listen(endpoint, handler, options)`:
+
+- **`originPolicy`** — `"any" | "localhost" | { allow: string[] } | function`. Protects against DNS rebinding; not an auth mechanism.
+- **`subprotocols`** / **`limits`** — same shape as connect options.
+
+## Use cases
+
+### Browser to relay
+
+```ts
+const conn = await wsTransport().connect(
+  wsEndpoint("wss://relay.example.com"),
+  {
+    auth: { token: sessionToken, mode: "query" },
+  },
+);
 ```
 
-## Connect Options
+### CLI to local daemon
 
-```typescript
-interface WsConnectOptions {
-  // Subprotocol negotiation
-  subprotocols?: {
-    offer?: string[]; // Protocols to offer
-    requireSelection?: boolean; // Fail if server doesn't select (default: false)
-    select?: (clientOffers: string[]) => string | undefined; // Server-side custom selection
-  };
-
-  // Connection limits
-  limits?: {
-    maxMessageSize?: number; // Default: 1 MiB
-    maxSendBufferBytes?: number; // Default: 16 MiB
-    maxInboundBufferBytes?: number; // Default: 16 MiB
-  };
-
-  // Authentication
-  auth?: {
-    token: string;
-    mode?: "header" | "query"; // header (Node/Bun), query (browser)
-    headerName?: string; // Default: "Authorization"
-    queryParam?: string; // Default: "token"
-  };
-
-  // Advanced options
-  advanced?: {
-    headers?: Record<string, string>; // Node/Bun only
-    query?: Record<string, string>;
-    tls?: WsTlsOptions; // Node only
-  };
-
-  // Base options
-  timeoutMs?: number;
-  signal?: AbortSignal;
-}
+```ts
+const conn = await wsTransport().connect(wsEndpoint("ws://localhost:9000"));
 ```
 
-## Listen Options (Server)
+### Daemon server
 
-```typescript
-interface WsListenOptions {
-  subprotocols?: SubprotocolOptions;
-  limits?: WsLimits;
-
-  // Origin validation for DNS rebinding protection
-  originPolicy?:
-    | "any" // Allow any origin
-    | "localhost" // Allow localhost origins (default for localhost)
-    | { allow: string[] } // Allow specific origins
-    | ((origin, request) => boolean); // Custom validation
-}
-```
-
-## Use Cases
-
-### Browser to Cloud Relay
-
-```typescript
-const transport = wsTransport();
-const conn = await transport.connect(wsEndpoint("wss://relay.example.com"), {
-  auth: { token: sessionToken, mode: "query" },
-});
-```
-
-### CLI to Local Daemon
-
-```typescript
-const transport = wsTransport();
-const conn = await transport.connect(wsEndpoint("ws://localhost:9000"));
-await conn.send(command);
-```
-
-### Daemon Server
-
-```typescript
-const transport = wsTransport();
-const listener = await transport.listen(
+```ts
+await wsTransport().listen(
   wsEndpoint("ws://localhost:9000"),
   (conn) => {
-    console.log("New connection:", conn.id);
-    // Handle connection
+    /* handle connection */
   },
   { originPolicy: "localhost" },
 );
 ```
 
-### Service to Service (Node/Bun)
+## Error handling
 
-```typescript
-const transport = wsTransport();
-const conn = await transport.connect(wsEndpoint("wss://internal.service"), {
-  auth: { token: serviceToken }, // Defaults to header mode
-});
-```
+All errors throw `TransportError` (from `@sideband/transport`) with a `kind` property:
 
-## Error Handling
-
-Errors are thrown as `TransportError` with a `kind` property:
-
-```typescript
+```ts
 import { TransportError } from "@sideband/transport";
 
 try {
   const conn = await transport.connect(endpoint);
 } catch (err) {
   if (err instanceof TransportError) {
-    switch (err.kind) {
-      case "connection_refused": // Server not listening
-      case "timeout": // Connect timeout
-      case "subprotocol_mismatch": // Subprotocol negotiation failed
-      case "buffer_overflow": // Send/receive buffer exceeded
-      case "message_too_large": // Message exceeds size limit
-      case "tls_failure": // TLS handshake failed
-      case "dns_failure": // DNS lookup failed
-      case "abnormal_close": // Connection dropped unexpectedly
-      // ...
-    }
+    // err.kind: "connection_refused" | "timeout" | "subprotocol_mismatch" |
+    //           "buffer_overflow" | "message_too_large" | "tls_failure" |
+    //           "dns_failure" | "abnormal_close" | …
   }
 }
 ```
 
-## Common Pitfalls
+## Common pitfalls
 
-- **Browser + header auth**: Browsers cannot set WebSocket headers. Use `auth: { mode: "query" }` explicitly. The transport will throw if you try to use header auth in a browser without specifying the mode.
-
-- **Subprotocol enforcement**: Transport defaults to `requireSelection: false`. For Sideband protocol connections, explicitly set `{ offer: ["sideband.v1"], requireSelection: true }`.
-
-- **Origin validation**: Origin validation protects against DNS rebinding, not authentication. Non-browser clients (CLI, servers) do not send Origin headers and are allowed by default. Use proper auth mechanisms for security.
-
-- **Send buffer overflow**: If you send faster than the network can handle, `send()` will throw with `buffer_overflow`. Check `conn.pendingSendBytes` for proactive backpressure.
-
-- **Bun server backpressure**: Bun's ServerWebSocket doesn't expose `bufferedAmount`. On Bun servers, only message size is validated, not accumulated buffer. For high-throughput scenarios, implement application-level flow control.
+- **Browser + header auth** — browsers cannot set WebSocket headers; always use `auth: { mode: "query" }` explicitly.
+- **Subprotocol enforcement** — default is `requireSelection: false`; set `{ offer: ["sideband.v1"], requireSelection: true }` for Sideband connections.
+- **Origin validation** — protects against DNS rebinding, not authentication. Non-browser clients don't send `Origin` headers and are allowed by default.
+- **Send buffer overflow** — `send()` throws with `buffer_overflow` if the network can't keep up; check `conn.pendingSendBytes` for proactive backpressure.
+- **Bun server backpressure** — Bun's `ServerWebSocket` doesn't expose `bufferedAmount`; only message size is checked. Use application-level flow control for high throughput.
 
 ## Dependencies
 
-- [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol) - Protocol types
-- [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport) - Transport ABI
+- [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)
+- [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport)
 
 ## License
 

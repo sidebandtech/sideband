@@ -82,7 +82,7 @@ export type ControlFrame =
  * Supports both request/response (RPC) and pub/sub patterns via the subject routing.
  *
  * Per ADR-006 and ADR-008, subject is validated at the protocol layer.
- * All subjects must start with one of: "rpc/", "event/", "stream/", "app/".
+ * Must be an exact-match channel (`rpc`, `event`, `stream`) or use the `app/` prefix.
  */
 export interface MessageFrame extends BaseFrame {
   readonly kind: FrameKind.Message;
@@ -252,7 +252,7 @@ export interface MessageFrameOptions {
  * Create a Message frame for application payloads.
  * Validates the subject against reserved prefixes per ADR-006 and ADR-008.
  *
- * @param subject - Routing key: must start with "rpc/", "event/", "stream/", or "app/"
+ * @param subject - Channel subject: exact-match (`rpc`, `event`, `stream`) or `app/` prefix
  * @param data - Opaque message payload
  * @param opts - Optional frame configuration (frameId auto-generated if omitted)
  * @returns A validated MessageFrame

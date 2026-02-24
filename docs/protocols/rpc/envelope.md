@@ -1,7 +1,7 @@
 # RPC Envelope Specification
 
 > **Authority**: Primary (Normative)  
-> **Purpose**: Defines envelope structure, subject namespacing, and validation rules for RPC.
+> **Purpose**: Defines envelope structure, channel subject rules, and validation for RPC.
 
 **Date**: 2025-11-23
 **References**: [Protocol Architecture](../stack.md), ADR-010, ADR-006, ADR-002
@@ -12,7 +12,7 @@ The RPC envelope is a canonical structure carried inside `MessageFrame.data`. It
 
 Encoded as JSON (v1) or CBOR (v2+).
 
-## Subject Namespacing
+## Channel Subjects
 
 RPC envelope semantics apply to `rpc` and `event` channel subjects. The `MessageFrame.subject` determines which envelope types are valid.
 
@@ -72,7 +72,7 @@ RPC defines error codes in the 1100–1199 range:
 | 1101 | UnsupportedMethod   | Method not recognized by handler                |
 | 1102 | CorrelationMismatch | Response cid does not match any pending request |
 | 1103 | Timeout             | Request timed out waiting for response          |
-| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
+| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject channel |
 
 Application errors use range 2000+ (user-defined).
 
@@ -98,7 +98,7 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 
 ## Validation Rules
 
-- **Subject**: Must match allowed `t` per [Subject Namespacing](#subject-namespacing)
+- **Subject**: Must match allowed `t` per [Channel Subjects](#channel-subjects)
 - **Request**: `t: "r"`, `m` and `cid` required
 - **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
 - **Notification**: `t: "N"`, `e` required; uses `event` channel

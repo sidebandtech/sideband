@@ -2,17 +2,17 @@
 
 - **Date**: 2025-01-11
 - **Status**: Accepted
-- **Applies to**: Runtime
-- **Tags**: runtime, routing, handlers, dispatch
+- **Affects**: Runtime
 
 ## Context
 
-The runtime's Router layer dispatches incoming frames to handlers. The existing specs define subject namespaces (ADR-006, ADR-008) and RPC envelope structure (ADR-010), but do not specify:
+The runtime needs a message routing layer between the session (which delivers decoded frames) and application logic (which handles RPC, events, and custom protocols). The existing specs define subject namespaces (ADR-006, ADR-008) and RPC envelope structure (ADR-010), but do not specify:
 
 1. How handlers are registered and matched
 2. Dispatch ordering when multiple handlers match
 3. Error propagation from handlers
-4. Per-peer vs global handler scoping
+
+**Scope:** This ADR defines the `Router` in `@sideband/runtime` — a lower-level building block for subject-based message dispatch. `@sideband/peer` provides higher-level `rpc.handle()` and `events.on()` APIs with its own internal dispatch; it does not use the Router. The Router is intended for advanced use cases: custom `app/` prefix protocols, or building alternative SDKs that need subject-level routing.
 
 Key design goals:
 
@@ -106,7 +106,7 @@ Subject prefixes are **policy-driven**, not type-locked:
 
 ```ts
 interface SubjectPolicy {
-  /** Exact-match channels (default: ["rpc", "event", "stream"]) */
+  /** Exact-match channels (default: ["rpc", "event"]) */
   allowedChannels: string[];
 
   /** Channels that are reserved/rejected (default: ["stream"]) */
@@ -149,13 +149,14 @@ Note: `rpc`, `event`, and `stream` are exact-match channels. `app/` is a prefix 
 
 ```ts
 // Allow custom prefixes for app protocols
-const router = createRouter({
-  subjectPolicy: {
+const router = createRouter(
+  {},
+  {
     allowedChannels: ["rpc", "event"],
     reservedChannels: ["stream"],
     allowedPrefixes: ["app/", "debug/", "admin/"],
   },
-});
+);
 
 router.routePrefix("debug/", debugHandler);
 router.routePrefix("admin/", adminHandler, { mode: "exclusive" });
@@ -278,31 +279,24 @@ const router = createRouter({
 | 1100–1199 | RPC (runtime)  | `UnsupportedMethod` (1101), `Timeout` (1103) |
 | 2000+     | Application    | User-defined                                 |
 
-### 8. Per-Session vs Global Handlers
+### 8. Handler Scoping
 
-Handlers can be registered at two levels:
+The Router is a standalone object created via `createRouter()`. It has no built-in concept of session scoping — all handlers registered on a Router instance live until explicitly unsubscribed or `clear()` is called.
+
+Session-scoped behavior is the caller's responsibility:
 
 ```ts
-// Global: survives session reconnects (app/ prefix example)
-runtime.router.route("app/metrics/status", handler);
+const router = createRouter();
 
-// Per-session: auto-cleared on session close
-session.router.routePrefix("app/session/", handler);
+// Long-lived handler
+router.routePrefix("app/metrics/", metricsHandler);
+
+// Session-scoped: unsubscribe when session closes
+const unsub = router.route("app/session/state", sessionHandler);
+session.on("closed", () => unsub());
 ```
 
-Note: For RPC and events, use the higher-level `rpc.handle()` and `events.on()` APIs which route by envelope method/event name. The Router API is primarily for custom `app/` protocols.
-
-**Use cases:**
-
-- Global: Service methods that should always be available
-- Per-session: Handlers tied to session state (e.g., authenticated user context)
-
-**Cleanup:**
-
-- `session.close()` → clears session-scoped handlers
-- `runtime.close()` → clears all handlers
-
-**Cleanup timing:** Session-scoped handlers are cleared **after** the `closed` event is emitted. This allows cleanup logic in event handlers to still inspect registered handlers if needed.
+For RPC and events, prefer the higher-level `peer.rpc.handle()` and `peer.events.on()` APIs from `@sideband/peer`, which handle lifecycle automatically. The Router API is for custom `app/` protocols or building alternative SDKs.
 
 ### 9. Preventing frameId Misuse
 
@@ -324,13 +318,13 @@ Implementation:
 ```ts
 async function send(subject: Subject, data: Uint8Array): Promise<void> {
   const frame = createMessageFrame(subject, data); // Generates new frameId
-  await session.transport.send(encodeFrame(frame));
+  await session.send(encodeFrame(frame));
 }
 
 async function rpcReply(result: unknown): Promise<void> {
   const envelope: RpcSuccess = { t: "R", cid: this.cid, result };
   const frame = createMessageFrame(this.subject, encodeRpcEnvelope(envelope));
-  await session.transport.send(encodeFrame(frame));
+  await session.send(encodeFrame(frame));
 }
 ```
 
@@ -341,7 +335,6 @@ async function rpcReply(result: unknown): Promise<void> {
 | Type-locked `SubjectPrefix` union | Prevents custom prefixes; forces workarounds via `app/`            |
 | `reply()` always available        | Confusing for events; RPC-specific methods belong in `rpc` context |
 | Concurrent dispatch for all modes | Unpredictable ordering; sequential is safer default                |
-| Global handlers only              | Forces manual filtering by peerId; per-session is cleaner          |
 | Glob/regex patterns               | Over-engineering for v1; prefix matching covers 95% of cases       |
 
 ## Consequences
@@ -351,12 +344,13 @@ async function rpcReply(result: unknown): Promise<void> {
 - **Extensible prefixes**: Policy-driven, not type-locked
 - **Clear RPC boundary**: `msg.rpc` only present when appropriate
 - **Flexible error handling**: Custom mappers for domain-specific codes
-- **Two scopes**: Global handlers persist; session handlers auto-clean
+- **Layered**: `@sideband/peer` provides high-level RPC/events APIs; the Router serves advanced use cases and custom protocols
 
 ## References
 
-- ADR-006 (RPC envelope, subject namespaces)
-- ADR-008 (subject namespace validation)
+- ADR-006 (RPC envelope, channel subjects)
+- ADR-008 (channel subject validation)
 - ADR-009 (session lifecycle)
 - ADR-010 (RPC correlation via `cid`)
-- `docs/protocols/sbp/errors.md` (error code ranges)
+- ADR-013 (peer SDK design — uses its own dispatch, not the Router)
+- `docs/protocols/error-codes.md` (error code ranges)

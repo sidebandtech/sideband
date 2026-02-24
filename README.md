@@ -5,32 +5,50 @@
 
 Browser ↔ local daemon communication — without WebSocket code.
 
-Stop debugging reconnects, NAT issues, and flaky user networks.
-
 Sideband is for apps that run a local process (daemon, agent, service) and need a browser UI to talk to it — reliably, securely, and beyond localhost.
 
 > **Early-stage.** APIs may evolve. If you're building on this, [reach out](mailto:hello@sideband.tech) — feedback shapes the protocol.
 
+## Quick start
+
+```ts
+import { createPeer, listen } from "@sideband/peer";
+
+// Daemon
+const server = await listen({
+  endpoint: "ws://localhost:8080",
+  onConnection(peer) {
+    peer.rpc.handle("echo", (params) => (params as { msg: string }).msg);
+  },
+});
+
+// Browser / client
+const peer = createPeer({ endpoint: "ws://localhost:8080" });
+await peer.connect();
+const api = peer.rpc.client<{ echo: (p: { msg: string }) => string }>();
+const result = await api["echo"]({ msg: "hello" }); // "hello"
+```
+
 ## Packages
 
-Most apps only need `@sideband/peer`. Lower-level packages are for custom transports and advanced use cases.
+Most apps start with `@sideband/peer`. Lower-level packages are for custom transports and advanced use cases.
 
-| Package                                                                          | Role                                   |
-| -------------------------------------------------------------------------------- | -------------------------------------- |
-| [`@sideband/peer`](https://www.npmjs.com/package/@sideband/peer)                 | High-level SDK                         |
-| [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)         | Wire format, frame types, codecs       |
-| [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport)       | Transport ABI and shared utilities     |
-| [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)           | Peer lifecycle, routing, subscriptions |
-| [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc)                   | Typed RPC layer                        |
-| [`@sideband/secure-relay`](https://www.npmjs.com/package/@sideband/secure-relay) | E2EE relay protocol                    |
-| [`@sideband/transport-ws`](https://www.npmjs.com/package/@sideband/transport-ws) | WebSocket transport (Browser/Node/Bun) |
-| [`@sideband/cli`](https://www.npmjs.com/package/@sideband/cli)                   | Developer CLI                          |
+| Package                                                                          | Role                                        | Status  |
+| -------------------------------------------------------------------------------- | ------------------------------------------- | ------- |
+| [`@sideband/peer`](https://www.npmjs.com/package/@sideband/peer)                 | High-level SDK                              | alpha   |
+| [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)         | Wire format, frame types, codecs            | stable  |
+| [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport)       | Transport ABI and shared utilities          | stable  |
+| [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)           | Session lifecycle, routing, RPC correlation | stable  |
+| [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc)                   | Typed RPC layer                             | stable  |
+| [`@sideband/secure-relay`](https://www.npmjs.com/package/@sideband/secure-relay) | E2EE relay protocol                         | stable  |
+| [`@sideband/transport-ws`](https://www.npmjs.com/package/@sideband/transport-ws) | WebSocket transport (Browser/Node/Bun)      | stable  |
+| [`@sideband/cli`](https://www.npmjs.com/package/@sideband/cli)                   | Developer CLI                               | planned |
 
 ## Develop
 
 ```bash
-bun install          # Install dependencies
-bun test             # Run tests
+bun install
+bun test
 ```
 
 Requires Bun ≥ 1.3.
@@ -42,5 +60,5 @@ Requires Bun ≥ 1.3.
 
 ## License
 
-- **Code**: Apache-2.0
+- **Code**: [Apache-2.0](LICENSE)
 - **Docs**: CC BY 4.0

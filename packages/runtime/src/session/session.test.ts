@@ -10,19 +10,37 @@ import type {
   TransportConnection,
 } from "./types.js";
 
-// Mock transport using generator pattern (completes immediately)
-function createMockTransport(id = "test-transport"): TransportConnection {
-  return {
+// Mock transport whose inbound stays open until close() is called.
+// This accurately models real transport behavior: the channel stays alive
+// until explicitly closed (e.g. via terminate()). Tests that need the
+// channel to close early can call the returned `closeChannel` callback.
+function createMockTransport(id = "test-transport"): TransportConnection & {
+  closeChannel(): void;
+} {
+  let closeResolve: (() => void) | undefined;
+  const closedPromise = new Promise<void>((resolve) => {
+    closeResolve = resolve;
+  });
+
+  const transport = {
     id,
     endpoint: "ws://localhost:8080",
     send: mock(() => Promise.resolve()),
-    close: mock(() => Promise.resolve()),
+    close: mock(() => {
+      closeResolve?.();
+      return Promise.resolve();
+    }),
     inbound: {
       async *[Symbol.asyncIterator]() {
-        // Empty generator - completes immediately
+        // Stay open until close() is called (mirrors LoopbackTransport behavior).
+        await closedPromise;
       },
     },
+    closeChannel() {
+      closeResolve?.();
+    },
   };
+  return transport;
 }
 
 // Mock negotiator

@@ -16,6 +16,9 @@ import {
   unsafeAsTransportEndpoint,
 } from "@sideband/transport";
 
+// unsafeAsTransportEndpoint brands a raw string as TransportEndpoint with no
+// URL validation — suitable for custom schemes and tests. For WebSocket URLs,
+// use wsEndpoint() from @sideband/transport-ws instead.
 const transport = new LoopbackTransport();
 const endpoint = unsafeAsTransportEndpoint("loopback://test");
 
@@ -37,8 +40,8 @@ for await (const bytes of conn.inbound) {
 
 ## What it provides
 
-- `Transport`/`TransportConnection`/`TransportListener` interfaces for byte-level links
-- Endpoint branding helper (`unsafeAsTransportEndpoint`) and shared option/handler types
+- `Transport` / `TransportConnection` / `TransportListener` interfaces for byte-level links
+- `unsafeAsTransportEndpoint` — raw branded cast with no URL validation (for custom transports and tests)
 - Reference `LoopbackTransport` for tests and local loops
 - Safe to use in browser or Node transports; depends only on [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)
 

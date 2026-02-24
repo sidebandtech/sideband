@@ -7,12 +7,12 @@
  * and @noble/hashes for SHA-256/HKDF.
  */
 
-import { chacha20poly1305 } from "@noble/ciphers/chacha";
-import { ed25519 } from "@noble/curves/ed25519";
-import { x25519 } from "@noble/curves/ed25519";
-import { hkdf } from "@noble/hashes/hkdf";
-import { sha256 } from "@noble/hashes/sha256";
-import { concatBytes, randomBytes } from "@noble/hashes/utils";
+import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { x25519 } from "@noble/curves/ed25519.js";
+import { hkdf } from "@noble/hashes/hkdf.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { concatBytes, randomBytes } from "@noble/hashes/utils.js";
 import {
   AUTH_TAG_LENGTH,
   DIRECTION_CLIENT_TO_DAEMON,
@@ -36,14 +36,14 @@ const textEncoder = new TextEncoder();
 
 /** Generate a new Ed25519 identity keypair */
 export function generateIdentityKeyPair(): IdentityKeyPair {
-  const privateKey = ed25519.utils.randomPrivateKey();
+  const privateKey = ed25519.utils.randomSecretKey();
   const publicKey = ed25519.getPublicKey(privateKey);
   return { publicKey, privateKey };
 }
 
 /** Generate a new X25519 ephemeral keypair */
 export function generateEphemeralKeyPair(): EphemeralKeyPair {
-  const privateKey = x25519.utils.randomPrivateKey();
+  const privateKey = x25519.utils.randomSecretKey();
   const publicKey = x25519.getPublicKey(privateKey);
   return { publicKey, privateKey };
 }
@@ -137,7 +137,7 @@ export function deriveSessionKeys(
     sha256,
     sharedSecret,
     transcriptHash,
-    SBRP_SESSION_KEYS_INFO,
+    textEncoder.encode(SBRP_SESSION_KEYS_INFO),
     SESSION_KEYS_LENGTH,
   );
 

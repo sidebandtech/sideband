@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@sideband/protocol": "workspace:^",
+    "@sideband/rpc": "workspace:^",
     "@sideband/transport": "workspace:^"
   },
   "files": [

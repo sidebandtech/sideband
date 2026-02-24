@@ -5,7 +5,7 @@
  *
  * All RPC messages are carried as `RpcEnvelope` inside `MessageFrame.data`.
  * The envelope discriminates between requests, responses, notifications, and errors.
- * Encoding can be CBOR (default, compact) or JSON (fallback).
+ * Encoding: JSON (v1) or CBOR (v2+, negotiated via handshake).
  *
  * See ADR-006 and ADR-010 for the full specification.
  */

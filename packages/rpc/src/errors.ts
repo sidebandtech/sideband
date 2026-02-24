@@ -14,6 +14,6 @@ export enum RpcErrorCode {
   CorrelationMismatch = 1102,
   /** Request timed out waiting for response */
   Timeout = 1103,
-  /** Envelope type incompatible with subject prefix */
+  /** Envelope type incompatible with subject channel */
   EnvelopeMismatch = 1104,
 }

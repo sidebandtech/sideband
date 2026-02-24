@@ -42,6 +42,8 @@ router.route("rpc", async (msg) => {
 
 let activeSession: Session | undefined;
 
+// LoopbackTransport is for tests; use wsTransport() + wsEndpoint() in production.
+// unsafeAsTransportEndpoint brands a raw string without URL validation.
 const transport = new LoopbackTransport();
 const endpoint = unsafeAsTransportEndpoint("loopback://test");
 
@@ -69,7 +71,6 @@ Notes:
 
 - `Router.dispatch()` expects `MessageFrame` and returns encoded ErrorFrame bytes when subject validation or RPC envelope decoding fails. Send those bytes back on the session channel.
 - `SessionManager` only decodes frames; higher layers own validation and routing.
-- The `LoopbackTransport` example assumes a peer is listening on the same transport. Swap in your real transport for production.
 
 ## Quick start: RPC correlation
 
