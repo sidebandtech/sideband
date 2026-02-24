@@ -1,6 +1,6 @@
 {
   "name": "@sideband/runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Transport-agnostic Sideband runtime: manage peers, attach transports, route frames, correlate RPC calls, and expose middleware hooks without concrete I/O.",
   "license": "Apache-2.0",
   "repository": {

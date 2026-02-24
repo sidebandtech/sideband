@@ -1,6 +1,6 @@
 {
   "name": "@sideband/transport",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Transport ABI for Sideband: Transport interface, error taxonomy, and reference loopback transport.",
   "license": "Apache-2.0",
   "repository": {
