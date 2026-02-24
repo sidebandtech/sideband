@@ -37,7 +37,21 @@
     },
     "./package.json": "./package.json"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@sideband/protocol": "workspace:^",
+    "@sideband/rpc": "workspace:^",
+    "@sideband/runtime": "workspace:^",
+    "@sideband/transport": "workspace:^",
+    "@sideband/transport-ws": "workspace:^"
+  },
+  "peerDependencies": {
+    "@sideband/secure-relay": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@sideband/secure-relay": {
+      "optional": true
+    }
+  },
   "files": [
     "dist",
     "src"

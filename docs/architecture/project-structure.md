@@ -88,6 +88,12 @@ graph TD
   rpc --> cli
 ```
 
+## Dependency policy
+
+- **`dependencies`** — anything your published JS imports at runtime. All internal `@sideband/*` imports go here. Each package must be installable in isolation without consumers manually wiring internal pieces.
+- **`peerDependencies`** — only for host-provided integrations or optional feature adapters the consumer chooses to install (e.g., `@sideband/secure-relay` in peer).
+- Never use peer dependencies just to deduplicate installs across the monorepo; package managers already deduplicate compatible `^` ranges.
+
 ## Conventions
 
 - Language: TypeScript; ESM (`type: "module"`).

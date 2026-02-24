@@ -27,6 +27,19 @@
     "packages/peer": {
       "name": "@sideband/peer",
       "version": "0.0.1",
+      "dependencies": {
+        "@sideband/protocol": "workspace:^",
+        "@sideband/rpc": "workspace:^",
+        "@sideband/runtime": "workspace:^",
+        "@sideband/transport": "workspace:^",
+        "@sideband/transport-ws": "workspace:^",
+      },
+      "peerDependencies": {
+        "@sideband/secure-relay": "workspace:^",
+      },
+      "optionalPeers": [
+        "@sideband/secure-relay",
+      ],
     },
     "packages/protocol": {
       "name": "@sideband/protocol",
@@ -44,7 +57,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
-        "@sideband/rpc": "workspace:^",
         "@sideband/transport": "workspace:^",
       },
     },
