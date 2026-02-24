@@ -1,10 +1,10 @@
-# ADR 003: Control Frame Type Invariants
+# ADR-003: Control Frame Type Invariants
 
 - **Date**: 2025-11-23
 - **Status**: Accepted
 - **Applies to**: SBP
 - **Tags**: protocol, frames, type-safety
-- **Relates to**: ADR 002 (naming matrix)
+- **Relates to**: ADR-002 (naming matrix)
 
 ## Context
 

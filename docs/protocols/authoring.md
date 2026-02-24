@@ -6,12 +6,12 @@ Rules for maintaining consistent, navigable protocol specifications.
 
 Every protocol MUST have:
 
-| Document                                       | Purpose                                              | Authority                  |
-| ---------------------------------------------- | ---------------------------------------------------- | -------------------------- |
-| `index.md`                                     | Overview, delegation, authority table, reading order | Navigation (non-normative) |
-| `wire-format.md` or `cryptography-and-wire.md` | Binary encoding, frame structure                     | Primary                    |
-| `behavior.md` or `state-machine.md`            | Runtime semantics, state transitions                 | Primary                    |
-| `conformance.md`                               | Test vectors, validation checklist                   | Supporting                 |
+| Document                             | Purpose                                              | Authority                  |
+| ------------------------------------ | ---------------------------------------------------- | -------------------------- |
+| `index.md`                           | Overview, delegation, authority table, reading order | Navigation (non-normative) |
+| `wire-format.md` or `wire-crypto.md` | Binary encoding, frame structure                     | Primary                    |
+| `behavior.md` or `state-machine.md`  | Runtime semantics, state transitions                 | Primary                    |
+| `conformance.md`                     | Test vectors, validation checklist                   | Supporting                 |
 
 Optional: `errors.md` (if not delegated), security appendices, extension stubs.
 
@@ -37,7 +37,7 @@ Use two spaces at the end of a line to create a line break in Markdown.
 **Conflict resolution**:
 
 - Same protocol: Primary wins over Supporting
-- Cross-protocol: `architecture.md` governs layer boundaries; lower layer wins
+- Cross-protocol: `stack.md` governs layer boundaries; lower layer wins
 - Unresolved: File an issue; do not ship conflicting specs
 
 ## Index File Requirements
@@ -80,6 +80,10 @@ Mark incomplete documents:
 
 Stubs MUST NOT contain RFC 2119 keywords (MUST/SHOULD/MAY).
 
+## Cross-Layer Policy
+
+`runtime/` and `sdk/` may reference protocol docs via links; they MUST NOT restate or redefine wire-level invariants. See `docs/README.md` for the full authority model and reference direction.
+
 ## Content Rules
 
 1. **No duplication**: Define once, reference elsewhere
@@ -104,10 +108,10 @@ Before merging protocol changes, verify:
 
 ```bash
 docs/protocols/
-├── README.md           # This file (guidelines)
+├── authoring.md        # This file (guidelines)
 ├── index.md            # Protocol hub + pattern declaration
 ├── glossary.md         # Shared terminology
-├── architecture.md     # Layer boundaries (Primary)
+├── stack.md     # Layer boundaries (Primary)
 ├── <protocol>/
 │   ├── index.md        # Navigation + delegation
 │   ├── *.md            # Normative/supporting docs

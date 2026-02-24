@@ -74,7 +74,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
  * Decode a frame from bytes.
  * Frame format: [type (1)] [flags (1)] [frameId (16)] [timestamp (8, if flags&0x01)] [payload]
  * Returns a deeply readonly frame to prevent accidental mutation.
- * See ADR 007 for immutability rationale.
+ * See ADR-007 for immutability rationale.
  */
 export function decodeFrame(buffer: Uint8Array): Readonly<Frame> {
   if (buffer.length < HEADER_WITH_FRAME_ID_SIZE) {
@@ -142,7 +142,7 @@ function encodeFramePayload(frame: Frame): Uint8Array {
       const cf = frame as ControlFrame;
       const opByte = new Uint8Array([cf.op]);
 
-      // Per ADR 002, control ops have specific data invariants:
+      // Per ADR-002, control ops have specific data invariants:
       // Handshake and Close may have data; Ping/Pong must not.
       switch (cf.op) {
         case ControlOp.Handshake: {
@@ -270,7 +270,7 @@ function decodeFramePayload(
       const remainingPayload =
         payload.length > 1 ? payload.slice(1) : undefined;
 
-      // Per ADR 002, validate control op invariants during decode.
+      // Per ADR-002, validate control op invariants during decode.
       switch (op) {
         case ControlOp.Handshake: {
           // Handshake requires data (JSON-encoded HandshakePayload)

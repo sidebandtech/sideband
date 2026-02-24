@@ -348,45 +348,7 @@ bun test packages/testing/tests/node.test.ts
 bun playwright test packages/testing/tests/interop.test.ts
 ```
 
-### 4.3 CI/CD Integration
-
-Add to GitHub Actions workflow:
-
-```yaml
-# .github/workflows/test.yml
-jobs:
-  conformance:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Loopback transport conformance
-        run: bun test packages/testing/tests/loopback.test.ts
-
-      - name: Node transport conformance
-        run: bun test packages/testing/tests/node.test.ts
-
-  interop:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Install Playwright
-        run: bunx playwright install --with-deps chromium
-
-      - name: Browser-Node interop tests
-        run: bun playwright test packages/testing/tests/interop.test.ts
-```
-
-### 4.4 Adding New Transport Conformance
+### 4.3 Adding New Transport Conformance
 
 To add conformance tests for a new transport:
 

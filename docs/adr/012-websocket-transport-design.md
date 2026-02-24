@@ -1,4 +1,4 @@
-# ADR 012: WebSocket Transport Design Decisions
+# ADR-012: WebSocket Transport Design Decisions
 
 - **Date**: 2025-01-13
 - **Status**: Accepted

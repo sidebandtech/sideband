@@ -1,4 +1,4 @@
-# ADR 010: Explicit RPC Correlation via `cid` in the Envelope
+# ADR-010: Explicit RPC Correlation via `cid` in the Envelope
 
 - **Date**: 2025-11-23
 - **Status**: Accepted

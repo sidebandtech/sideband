@@ -120,7 +120,7 @@ A relay tracks the pairing between one client connection and one daemon connecti
 
 Before sending `Signal(ready)` for a session, the daemon MUST verify that all required per-session state is present, well-formed, and internally consistent. If verification fails, daemon MUST send `Signal(close, reason=state_lost)` for that session.
 
-**Required components** (per [cryptography-and-wire.md](./cryptography-and-wire.md)):
+**Required components** (per [wire-crypto.md](./wire-crypto.md)):
 
 - Session ID
 - Directional traffic keys (`clientToDaemon`, `daemonToClient`)

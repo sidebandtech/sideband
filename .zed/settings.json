@@ -1,0 +1,53 @@
+{
+  // Project settings for Sideband — Bun/TypeScript monorepo.
+  // Prettier config lives in package.json (singleQuote: false, semi: true).
+  // ESLint 9 flat config at eslint.config.ts.
+
+  "tab_size": 2,
+  "hard_tabs": false,
+  "preferred_line_length": 80,
+  "format_on_save": "on",
+  "formatter": "prettier",
+
+  "languages": {
+    "TypeScript": {
+      "language_servers": ["typescript-language-server", "eslint", "!vtsls"],
+      "formatter": [{ "code_action": "source.fixAll.eslint" }, "prettier"]
+    },
+    "TSX": {
+      "language_servers": ["typescript-language-server", "eslint", "!vtsls"],
+      "formatter": [{ "code_action": "source.fixAll.eslint" }, "prettier"]
+    },
+    "JavaScript": {
+      "language_servers": ["typescript-language-server", "eslint", "!vtsls"],
+      "formatter": [{ "code_action": "source.fixAll.eslint" }, "prettier"]
+    },
+    "Markdown": {
+      "preferred_line_length": 100,
+      "soft_wrap": "preferred_line_length"
+    }
+  },
+
+  "lsp": {
+    "typescript-language-server": {
+      "initialization_options": {
+        "preferences": {
+          "includeInlayParameterNameHints": "literals",
+          "includeInlayParameterNameHintsWhenArgumentMatchesName": false,
+          "includeInlayFunctionParameterTypeHints": false,
+          "includeInlayVariableTypeHints": false,
+          "includeInlayPropertyDeclarationTypeHints": false,
+          "includeInlayFunctionLikeReturnTypeHints": true,
+          "importModuleSpecifierPreference": "non-relative"
+        }
+      }
+    },
+    "eslint": {
+      "settings": {
+        "rulesCustomizations": [],
+        "run": "onSave",
+        "validate": "on"
+      }
+    }
+  }
+}

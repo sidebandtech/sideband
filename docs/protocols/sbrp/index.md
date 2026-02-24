@@ -75,11 +75,10 @@ Daemon generates Ed25519 identity keypair on first run and registers with contro
 ```text
 Daemon                           Control Plane                    Relay
    │                                  │                              │
-   │── POST /api/daemons/register ───►│                              │
-   │   { apiKey, identityPublicKey }  │                              │
-   │◄─── 200 { daemonId, presenceToken }                             │
+   │── register(identityPublicKey) ──►│                              │
+   │◄─── { daemonId, presenceToken }  │                              │
    │                                  │                              │
-   │── WSS /relay?token=<jwt> ────────┼─────────────────────────────►│
+   │── WSS relay?token=<jwt> ─────────┼─────────────────────────────►│
 ```
 
 ### Client Connection
@@ -89,14 +88,13 @@ Client lists available daemons, obtains session token, and connects.
 ```text
 Client                           Control Plane                    Relay
    │                                  │                              │
-   │── GET /api/daemons ─────────────►│                              │
-   │◄─── 200 [{ id, identityPublicKey, status }]                     │
+   │── list daemons ─────────────────►│                              │
+   │◄─── [{ id, identityPublicKey, status }]                         │
    │                                  │                              │
-   │── POST /api/sessions ───────────►│                              │
-   │   { daemonId }                   │                              │
-   │◄─── 200 { relayUrl, token }──────│                              │
+   │── request session(daemonId) ────►│                              │
+   │◄─── { relayUrl, token } ─────────│                              │
    │                                  │                              │
-   │── WSS /relay?token=<jwt> ────────┼─────────────────────────────►│
+   │── WSS relayUrl?token=<jwt> ──────┼─────────────────────────────►│
 ```
 
 ### E2EE Handshake
@@ -117,7 +115,7 @@ Client                     Relay                    Daemon
    │◄══════════ Encrypted frames (0x03) ══════════════►│
 ```
 
-See [cryptography-and-wire.md](./cryptography-and-wire.md) for signature construction, key derivation, and wire format details.
+See [wire-crypto.md](./wire-crypto.md) for signature construction, key derivation, and wire format details.
 
 ## End-to-End Flow
 
@@ -173,7 +171,7 @@ See [state-machine.md](./state-machine.md) for complete state transition rules.
 
 **Endpoint frames** participate in E2EE and are forwarded by relay without inspection. **Signal frames** are daemon-to-relay commands (ready, close). **Control frames** are relay-generated notifications (session_paused, rate_limited). **Keepalive frames** are connection-scoped and never forwarded.
 
-See [cryptography-and-wire.md](./cryptography-and-wire.md) for wire format details.
+See [wire-crypto.md](./wire-crypto.md) for wire format details.
 
 ## Relay Server Responsibilities
 
@@ -248,16 +246,16 @@ See [threat-model.md](./threat-model.md) for attack resistance analysis.
 
 ## Document Authority
 
-| Concern                | Primary                                                | Supporting                                       |
-| ---------------------- | ------------------------------------------------------ | ------------------------------------------------ |
-| Crypto + wire format   | [cryptography-and-wire.md](./cryptography-and-wire.md) | —                                                |
-| State transitions      | [state-machine.md](./state-machine.md)                 | —                                                |
-| Control code semantics | [state-machine.md](./state-machine.md)                 | [control-codes.md](./control-codes.md)           |
-| Control code values    | [control-codes.md](./control-codes.md)                 | —                                                |
-| Authentication         | [authentication.md](./authentication.md)               | —                                                |
-| Threat model           | [threat-model.md](./threat-model.md)                   | —                                                |
-| Test specification     | [conformance.md](./conformance.md)                     | —                                                |
-| Security verification  | cryptography-and-wire.md, state-machine.md             | [security-checklist.md](./security-checklist.md) |
+| Concern                | Primary                                  | Supporting                                       |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------ |
+| Crypto + wire format   | [wire-crypto.md](./wire-crypto.md)       | —                                                |
+| State transitions      | [state-machine.md](./state-machine.md)   | —                                                |
+| Control code semantics | [state-machine.md](./state-machine.md)   | [control-codes.md](./control-codes.md)           |
+| Control code values    | [control-codes.md](./control-codes.md)   | —                                                |
+| Authentication         | [authentication.md](./authentication.md) | —                                                |
+| Threat model           | [threat-model.md](./threat-model.md)     | —                                                |
+| Test specification     | [conformance.md](./conformance.md)       | —                                                |
+| Security verification  | wire-crypto.md, state-machine.md         | [security-checklist.md](./security-checklist.md) |
 
 ## Local Terminology
 
@@ -272,7 +270,7 @@ See [threat-model.md](./threat-model.md) for attack resistance analysis.
 ## Recommended Reading Order
 
 1. **index.md** (this document) — overview and navigation
-2. **[cryptography-and-wire.md](./cryptography-and-wire.md)** — crypto invariants + wire format
+2. **[wire-crypto.md](./wire-crypto.md)** — crypto invariants + wire format
 3. **[state-machine.md](./state-machine.md)** — lifecycle and control semantics
 4. **[control-codes.md](./control-codes.md)** — code catalog
 5. **[authentication.md](./authentication.md)** — token validation
@@ -280,6 +278,6 @@ See [threat-model.md](./threat-model.md) for attack resistance analysis.
 
 ## Related Documents
 
-- [Protocol Architecture](../architecture.md): Layer stack, wrapping rules
+- [Protocol Architecture](../stack.md): Layer stack, wrapping rules
 - [Glossary](../glossary.md): Shared terminology
 - ADR-002: Naming matrix (SBRP abbreviation)

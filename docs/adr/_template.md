@@ -2,7 +2,7 @@
 
 - **Date**: YYYY-MM-DD
 - **Status**: [Proposed | Accepted | Deprecated | Superseded]
-- **Tags**: [Relevant tags, e.g., architecture, performance]
+- **Affects**: [Protocol | Runtime | SDK | Transport | Repo]
 
 ## Context
 
@@ -12,14 +12,18 @@
 
 [State the chosen solution clearly. Explain why this option was selected. Include any key trade-offs.]
 
+## Invariants
+
+[Optional: List non-negotiable rules introduced by this ADR — constraints that implementations MUST uphold. Omit section if none.]
+
 ## Alternatives Considered
 
 [Optional: Briefly list other options evaluated, with pros/cons if relevant.]
 
 ## Consequences
 
-[Outline expected impacts: Benefits, risks, costs. How does this affect code, maintenance, or future decisions?]
+[Outline expected impacts: benefits, risks, costs. How does this affect code, maintenance, or future decisions?]
 
 ## References
 
-[Links to related docs, code, or external resources.]
+[Links to related docs, code, or other ADRs.]

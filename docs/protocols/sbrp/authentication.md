@@ -7,10 +7,10 @@
 
 SBRP separates concerns between two planes:
 
-| Plane             | Responsibility                                                | Example Endpoint            |
-| ----------------- | ------------------------------------------------------------- | --------------------------- |
-| **Control Plane** | User auth, daemon registry, session brokering, token issuance | `api.sideband.cloud`        |
-| **Data Plane**    | Frame routing, presence, token validation                     | `eu-1.relay.sideband.cloud` |
+| Plane             | Responsibility                                                |
+| ----------------- | ------------------------------------------------------------- |
+| **Control Plane** | User auth, daemon registry, session brokering, token issuance |
+| **Data Plane**    | Frame routing, presence, token validation                     |
 
 The control plane issues tokens that grant relay access: short-lived **session tokens** for clients and long-lived **presence tokens** for daemons. The relay validates tokens but NEVER issues them.
 
@@ -21,7 +21,7 @@ Tokens are JWTs signed by the control plane. The relay MUST validate these claim
 ```typescript
 interface RelayTokenClaims {
   // Standard JWT claims
-  iss: string; // MUST match configured issuer (e.g., "https://sideband.cloud")
+  iss: string; // MUST match configured issuer
   aud: string; // MUST be "sideband-relay"
   exp: number; // Unix timestamp; session tokens SHOULD use TTL ≤ 120s (MUST NOT exceed 300s); presence tokens SHOULD use TTL ≥ 1h
   iat: number; // Issued-at timestamp
@@ -63,11 +63,7 @@ The relay MUST NOT:
 
 ## Key Rotation
 
-The control plane publishes signing keys via JWKS endpoint:
-
-```text
-GET https://sideband.cloud/.well-known/jwks.json
-```
+The control plane publishes signing keys via a standard JWKS endpoint (`<issuer>/.well-known/jwks.json`).
 
 The relay SHOULD:
 
@@ -82,14 +78,14 @@ The relay SHOULD:
 │ Client  │         │Control Plane│         │  Relay  │
 └────┬────┘         └──────┬──────┘         └────┬────┘
      │                     │                     │
-     │ POST /sessions      │                     │
+     │ request session     │                     │
      │ {daemonId}          │                     │
      ├────────────────────►│                     │
      │                     │                     │
-     │ {relay_url, token}  │                     │
+     │ {relayUrl, token}   │                     │
      │◄────────────────────┤                     │
      │                     │                     │
-     │ WSS /relay?token=...│                     │
+     │ WSS relayUrl?token= │                     │
      ├─────────────────────┼────────────────────►│
      │                     │                     │
      │                     │      validate token │
@@ -100,7 +96,7 @@ The relay SHOULD:
 
 Tokens are passed either:
 
-- Query parameter: `wss://eu-1.relay.../relay?token=<jwt>`
+- Query parameter: `wss://<relay>/relay?token=<jwt>`
 - Authorization header: `Authorization: Bearer <jwt>`
 
 ## Session Binding
@@ -133,12 +129,3 @@ Daemons connect with a long-lived presence token that has additional constraints
 **Non-resumable daemons**: When `res: false`, the relay automatically sends `Control(session_expired)` to all paired clients upon daemon reconnect, without waiting for `Signal(ready)` or `Signal(close)`. This simplifies v1 implementations that don't need resumption—the daemon doesn't need to track session IDs or send per-session Signal frames on reconnect.
 
 When a client initiates a session, the relay validates the client's session token and routes the `HandshakeInit` frame to the daemon. The daemon identifies the session via the `SessionID` field in the frame header and uses this to key per-client state. The daemon trusts the relay to have validated the client's authorization; it does not receive or verify the client's JWT token directly.
-
-## Audit Requirements
-
-For SOC2/compliance, implementations SHOULD:
-
-- Log `jti` for all token validations (success and failure)
-- Log session creation/termination with `sid`, `did`, `cid`
-- Retain logs for configured retention period
-- Never log token values or session content

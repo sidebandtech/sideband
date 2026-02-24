@@ -18,7 +18,8 @@ This section documents significant architectural decisions for the Sideband proj
 | [010](./010-rpc-correlation-cid.md)                   | RPC Correlation with CID              | Accepted |
 | [011](./011-runtime-message-routing.md)               | Runtime Message Routing               | Accepted |
 | [012](./012-websocket-transport-design.md)            | WebSocket Transport Design Decisions  | Accepted |
+| [013](./013-peer-sdk-design.md)                       | Peer SDK Core Design Decisions        | Accepted |
 
 ## Creating a new ADR
 
-Copy [000-template.md](./000-template.md) and follow the format. Number ADRs sequentially.
+Copy [\_template.md](./_template.md) and follow the format. Number ADRs sequentially.

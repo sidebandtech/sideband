@@ -509,7 +509,7 @@ describe("Error Frame Codec", () => {
   });
 });
 
-describe("Frame Immutability (ADR 007)", () => {
+describe("Frame Immutability (ADR-007)", () => {
   it("should prevent mutation of decoded frame properties (TypeScript level)", () => {
     // This test documents the immutability guarantee.
     // The following would fail at TypeScript compile time (not runtime):

@@ -4,7 +4,7 @@
  * Protocol-specific error with error code tracking.
  *
  * Used across protocol layers (SBP, RPC, etc.). Each layer owns a
- * non-overlapping code range; see architecture.md#error-code-ownership.
+ * non-overlapping code range; see docs/protocols/stack.md#error-code-ownership.
  */
 export class ProtocolError extends Error {
   public readonly code: number;

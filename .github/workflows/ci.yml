@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -14,12 +18,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Restore bun cache
-        uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: ${{ runner.os }}-bun-
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       - run: bun prettier --check .
       - run: bun typecheck

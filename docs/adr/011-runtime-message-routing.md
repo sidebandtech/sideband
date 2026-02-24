@@ -1,4 +1,4 @@
-# ADR 011: Runtime Message Routing
+# ADR-011: Runtime Message Routing
 
 - **Date**: 2025-01-11
 - **Status**: Accepted

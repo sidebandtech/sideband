@@ -1,4 +1,4 @@
-# ADR 005: Transport ABI Package
+# ADR-005: Transport ABI Package
 
 - **Date**: 2025-11-23
 - **Status**: Accepted

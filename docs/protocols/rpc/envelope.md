@@ -4,7 +4,7 @@
 > **Purpose**: Defines envelope structure, subject namespacing, and validation rules for RPC.
 
 **Date**: 2025-11-23
-**References**: [Protocol Architecture](../architecture.md), ADR-010, ADR-006, ADR-002
+**References**: [Protocol Architecture](../stack.md), ADR-010, ADR-006, ADR-002
 
 ## Overview
 
@@ -103,4 +103,4 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 - **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
 - **Notification**: `t: "N"`, `e` required; uses `event` channel
 
-Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).
+Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `stack.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).

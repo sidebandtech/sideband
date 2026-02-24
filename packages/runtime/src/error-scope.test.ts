@@ -3,11 +3,11 @@
 /**
  * Error Scope Contract Tests
  *
- * These tests verify the architectural invariant from architecture.md:
+ * These tests verify the architectural invariant from stack.md:
  * - ErrorFrame (kind=3) is connection-scoped
  * - RpcError (t="E") is request-scoped and MUST NOT trigger transport close
  *
- * See: docs/protocols/architecture.md#error-scope-and-transport-authority
+ * See: docs/protocols/stack.md#error-scope-and-transport-authority
  */
 
 import {
@@ -141,7 +141,7 @@ describe("Error Scope Contract", () => {
    * Test B: Malformed envelope → ErrorFrame emission
    *
    * Verifies that malformed/uncorrelatable envelopes are escalated to ErrorFrame.
-   * From architecture.md: "Errors that cannot be routed to a request are
+   * From stack.md: "Errors that cannot be routed to a request are
    * connection-scoped by definition."
    */
   describe("Malformed envelope escalation", () => {

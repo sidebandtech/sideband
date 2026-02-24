@@ -1,4 +1,4 @@
-# ADR 002: Naming Matrix for Protocol Types
+# ADR-002: Naming Matrix for Protocol Types
 
 - **Date**: 2025-11-22
 - **Status**: Accepted

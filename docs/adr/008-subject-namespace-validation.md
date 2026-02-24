@@ -1,4 +1,4 @@
-# ADR 008: Enforce Reserved Subject Namespace at the Protocol Layer
+# ADR-008: Enforce Reserved Subject Namespace at the Protocol Layer
 
 - **Date**: 2025-11-23
 - **Status**: Accepted

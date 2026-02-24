@@ -1,4 +1,4 @@
-# ADR 006: Canonical RPC Envelope over MessageFrame
+# ADR-006: Canonical RPC Envelope over MessageFrame
 
 - **Date**: 2025-11-23
 - **Status**: Accepted

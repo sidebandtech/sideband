@@ -1,4 +1,4 @@
-# ADR 009: Runtime Session Lifecycle
+# ADR-009: Runtime Session Lifecycle
 
 - **Date**: 2025-01-11
 - **Status**: Accepted
@@ -178,7 +178,7 @@ interface ResumableNegotiator extends Negotiator {
 > 1. **Custom Negotiator with `channel`**: Implement a negotiator that performs SBRP key exchange and returns a `NegotiationResult.channel` — a wrapped `TransportConnection` that encrypts outbound frames and decrypts inbound frames. The runtime uses this channel transparently.
 > 2. **Transport Adapter**: Embed SBRP logic in a custom transport that exposes decrypted SBP frames directly. Simpler but couples session and transport layers.
 >
-> See `docs/protocols/architecture.md` "Session Output Contract" for the normative interface.
+> See `docs/protocols/stack.md` "Session Output Contract" for the normative interface.
 
 **SBP negotiation sequence:**
 

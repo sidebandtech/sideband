@@ -31,3 +31,6 @@ coverage
 # OS
 .DS_Store
 
+# Misc
+srcpack.config.ts
+.srcpack/
