@@ -1,5 +1,12 @@
 # @sideband/transport
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [[`5e51e83`](https://github.com/sidebandtech/sideband/commit/5e51e83f660c4b2132304ac8994033669458d610)]:
+  - @sideband/protocol@0.0.9
+
 ## 0.0.6
 
 ### Patch Changes
