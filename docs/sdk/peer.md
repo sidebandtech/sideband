@@ -875,11 +875,16 @@ import {
   createMemoryIdentityKeyStore,
 } from "@sideband/peer/sbrp";
 
+// relayUrl and sessionToken from POST /api/sessions
+const { relayUrl, token: sessionToken } = await api.createSession({
+  daemonId: "daemon-prod-001",
+});
+
 const peer = createPeer({
-  endpoint: "wss://relay.sideband.cloud",
+  endpoint: relayUrl, // e.g. wss://eu-1.relay.sideband.cloud
   negotiator: sbrpClientNegotiator({
     daemonId: "daemon-prod-001",
-    sessionId,
+    sessionToken,
     identityKeyStore: createMemoryIdentityKeyStore(),
     trustPolicy: "prompt",
     onFirstConnection: ({ fingerprint }) => {

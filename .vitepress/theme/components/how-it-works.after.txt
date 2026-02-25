@@ -1,10 +1,10 @@
 import { createPeer } from "@sideband/peer";
 
 const peer = createPeer({
-  relay: "wss://relay.sideband.cloud"
+  endpoint: "ws://localhost:8080",
 });
 
-// Reconnects, NAT traversal, E2EE - handled.
-const response = await peer.request("daemon", {
-  method: "getStatus"
-});
+await peer.connect();
+
+// Reconnects, multiplexing, correlation — handled.
+const status = await peer.rpc.call("getStatus");

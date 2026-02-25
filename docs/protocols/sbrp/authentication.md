@@ -94,10 +94,17 @@ The relay SHOULD:
      │◄════════════════════ E2EE frames ════════►│
 ```
 
-Tokens are passed either:
+The relay endpoint is a fixed path — the routing key (`daemonId`) is derived exclusively from
+validated token claims, not from the URL:
 
-- Query parameter: `wss://<relay>/relay?token=<jwt>`
-- Authorization header: `Authorization: Bearer <jwt>`
+```
+wss://{region}.relay.sideband.cloud?token=<jwt>
+```
+
+Token delivery:
+
+- **Query parameter**: `?token=<jwt>` (browser WebSocket compatibility)
+- **Authorization header**: `Authorization: Bearer <jwt>` (preferred for programmatic clients)
 
 ## Session Binding
 

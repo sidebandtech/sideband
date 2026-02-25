@@ -1,7 +1,7 @@
 # Transport Conformance
 
-> **Authority**: Primary (Normative)
-> **Purpose**: Conformance test matrix and harness specification for transport implementations.
+> **Authority**: Primary (Normative)  
+> **Purpose**: Conformance test matrix and harness specification for transport implementations.  
 > **See also**: transport/abi.md, transport/errors.md, transport/websocket.md
 
 This document defines the conformance requirements and test infrastructure for transport implementations. All transports (`browser`, `node`, `loopback`) must pass the applicable tests to be considered conformant.

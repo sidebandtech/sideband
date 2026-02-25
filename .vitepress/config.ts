@@ -71,6 +71,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: "Guide", link: "/guide/" },
+      { text: "SDK", link: "/sdk/" },
       { text: "Protocols", link: "/protocols/" },
     ],
 
@@ -78,7 +79,32 @@ export default defineConfig({
       { text: "Why Sideband?", link: "/why-sideband" },
       {
         text: "Guide",
-        items: [{ text: "Getting Started", link: "/guide/" }],
+        items: [
+          { text: "Getting Started", link: "/guide/" },
+          { text: "Concepts", link: "/guide/concepts" },
+          { text: "RPC", link: "/guide/rpc" },
+          { text: "Events", link: "/guide/events" },
+          { text: "Server", link: "/guide/server" },
+          { text: "E2EE Relay", link: "/guide/e2ee" },
+          { text: "Testing", link: "/guide/testing" },
+          { text: "Self-Hosting", link: "/guide/self-hosting" },
+        ],
+      },
+      {
+        text: "SDK",
+        items: [
+          { text: "Overview", link: "/sdk/" },
+          { text: "Peer", link: "/sdk/peer" },
+        ],
+      },
+      {
+        text: "Runtime",
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/runtime/" },
+          { text: "Session", link: "/runtime/session" },
+          { text: "Router", link: "/runtime/router" },
+        ],
       },
       {
         text: "Protocols",
@@ -86,6 +112,7 @@ export default defineConfig({
           { text: "Overview", link: "/protocols/" },
           { text: "SBP", link: "/protocols/sbp/" },
           { text: "SBRP", link: "/protocols/sbrp/" },
+          { text: "SBDP", link: "/protocols/sbdp/" },
           { text: "RPC", link: "/protocols/rpc/" },
         ],
       },
@@ -125,6 +152,26 @@ export default defineConfig({
           {
             text: "011: Message Routing",
             link: "/adr/011-runtime-message-routing",
+          },
+          {
+            text: "012: WebSocket Transport",
+            link: "/adr/012-websocket-transport-design",
+          },
+          {
+            text: "013: Peer SDK Design",
+            link: "/adr/013-peer-sdk-design",
+          },
+          {
+            text: "014: Session Signals",
+            link: "/adr/014-peer-session-signals",
+          },
+          {
+            text: "015: P2P Direct Protocol",
+            link: "/adr/015-p2p-direct-protocol",
+          },
+          {
+            text: "016: Relay Server Design",
+            link: "/adr/016-relay-server-design",
           },
         ],
       },

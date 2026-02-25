@@ -1,7 +1,7 @@
 # Control Codes
 
 > **Authority**: Primary (Reference)  
-> **Purpose**: Catalog of control code values, names, and flags. Behavioral semantics defined in [state-machine.md](./state-machine.md).
+> **Purpose**: Catalog of control code values, names, and flags. Behavioral semantics defined in [state-machine.md](./state-machine.md).  
 > **Stability Note**: This document exists to stabilize numeric code assignments. Once the control code set is frozen, this catalog MAY be inlined into state-machine.md as an appendix.
 
 ## Code Ranges
