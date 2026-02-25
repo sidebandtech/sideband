@@ -42,7 +42,11 @@ createPeer({ endpoint: "ws://..." });
 // E2EE via relay (SBRP)
 createPeer({
   endpoint: relayUrl, // from POST /api/sessions
-  negotiator: sbrpClientNegotiator({ daemonId, sessionToken, identityKeyStore }),
+  negotiator: sbrpClientNegotiator({
+    daemonId,
+    sessionToken,
+    identityKeyStore,
+  }),
 });
 ```
 

@@ -9,12 +9,31 @@ A drop-in SDK that lets browsers talk to local daemons reliably – no reconnect
 ### Guide
 
 - [Getting Started](/guide.md)
+- [Core Concepts](/guide/concepts.md)
+- [RPC](/guide/rpc.md)
+- [Events](/guide/events.md)
+- [Server](/guide/server.md)
+- [E2EE Relay (SBRP)](/guide/e2ee.md)
+- [Testing](/guide/testing.md)
+- [Self-Hosting the Relay](/guide/self-hosting.md)
+
+### SDK
+
+- [SDK Design](/sdk.md)
+- [RFC: @sideband/peer SDK](/sdk/peer.md)
+
+### Runtime
+
+- [Runtime Behavioral Contracts](/runtime.md)
+- [Session Lifecycle](/runtime/session.md)
+- [Message Routing](/runtime/router.md)
 
 ### Protocols
 
 - [Protocols](/protocols.md)
 - [Sideband Protocol (SBP)](/protocols/sbp.md)
 - [Sideband Relay Protocol (SBRP)](/protocols/sbrp.md)
+- [Sideband Direct Protocol (SBDP)](/protocols/sbdp.md)
 - [RPC Layer](/protocols/rpc.md)
 
 ### ADRs
@@ -31,50 +50,37 @@ A drop-in SDK that lets browsers talk to local daemons reliably – no reconnect
 - [ADR-009: Runtime Session Lifecycle](/adr/009-runtime-peer-lifecycle.md)
 - [ADR-010: Explicit RPC Correlation via `cid` in the Envelope](/adr/010-rpc-correlation-cid.md)
 - [ADR-011: Runtime Message Routing](/adr/011-runtime-message-routing.md)
-
-### Other
-
 - [ADR-012: WebSocket Transport Design Decisions](/adr/012-websocket-transport-design.md)
 - [ADR-013: Peer SDK Core Design Decisions](/adr/013-peer-sdk-design.md)
 - [ADR-014: Peer SDK Session Signal Handling](/adr/014-peer-session-signals.md)
 - [ADR-015: P2P Direct Protocol (SBDP)](/adr/015-p2p-direct-protocol.md)
 - [ADR-016: Relay Server Design](/adr/016-relay-server-design.md)
+
+### Other
+
 - [ADR-NNN: \[Short Title]](/adr/_template.md)
 - [Control Codes](/protocols/sbrp/control-codes.md)
-- [Core Concepts](/guide/concepts.md)
 - [Cryptography and Wire Format](/protocols/sbrp/wire-crypto.md)
 - [Documentation](/README.md)
-- [E2EE Relay (SBRP)](/guide/e2ee.md)
 - [Error Code Registry](/protocols/error-codes.md)
-- [Events](/guide/events.md)
-- [Message Routing](/runtime/router.md)
 - [Package Architecture](/architecture/packages.md)
 - [Project Structure](/architecture/project-structure.md)
 - [Protocol Architecture](/protocols/stack.md)
 - [Protocol Documentation Guidelines](/protocols/authoring.md)
 - [Protocol Glossary](/protocols/glossary.md)
 - [Relay Authentication](/protocols/sbrp/authentication.md)
-- [RFC: @sideband/peer SDK](/sdk/peer.md)
-- [RPC](/guide/rpc.md)
 - [RPC Behavior](/protocols/rpc/behavior.md)
 - [RPC Conformance](/protocols/rpc/conformance.md)
 - [RPC Envelope Specification](/protocols/rpc/envelope.md)
 - [RPC Streaming](/protocols/rpc/streams.md)
-- [Runtime Behavioral Contracts](/runtime.md)
 - [SBDP Design](/protocols/sbdp/design.md)
 - [SBP Behavior & Ordering (v1)](/protocols/sbp/behavior.md)
 - [SBP Conformance Tests (v0.1 plan)](/protocols/sbp/conformance.md)
 - [SBP Error Model (v1)](/protocols/sbp/errors.md)
 - [SBP Wire Format (v1)](/protocols/sbp/wire-format.md)
 - [SBRP Conformance Checklist](/protocols/sbrp/conformance.md)
-- [SDK Design](/sdk.md)
 - [Security Checklist](/protocols/sbrp/security-checklist.md)
-- [Self-Hosting the Relay](/guide/self-hosting.md)
-- [Server](/guide/server.md)
-- [Session Lifecycle](/runtime/session.md)
-- [Sideband Direct Protocol (SBDP)](/protocols/sbdp.md)
 - [Sideband Relay Protocol State Machine](/protocols/sbrp/state-machine.md)
-- [Testing](/guide/testing.md)
 - [Threat Model](/protocols/sbrp/threat-model.md)
 - [Transport ABI](/protocols/transport/abi.md)
 - [Transport Conformance](/protocols/transport/conformance.md)
