@@ -414,10 +414,15 @@ class PeerImpl implements Peer, RpcHost, EventHost {
         // Subscribe to signals now that state is "active". Replayed buffered
         // signals (e.g. session_paused that arrived during handshake) are
         // processed correctly — the handleSessionSignal guard passes.
+        // Guard against a "connected" handler calling disconnect() synchronously:
+        // transition("active") emits synchronously, so state may already be
+        // "closed" here; subscribing in that case would leak the closure.
         if (pendingSubscribeSignals) {
-          this.unsubscribeSignals = pendingSubscribeSignals((s) =>
-            this.handleSessionSignal(s),
-          );
+          if (this._state === "active") {
+            this.unsubscribeSignals = pendingSubscribeSignals((s) =>
+              this.handleSessionSignal(s),
+            );
+          }
           pendingSubscribeSignals = undefined;
         }
 
