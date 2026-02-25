@@ -1,5 +1,16 @@
 # @sideband/peer
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`5e51e83`](https://github.com/sidebandtech/sideband/commit/5e51e83f660c4b2132304ac8994033669458d610)]:
+  - @sideband/transport-ws@0.0.2
+  - @sideband/protocol@0.0.9
+  - @sideband/rpc@0.0.7
+  - @sideband/runtime@0.2.1
+  - @sideband/transport@0.0.7
+
 ## 0.2.0
 
 ### Minor Changes
