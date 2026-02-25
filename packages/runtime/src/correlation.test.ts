@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { afterEach, describe, it, expect, beforeEach } from "bun:test";
 import { generateFrameId } from "@sideband/protocol";
 import {
   createRpcRequest,
@@ -14,6 +14,10 @@ describe("RpcCorrelationManager", () => {
 
   beforeEach(() => {
     manager = new RpcCorrelationManager(1000); // 1s timeout for tests
+  });
+
+  afterEach(() => {
+    manager.clear();
   });
 
   it("should register a request and match a success response", async () => {
@@ -139,7 +143,7 @@ describe("RpcCorrelationManager", () => {
 
   it("should throw when registering duplicate cid", () => {
     const cid = generateFrameId();
-    manager.registerRequest(cid);
+    manager.registerRequest(cid).catch(() => {});
 
     expect(() => {
       manager.registerRequest(cid);
