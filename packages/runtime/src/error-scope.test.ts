@@ -310,8 +310,9 @@ describe("Error Scope Contract", () => {
 
       // New requests can still be made
       const cid2 = generateFrameId();
-      manager.registerRequest(cid2);
+      manager.registerRequest(cid2).catch(() => {});
       expect(manager.getPendingCount()).toBe(1);
+      manager.clear();
     });
   });
 

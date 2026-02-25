@@ -7,12 +7,17 @@
  * so they pass under both `bun test` and `tsc --noEmit`.
  */
 
+import type { NegotiationResult, SessionSignal } from "@sideband/runtime";
 import { describe, expectTypeOf, test } from "bun:test";
-import { PeerError } from "./errors.js";
+import { PeerError, PeerErrorCode } from "./errors.js";
+import type { listen } from "./listen.js";
 import type {
+  AcceptedPeer,
   EventsInterface,
+  ListenOptions,
   Peer,
   PeerEvents,
+  PeerServer,
   PeerState,
   RpcCallOptions,
   RpcInterface,
@@ -137,5 +142,79 @@ describe("subscription return types", () => {
     expectTypeOf<
       ReturnType<EventsInterface["onPattern"]>
     >().toEqualTypeOf<Unsubscribe>();
+  });
+});
+
+// ─── PeerState ────────────────────────────────────────────────────────────────
+
+describe("PeerState", () => {
+  test('"paused" is a valid PeerState', () => {
+    expectTypeOf<"paused">().toMatchTypeOf<PeerState>();
+  });
+});
+
+// ─── AcceptedPeer ─────────────────────────────────────────────────────────────
+
+describe("AcceptedPeer", () => {
+  test("state is narrower than PeerState", () => {
+    expectTypeOf<AcceptedPeer["state"]>().toEqualTypeOf<
+      "active" | "paused" | "closed"
+    >();
+  });
+
+  test("has no connect() method", () => {
+    expectTypeOf<AcceptedPeer>().not.toHaveProperty("connect");
+  });
+
+  test("has no reconnecting promise", () => {
+    expectTypeOf<AcceptedPeer>().not.toHaveProperty("reconnecting");
+  });
+});
+
+// ─── PeerErrorCode ────────────────────────────────────────────────────────────
+
+describe("PeerErrorCode", () => {
+  test("SessionPaused is the literal string session_paused", () => {
+    expectTypeOf(PeerErrorCode.SessionPaused).toEqualTypeOf<"session_paused">();
+  });
+});
+
+// ─── SessionSignal ────────────────────────────────────────────────────────────
+
+describe("SessionSignal", () => {
+  test("type is string", () => {
+    expectTypeOf<SessionSignal["type"]>().toEqualTypeOf<string>();
+  });
+
+  test("message is optional string", () => {
+    expectTypeOf<SessionSignal["message"]>().toEqualTypeOf<
+      string | undefined
+    >();
+  });
+});
+
+// ─── NegotiationResult.subscribeSignals ───────────────────────────────────────
+
+describe("NegotiationResult.subscribeSignals", () => {
+  type Sub = NonNullable<NegotiationResult["subscribeSignals"]>;
+
+  test("accepts a SessionSignal handler", () => {
+    expectTypeOf<Parameters<Sub>[0]>().toEqualTypeOf<
+      (signal: SessionSignal) => void
+    >();
+  });
+
+  test("returns an unsubscribe function", () => {
+    expectTypeOf<ReturnType<Sub>>().toEqualTypeOf<() => void>();
+  });
+});
+
+// ─── @sideband/peer/server ────────────────────────────────────────────────────
+
+describe("@sideband/peer/server", () => {
+  test("listen accepts ListenOptions and returns Promise<PeerServer>", () => {
+    expectTypeOf<typeof listen>().toMatchTypeOf<
+      (options: ListenOptions) => Promise<PeerServer>
+    >();
   });
 });

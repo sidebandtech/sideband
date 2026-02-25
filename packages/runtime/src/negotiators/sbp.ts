@@ -61,16 +61,29 @@ export class SbpNegotiator implements Negotiator {
     await conn.send(encodeFrame(handshakeFrame));
 
     // Wait for response with timeout
-    const result = await Promise.race([
-      this.receiveHandshake(conn),
-      this.timeout(),
-    ]);
+    let timeoutId: any;
+    const timeoutPromise = new Promise<"timeout">((resolve) => {
+      timeoutId = setTimeout(() => resolve("timeout"), this.handshakeTimeoutMs);
+    });
 
-    if (result === "timeout") {
-      throw new ProtocolError("Handshake timeout", ErrorCode.ProtocolViolation);
+    const receivePromise = this.receiveHandshake(conn);
+    // Prevent unhandled rejection if timeout wins the race
+    receivePromise.catch(() => {});
+
+    try {
+      const result = await Promise.race([receivePromise, timeoutPromise]);
+
+      if (result === "timeout") {
+        throw new ProtocolError(
+          "Handshake timeout",
+          ErrorCode.ProtocolViolation,
+        );
+      }
+
+      return result;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return result;
   }
 
   private async receiveHandshake(
@@ -99,12 +112,6 @@ export class SbpNegotiator implements Negotiator {
       "Connection closed before handshake",
       ErrorCode.ProtocolViolation,
     );
-  }
-
-  private timeout(): Promise<"timeout"> {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve("timeout"), this.handshakeTimeoutMs);
-    });
   }
 
   async terminate(

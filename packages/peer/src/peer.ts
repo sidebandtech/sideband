@@ -27,8 +27,10 @@ import {
   createSessionManager,
   defaultRetryPolicy,
   SbpNegotiator,
+  type Negotiator,
   type Session,
   type SessionManager,
+  type SessionSignal,
 } from "@sideband/runtime";
 import { unsafeAsTransportEndpoint } from "@sideband/transport";
 import { wsTransport } from "@sideband/transport-ws";
@@ -88,18 +90,17 @@ class PeerImpl implements Peer, RpcHost, EventHost {
   private sessionMgr?: SessionManager;
   private currentSession?: Session;
 
-  // connect() Promise state
-  private connectPromise?: Promise<void>;
-  private connectResolve?: () => void;
-  private connectReject?: (e: Error) => void;
-
-  // reconnecting Promise state (one per cycle)
-  private reconnectDeferred?: Deferred<ReconnectionOutcome>;
+  // connect() / reconnecting Promise state (one per cycle)
+  private connectDeferred?: PromiseWithResolvers<void>;
+  private reconnectDeferred?: PromiseWithResolvers<ReconnectionOutcome>;
 
   // Retry state
   private retryAttempt = 0;
   private retryCancel?: () => void; // cancels the current sleep
   private terminated = false;
+
+  // Session signal subscription (SBRP pause/resume)
+  private unsubscribeSignals?: () => void;
 
   // Lifecycle event subscribers
   private readonly eventSubs = new Map<
@@ -136,7 +137,12 @@ class PeerImpl implements Peer, RpcHost, EventHost {
   connect(): Promise<void> {
     const s = this._state;
     if (s === "connecting" || s === "negotiating") {
-      return this.connectPromise!;
+      // During auto-reconnect the loop transitions to "connecting" without a
+      // new connectDeferred (it was cleared after the first success). Fall back
+      // to whenReady() which resolves when the peer reaches "active".
+      return this.connectDeferred
+        ? this.connectDeferred.promise
+        : this.whenReady();
     }
     if (s === "closed") {
       throw new PeerError(PeerErrorCode.PeerClosed, "Peer is closed");
@@ -148,43 +154,42 @@ class PeerImpl implements Peer, RpcHost, EventHost {
       );
     }
 
+    // Initialize and capture the promise BEFORE transitioning: transition()
+    // fires stateChange synchronously, so a listener calling disconnect() would
+    // null connectDeferred before this method returns.
+    this.connectDeferred = Promise.withResolvers<void>();
+    const connectPromise = this.connectDeferred.promise;
     // Synchronous transition prevents a second concurrent connect() call from
     // seeing "idle" and launching a second runLoop before the first one starts.
     this.transition("connecting");
-
-    this.connectPromise = new Promise<void>((res, rej) => {
-      this.connectResolve = res;
-      this.connectReject = rej;
-    });
-
     this.runLoop().catch(() => {});
-    return this.connectPromise;
+    return connectPromise;
   }
 
   async disconnect(): Promise<void> {
     if (this._state === "closed") return;
     this.terminated = true;
 
-    // Cancel any pending retry sleep
+    // Cancel any pending retry sleep before close() fires stateChange, so
+    // listeners that read peer.reconnecting see it resolved synchronously.
     this.retryCancel?.();
 
     // Synchronously close: prevents new calls from being accepted and lets
     // callers that await pending work see rejection immediately rather than
     // after the transport teardown completes.
-    this.transition("closed");
-    this.rpc.onClosed();
-    this.events.onClosed();
+    this.close();
+    // Release listener closures after the terminal emit to break retention cycles.
+    this.eventSubs.clear();
 
     // Resolve/reject in-progress promises
     this.reconnectDeferred?.resolve({ status: "aborted" });
     this.reconnectDeferred = undefined;
 
-    if (this.connectReject) {
-      this.connectReject(
+    if (this.connectDeferred) {
+      this.connectDeferred.reject(
         new PeerError(PeerErrorCode.PeerClosed, "Disconnected"),
       );
-      this.connectResolve = undefined;
-      this.connectReject = undefined;
+      this.connectDeferred = undefined;
     }
 
     // Terminate active session transport (best-effort cleanup)
@@ -272,6 +277,12 @@ class PeerImpl implements Peer, RpcHost, EventHost {
   }
 
   async sendRaw(data: Uint8Array): Promise<void> {
+    if (this._state === "closed") {
+      throw new PeerError(PeerErrorCode.PeerClosed, "Peer is closed");
+    }
+    if (this._state === "paused") {
+      throw new PeerError(PeerErrorCode.SessionPaused, "Session is paused");
+    }
     if (!this.currentSession) {
       throw new PeerError(PeerErrorCode.NotConnected, "Not connected");
     }
@@ -296,8 +307,25 @@ class PeerImpl implements Peer, RpcHost, EventHost {
 
   private async runLoop(): Promise<void> {
     while (!this.terminated) {
+      // Scoped per iteration: each reconnect attempt is fully isolated with no
+      // state bleed from the previous session's negotiation result.
+      // Capture subscribeSignals during negotiation but defer calling it until
+      // state is "active" — replayed signals must not fire while "negotiating".
+      let pendingSubscribeSignals:
+        | ((h: (s: SessionSignal) => void) => () => void)
+        | undefined;
+
+      const wrappedNegotiator: Negotiator = {
+        negotiate: async (conn) => {
+          const result = await this.opts.negotiator.negotiate(conn);
+          pendingSubscribeSignals = result.subscribeSignals;
+          return result;
+        },
+        classifyError: (err) => this.opts.negotiator.classifyError(err),
+        terminate: (conn, opts) => this.opts.negotiator.terminate(conn, opts),
+      };
       // Deferred for "this session closed"
-      const closedDeferred = deferred<{
+      const closedDeferred = Promise.withResolvers<{
         reason: string;
         graceful: boolean;
         fatal: boolean;
@@ -307,7 +335,7 @@ class PeerImpl implements Peer, RpcHost, EventHost {
         endpoint: this.opts.endpoint,
         transportFactory: (ep) =>
           this.opts.transport.connect(unsafeAsTransportEndpoint(ep)),
-        negotiator: this.opts.negotiator,
+        negotiator: wrappedNegotiator,
         retryPolicy: { mode: "never" },
         onFrame: (frame) => {
           this.dispatchFrame(frame);
@@ -350,30 +378,26 @@ class PeerImpl implements Peer, RpcHost, EventHost {
 
         const fatal = closeEvt.fatal;
         if (fatal || !this.canRetry()) {
-          this.transition("closed");
-          this.rpc.onClosed();
-          this.events.onClosed();
+          this.close();
           // Always wrap as PeerError so callers can rely on `instanceof PeerError`
           // regardless of whether the failure was fatal or retries-exhausted.
           const err = new PeerError(
             PeerErrorCode.PeerClosed,
             connectErr.message,
-            {
-              cause: connectErr,
-            },
+            { cause: connectErr },
           );
           // Resolve any in-progress reconnect promise — callers awaiting
           // peer.reconnecting must not hang when retry finally gives up.
           this.reconnectDeferred?.resolve({ status: "failed", error: err });
           this.reconnectDeferred = undefined;
-          this.connectReject?.(err);
-          this.connectPromise = undefined;
-          this.connectResolve = undefined;
-          this.connectReject = undefined;
+          this.connectDeferred?.reject(err);
+          this.connectDeferred = undefined;
           // Emit "error" for all terminal initial-connect failures (both fatal
           // and retries-exhausted). Post-active exhaustion signals via
           // reconnecting.promise only; initial connect has no such equivalent.
           this.emit("error", err);
+          // Release listener closures after all terminal emits.
+          this.eventSubs.clear();
           return;
         }
         // Retryable — fall through to retry scheduling
@@ -387,26 +411,44 @@ class PeerImpl implements Peer, RpcHost, EventHost {
         this.retryAttempt = 0; // reset backoff after a successful connection
         this.transition("active");
 
+        // Subscribe to signals now that state is "active". Replayed buffered
+        // signals (e.g. session_paused that arrived during handshake) are
+        // processed correctly — the handleSessionSignal guard passes.
+        // Guard against a "connected" handler calling disconnect() synchronously:
+        // transition("active") emits synchronously, so state may already be
+        // "closed" here; subscribing in that case would leak the closure.
+        if (pendingSubscribeSignals) {
+          if (this._state === "active") {
+            this.unsubscribeSignals = pendingSubscribeSignals((s) =>
+              this.handleSessionSignal(s),
+            );
+          }
+          pendingSubscribeSignals = undefined;
+        }
+
         // Resolve initial connect() promise (idempotent if already resolved)
-        if (this.connectResolve) {
-          this.connectResolve();
-          this.connectPromise = undefined;
-          this.connectResolve = undefined;
-          this.connectReject = undefined;
+        if (this.connectDeferred) {
+          this.connectDeferred.resolve();
+          this.connectDeferred = undefined;
         }
 
         // Resolve reconnecting promise from previous cycle
         this.reconnectDeferred?.resolve({ status: "connected" });
         this.reconnectDeferred = undefined;
 
-        // Flush buffered RPC calls and events
-        this.rpc.flushQueue();
-        this.events.flushBuffer();
+        // Flush buffered RPC calls and events (only if still active — a
+        // replayed signal above may have transitioned to "paused").
+        if (this._state === "active") {
+          this.rpc.flushQueue();
+          this.events.flushBuffer();
+        }
 
         // Wait for this session to close (transport drop or terminate)
         const closeEvt = await closedDeferred.promise;
 
         this.currentSession = undefined;
+        this.unsubscribeSignals?.();
+        this.unsubscribeSignals = undefined;
 
         if (this.terminated) {
           // disconnect() already handled state transitions
@@ -416,9 +458,7 @@ class PeerImpl implements Peer, RpcHost, EventHost {
         this.rpc.onDisconnect(closeEvt.fatal);
 
         if (closeEvt.fatal || !this.canRetry()) {
-          this.transition("closed");
-          this.rpc.onClosed();
-          this.events.onClosed();
+          this.close();
           // Emit error on fatal close so apps can observe the cause. Retries-
           // exhausted is already signaled via the reconnecting promise; no
           // additional error event needed for that case.
@@ -428,6 +468,8 @@ class PeerImpl implements Peer, RpcHost, EventHost {
               new PeerError(PeerErrorCode.PeerClosed, closeEvt.reason),
             );
           }
+          // Release listener closures after all terminal emits.
+          this.eventSubs.clear();
           return;
         }
         // Transport dropped — schedule reconnect
@@ -441,7 +483,7 @@ class PeerImpl implements Peer, RpcHost, EventHost {
       this.retryAttempt++;
       // Create the deferred BEFORE transitioning so that "reconnecting" event
       // listeners can immediately read peer.reconnecting without seeing undefined.
-      this.reconnectDeferred = deferred();
+      this.reconnectDeferred = Promise.withResolvers<ReconnectionOutcome>();
       this.transition("reconnecting");
 
       await this.sleep(delayMs);
@@ -452,6 +494,18 @@ class PeerImpl implements Peer, RpcHost, EventHost {
         return;
       }
     }
+  }
+
+  // Common teardown for all terminal-close paths. Callers must call
+  // this.eventSubs.clear() AFTER any remaining terminal emits (e.g. "error").
+  private close(): void {
+    this.transition("closed");
+    // Clean up signal subscription so the closed session cannot deliver signals
+    // after terminal state — guards all fatal paths that call close() directly.
+    this.unsubscribeSignals?.();
+    this.unsubscribeSignals = undefined;
+    this.rpc.onClosed();
+    this.events.onClosed();
   }
 
   private canRetry(): boolean {
@@ -485,14 +539,53 @@ class PeerImpl implements Peer, RpcHost, EventHost {
     if (subject === RPC_SUBJECT) {
       this.rpc
         .handleFrame(msg, (data) => this.sendRaw(data))
-        .catch((err) => this.opts.onUnhandledError(err));
+        .catch((err) =>
+          this.opts.onUnhandledError(
+            err instanceof Error ? err : new Error(String(err)),
+          ),
+        );
       return;
     }
 
     if (subject === EVENT_SUBJECT) {
       this.events
         .handleFrame(msg)
-        .catch((err) => this.opts.onUnhandledError(err));
+        .catch((err) =>
+          this.opts.onUnhandledError(
+            err instanceof Error ? err : new Error(String(err)),
+          ),
+        );
+    }
+  }
+
+  // ────────────────── Session signal handling ──────────────────────────────
+
+  private handleSessionSignal(signal: SessionSignal): void {
+    // Only valid when traffic can flow; ignore during connecting/negotiating
+    // to prevent invalid state transitions before currentSession is set.
+    if (
+      this.terminated ||
+      (this._state !== "active" && this._state !== "paused")
+    ) {
+      return;
+    }
+    switch (signal.type) {
+      case "session_paused":
+        this.transition("paused");
+        break;
+      case "session_resumed":
+        this.transition("active");
+        this.rpc.flushQueue();
+        this.events.flushBuffer();
+        break;
+      case "session_ended":
+        // Remote peer left; close this session cleanly so the retry policy
+        // determines whether to reconnect (unlike disconnect() which is terminal).
+        this.sessionMgr?.terminate({ reason: "session_ended" }).catch(() => {});
+        break;
+      case "session_pending":
+        // Daemon reconnected but not ready yet — stay paused.
+        break;
     }
   }
 
@@ -562,23 +655,6 @@ class PeerImpl implements Peer, RpcHost, EventHost {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Helpers
-
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve(value: T): void;
-  reject(err: Error): void;
-}
-
-function deferred<T = void>(): Deferred<T> {
-  let resolve!: (v: T) => void;
-  let reject!: (e: Error) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 function resolveOptions(opts: PeerOptions): ResolvedPeerOptions {
   const peerId = opts.peerId ?? generateId();

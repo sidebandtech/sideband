@@ -23,11 +23,6 @@ interface SbrpClientSharedOptions {
   /** Relay-assigned session ID (from JWT `sid` claim). */
   sessionId: bigint;
   identityKeyStore: IdentityKeyStore;
-  /** Called when pinned key doesn't match wire key. Must return `true` to accept the new key. */
-  onIdentityMismatch?: (info: {
-    expectedFingerprint: string;
-    receivedFingerprint: string;
-  }) => Promise<boolean>;
   handshakeTimeoutMs?: number;
   /** Local peer ID for inner SBP handshake. Auto-generated if omitted. */
   peerId?: string;
@@ -38,26 +33,34 @@ type FirstConnectionPrompt = (info: {
   fingerprint: string;
 }) => Promise<boolean>;
 
+type IdentityMismatchHandler = (info: {
+  expectedFingerprint: string;
+  receivedFingerprint: string;
+}) => Promise<boolean>;
+
 /**
  * Options for `sbrpClientNegotiator()`.
  *
  * `trustPolicy` controls TOFU behavior:
  * - `"auto"`: accept on first connection, verify on reconnect
- * - `"prompt"`: call `onFirstConnection` on first connection (default)
- * - `"strict"`: reject if no pinned key exists
+ * - `"prompt"`: call `onFirstConnection`/`onIdentityMismatch` (default)
+ * - `"strict"`: reject if no pinned key exists or if key changed
  *
- * If `trustPolicy` is omitted, it defaults to `"prompt"` and
- * `onFirstConnection` is required.
+ * If `trustPolicy` is omitted, it defaults to `"prompt"` and both
+ * `onFirstConnection` and `onIdentityMismatch` are required.
  */
 export type SbrpClientOptions =
   | (SbrpClientSharedOptions & {
       trustPolicy?: "prompt";
-      /** Called on first connection when `trustPolicy` is `"prompt"`. Must return `true` to accept. */
+      /** Called on first connection. Must return `true` to accept. */
       onFirstConnection: FirstConnectionPrompt;
+      /** Called when pinned key doesn't match wire key. Must return `true` to accept. */
+      onIdentityMismatch: IdentityMismatchHandler;
     })
   | (SbrpClientSharedOptions & {
       trustPolicy: "auto" | "strict";
       onFirstConnection?: FirstConnectionPrompt;
+      onIdentityMismatch?: IdentityMismatchHandler;
     });
 
 /** Options for `sbrpDaemonNegotiator()`. */

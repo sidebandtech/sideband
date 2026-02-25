@@ -5,8 +5,10 @@
  *
  * Primary API surface:
  *   - `createPeer(options)` — client-side peer with lifecycle, RPC, events
- *   - `listen(options)` — server-side listener yielding `AcceptedPeer` instances
  *   - `sbpNegotiator(options?)` — plain SBP negotiator for direct connections
+ *
+ * Server-side listener is in the `@sideband/peer/server` subpath to keep
+ * browser bundles free of Node/Bun-only transports.
  *
  * @example Basic local connection
  * ```ts
@@ -21,7 +23,7 @@
  *
  * @example Server side
  * ```ts
- * import { listen } from "@sideband/peer";
+ * import { listen } from "@sideband/peer/server";
  *
  * const server = await listen({
  *   endpoint: "ws://localhost:8080",
@@ -33,7 +35,6 @@
  */
 
 // Factories
-export { listen } from "./listen.js";
 export { createPeer, sbpNegotiator } from "./peer.js";
 
 // SBRP negotiators available via "@sideband/peer/sbrp" subpath

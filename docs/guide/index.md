@@ -11,7 +11,8 @@ bun add @sideband/peer
 ## Quick Example
 
 ```typescript
-import { listen, createPeer } from "@sideband/peer";
+import { listen } from "@sideband/peer/server";
+import { createPeer } from "@sideband/peer";
 
 // Server: register RPC handlers, push events to clients
 const server = await listen({

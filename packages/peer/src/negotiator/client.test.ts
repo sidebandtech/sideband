@@ -31,6 +31,19 @@ describe("sbrpClientNegotiator", () => {
       ).toThrow(/requires onFirstConnection/);
     });
 
+    it('throws if trustPolicy "prompt" without onIdentityMismatch', () => {
+      expect(() =>
+        sbrpClientNegotiator({
+          daemonId,
+          sessionId,
+          identityKeyStore: createMemoryIdentityKeyStore(),
+          trustPolicy: "prompt",
+          onFirstConnection: async () => true,
+          // no onIdentityMismatch
+        } as any),
+      ).toThrow(/requires onIdentityMismatch/);
+    });
+
     it('does not throw for "auto" without onFirstConnection', () => {
       expect(() =>
         sbrpClientNegotiator({
@@ -122,6 +135,7 @@ describe("sbrpClientNegotiator", () => {
         identityKeyStore,
         trustPolicy: "prompt",
         onFirstConnection,
+        onIdentityMismatch: async () => true,
       });
 
       const daemonNeg = sbrpDaemonNegotiator({
@@ -152,6 +166,7 @@ describe("sbrpClientNegotiator", () => {
         identityKeyStore,
         trustPolicy: "prompt",
         onFirstConnection: async () => false,
+        onIdentityMismatch: async () => true,
       });
 
       const daemonNeg = sbrpDaemonNegotiator({
@@ -255,11 +270,75 @@ describe("sbrpClientNegotiator", () => {
       expect(clientResult.peerId).toBeDefined();
     });
 
-    it("detects identity key mismatch", async () => {
+    it("prompt: rejects when user denies identity key change", async () => {
       const originalIdentity = generateIdentityKeyPair();
       const newIdentity = generateIdentityKeyPair();
       const identityKeyStore = createMemoryIdentityKeyStore();
-      // Pin original key
+      await identityKeyStore.set(daemonId, originalIdentity.publicKey);
+
+      const { clientConn, daemonConn } = createTransportPair();
+      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+
+      const onIdentityMismatch = mock(async () => false);
+      const negotiator = sbrpClientNegotiator({
+        daemonId,
+        sessionId,
+        identityKeyStore,
+        trustPolicy: "prompt",
+        onFirstConnection: async () => true, // key is pre-pinned, never called
+        onIdentityMismatch,
+      });
+
+      const daemonNeg = sbrpDaemonNegotiator({
+        daemonId,
+        identityKeyPair: newIdentity,
+      });
+
+      const clientPromise = negotiator.negotiate(clientConn);
+      daemonNeg.negotiate(daemonConn).catch(() => {});
+
+      await expect(clientPromise).rejects.toThrow(SbrpError);
+      expect(onIdentityMismatch).toHaveBeenCalledTimes(1);
+    });
+
+    it("prompt: accepts identity key change when user confirms", async () => {
+      const originalIdentity = generateIdentityKeyPair();
+      const newIdentity = generateIdentityKeyPair();
+      const identityKeyStore = createMemoryIdentityKeyStore();
+      await identityKeyStore.set(daemonId, originalIdentity.publicKey);
+
+      const { clientConn, daemonConn } = createTransportPair();
+      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+
+      const negotiator = sbrpClientNegotiator({
+        daemonId,
+        sessionId,
+        identityKeyStore,
+        trustPolicy: "prompt",
+        onFirstConnection: async () => true, // key is pre-pinned, never called
+        onIdentityMismatch: async () => true,
+      });
+
+      const daemonNeg = sbrpDaemonNegotiator({
+        daemonId,
+        identityKeyPair: newIdentity,
+      });
+
+      const [clientResult] = await Promise.all([
+        negotiator.negotiate(clientConn),
+        daemonNeg.negotiate(daemonConn),
+      ]);
+
+      expect(clientResult.peerId).toBeDefined();
+      expect(await identityKeyStore.get(daemonId)).toEqual(
+        newIdentity.publicKey,
+      );
+    });
+
+    it("auto: silently re-pins on identity key change without invoking callback", async () => {
+      const originalIdentity = generateIdentityKeyPair();
+      const newIdentity = generateIdentityKeyPair();
+      const identityKeyStore = createMemoryIdentityKeyStore();
       await identityKeyStore.set(daemonId, originalIdentity.publicKey);
 
       const { clientConn, daemonConn } = createTransportPair();
@@ -276,35 +355,6 @@ describe("sbrpClientNegotiator", () => {
 
       const daemonNeg = sbrpDaemonNegotiator({
         daemonId,
-        identityKeyPair: newIdentity, // Different identity!
-      });
-
-      const clientPromise = negotiator.negotiate(clientConn);
-      daemonNeg.negotiate(daemonConn).catch(() => {});
-
-      await expect(clientPromise).rejects.toThrow(SbrpError);
-      expect(onIdentityMismatch).toHaveBeenCalledTimes(1);
-    });
-
-    it("accepts identity key change when callback returns true", async () => {
-      const originalIdentity = generateIdentityKeyPair();
-      const newIdentity = generateIdentityKeyPair();
-      const identityKeyStore = createMemoryIdentityKeyStore();
-      await identityKeyStore.set(daemonId, originalIdentity.publicKey);
-
-      const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
-
-      const negotiator = sbrpClientNegotiator({
-        daemonId,
-        sessionId,
-        identityKeyStore,
-        trustPolicy: "auto",
-        onIdentityMismatch: async () => true,
-      });
-
-      const daemonNeg = sbrpDaemonNegotiator({
-        daemonId,
         identityKeyPair: newIdentity,
       });
 
@@ -314,10 +364,11 @@ describe("sbrpClientNegotiator", () => {
       ]);
 
       expect(clientResult.peerId).toBeDefined();
-
-      // Key should be updated
-      const pinnedKey = await identityKeyStore.get(daemonId);
-      expect(pinnedKey).toEqual(newIdentity.publicKey);
+      expect(await identityKeyStore.get(daemonId)).toEqual(
+        newIdentity.publicKey,
+      );
+      // "auto" never consults the callback
+      expect(onIdentityMismatch).not.toHaveBeenCalled();
     });
   });
 

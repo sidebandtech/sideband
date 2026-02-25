@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Negotiator } from "@sideband/runtime";
 import { LoopbackTransport } from "@sideband/transport";
 import { describe, expect, it } from "bun:test";
 import { PeerError, PeerErrorCode } from "./errors.js";
 import { listen } from "./listen.js";
-import { createPeer } from "./peer.js";
-import type { AcceptedPeer, Peer, PeerServer } from "./types.js";
+import { createPeer, sbpNegotiator } from "./peer.js";
+import { waitFor } from "./peer.test-helpers.js";
+import type { AcceptedPeer, Peer, PeerServer, PeerState } from "./types.js";
 
 // ─── Test harness ─────────────────────────────────────────────────────────────
 
@@ -19,22 +21,6 @@ interface TestPair {
 interface PairHooks {
   onServerUnhandledError?: (error: Error) => void;
   onClientUnhandledError?: (error: Error) => void;
-}
-
-/**
- * Poll `predicate` until it returns true or `timeoutMs` elapses.
- * Much more reliable than fixed sleeps in async tests.
- */
-async function waitFor(
-  predicate: () => boolean,
-  { timeoutMs = 1000 } = {},
-): Promise<void> {
-  const start = Date.now();
-  while (!predicate()) {
-    if (Date.now() - start >= timeoutMs)
-      throw new Error(`waitFor timeout after ${timeoutMs}ms`);
-    await new Promise<void>((r) => setTimeout(r, 5));
-  }
 }
 
 /** Stand up a loopback listen + createPeer pair. Both start disconnected. */
@@ -116,10 +102,13 @@ describe("createPeer lifecycle", () => {
 
   it("connect() throws synchronously from closed state", async () => {
     const { client, server } = await createPair();
-    await client.connect();
-    await client.disconnect();
-    expect(() => client.connect()).toThrow(PeerError);
-    await server.close();
+    try {
+      await client.connect();
+      await client.disconnect();
+      expect(() => client.connect()).toThrow(PeerError);
+    } finally {
+      await server.close();
+    }
   });
 
   it("disconnect() transitions to closed and emits disconnected", async () => {
@@ -361,12 +350,15 @@ describe("whenReady()", () => {
 
   it("rejects immediately when peer is already closed", async () => {
     const { client, server } = await createPair();
-    await client.connect();
-    await client.disconnect();
-    await expect(client.whenReady()).rejects.toMatchObject({
-      code: PeerErrorCode.PeerClosed,
-    });
-    await server.close();
+    try {
+      await client.connect();
+      await client.disconnect();
+      await expect(client.whenReady()).rejects.toMatchObject({
+        code: PeerErrorCode.PeerClosed,
+      });
+    } finally {
+      await server.close();
+    }
   });
 
   it("rejects via AbortSignal", async () => {
@@ -1528,6 +1520,149 @@ describe("AcceptedPeer", () => {
 
     await client1.disconnect();
     await client2.disconnect().catch(() => {});
+    await server.close();
+  });
+});
+
+// ─── SbrpError duck-type forwarding ──────────────────────────────────────────
+//
+// @sideband/secure-relay is an optional peer dependency. listen.ts uses a
+// duck-type check (err.name === "SbrpError") instead of a static import so the
+// module loads correctly when the package is absent. These tests verify that the
+// duck-type contract is honoured: SbrpError-named errors reach onUnhandledError,
+// while generic errors from the frame loop are silently discarded.
+
+describe("SbrpError duck-type forwarding", () => {
+  function makeFaultyNegotiator(errName: string): Negotiator {
+    const base = sbpNegotiator();
+    return {
+      negotiate: async (conn) => {
+        const result = await base.negotiate(conn);
+        const err = new Error("frame loop failure");
+        err.name = errName;
+        return {
+          ...result,
+          // Replace the data-phase channel with one that throws immediately.
+          // The SBP handshake already completed over conn above, so substituting
+          // the inbound here only affects the frame loop, not negotiation.
+          channel: {
+            id: conn.id,
+            endpoint: conn.endpoint,
+            send: (data) => conn.send(data),
+            close: (opts) => conn.close(opts),
+            inbound: {
+              async *[Symbol.asyncIterator]() {
+                throw err;
+              },
+            },
+          },
+        };
+      },
+      classifyError: (e) => base.classifyError(e),
+      terminate: (c, o) => base.terminate(c, o),
+    };
+  }
+
+  it("errors named SbrpError are forwarded to onUnhandledError", async () => {
+    const transport = new LoopbackTransport();
+    const endpoint = `loopback://sbrp-err-fwd-${++testCounter}`;
+
+    const unhandled: Error[] = [];
+    const server = await listen({
+      endpoint,
+      transport,
+      negotiator: makeFaultyNegotiator("SbrpError"),
+      onConnection: () => {},
+      onUnhandledError(err) {
+        unhandled.push(err);
+      },
+    });
+    const client = createPeer({
+      endpoint,
+      transport,
+      retryPolicy: { mode: "never" },
+    });
+
+    await client.connect();
+    await waitFor(() => unhandled.length > 0, { timeoutMs: 1000 });
+    expect(unhandled[0]?.name).toBe("SbrpError");
+    expect(unhandled[0]?.message).toBe("frame loop failure");
+
+    await client.disconnect();
+    await server.close();
+  });
+
+  it("generic errors from the frame loop are silently discarded", async () => {
+    const transport = new LoopbackTransport();
+    const endpoint = `loopback://sbrp-err-drop-${++testCounter}`;
+
+    const unhandled: Error[] = [];
+    const server = await listen({
+      endpoint,
+      transport,
+      negotiator: makeFaultyNegotiator("Error"), // plain Error, not SbrpError
+      onConnection: () => {},
+      onUnhandledError(err) {
+        unhandled.push(err);
+      },
+    });
+    const client = createPeer({
+      endpoint,
+      transport,
+      retryPolicy: { mode: "never" },
+    });
+
+    await client.connect();
+    // Wait for the server-side peer to close (frame loop threw and finalised)
+    await waitFor(() => server.connections.size === 0, { timeoutMs: 1000 });
+    expect(unhandled).toHaveLength(0);
+
+    await client.disconnect();
+    await server.close();
+  });
+});
+
+// ─── Fatal negotiation error ──────────────────────────────────────────────────
+
+describe("fatal negotiation error", () => {
+  it("goes to closed, not reconnecting", async () => {
+    const transport = new LoopbackTransport();
+    const endpoint = `loopback://fatal-neg-${++testCounter}`;
+
+    const server = await listen({
+      endpoint,
+      transport,
+      onConnection() {},
+    });
+
+    const fatalNegotiator: Negotiator = {
+      negotiate: async () => {
+        throw new Error("crypto failure");
+      },
+      classifyError: () => "fatal",
+      terminate: async () => {},
+    };
+
+    const client = createPeer({
+      endpoint,
+      transport,
+      negotiator: fatalNegotiator,
+      retryPolicy: {
+        mode: "on-error",
+        maxAttempts: 5,
+        initialDelayMs: 10,
+        maxDelayMs: 50,
+        jitter: 0,
+      },
+    });
+
+    const states: PeerState[] = [];
+    client.on("stateChange", ({ state }) => states.push(state));
+
+    await expect(client.connect()).rejects.toThrow();
+    expect(client.state).toBe("closed");
+    expect(states).not.toContain("reconnecting");
+
     await server.close();
   });
 });

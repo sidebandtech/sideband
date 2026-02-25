@@ -132,7 +132,7 @@ peer.rpc.handle("user.get", handlerB); // PeerError{ code: "rpc_method_already_r
 // Core factory
 function createPeer(options: PeerOptions): Peer;
 
-// Server
+// Server — import from "@sideband/peer/server" (Node/Bun only)
 function listen(options: ListenOptions): Promise<PeerServer>;
 
 // Negotiator factories
@@ -246,8 +246,8 @@ interface Peer {
 
   /**
    * Initiate connection. Returns a Promise that resolves on first "active".
-   * Can only be called from "idle". Idempotent: returns the same Promise if
-   * already "connecting" or "negotiating". Throws synchronously from "active",
+   * Legal from "idle" (starts connection), "connecting", or "negotiating"
+   * (returns the in-progress Promise). Throws synchronously from "active",
    * "paused", "reconnecting", or "closed".
    * Fatal errors are rejected on the Promise AND emitted via on("error").
    */
@@ -568,6 +568,8 @@ const PeerErrorCode = {
   BufferOverflow: "buffer_overflow",
   /** Peer exists but is not connected or is reconnecting. */
   NotConnected: "not_connected",
+  /** Send blocked because the session is temporarily paused by the relay. */
+  SessionPaused: "session_paused",
   /** connect() called from a state that does not allow it. */
   InvalidState: "invalid_state",
   /** Operation cancelled via AbortSignal (non-RPC, e.g. whenReady). */
@@ -623,12 +625,12 @@ if (result.ok) {
 
 ### 9.1 What Reconnection Does
 
-| Behavior               | Description                                      |
-| ---------------------- | ------------------------------------------------ |
-| Transport reconnect    | WebSocket closes → SDK reconnects after backoff  |
-| Session re-negotiation | Full SBP/SBRP handshake on each reconnect        |
-| Handler preservation   | RPC handlers and subscriptions survive reconnect |
-| State reset            | In-flight RPCs fail or remain pending per policy |
+| Behavior               | Description                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| Transport reconnect    | WebSocket closes → SDK reconnects after backoff                                |
+| Session re-negotiation | Full SBP/SBRP handshake on each reconnect                                      |
+| Handler preservation   | RPC handlers and subscriptions survive reconnect                               |
+| State reset            | In-flight RPCs always fail; unsent calls buffer or fail per `connectionPolicy` |
 
 ### 9.2 Reconnection Handling
 
@@ -656,8 +658,6 @@ if (!result.ok && result.reconnected) {
 
 In relay mode, when the daemon disconnects from the relay, the peer transitions to `"paused"` — the SBRP session is logically alive but traffic cannot flow.
 
-> **Note:** The `"paused"` state is wired in the state machine but relay control frame integration is not yet complete. The lifecycle below describes the target behavior.
-
 **State model during pause:**
 
 - `peer.state === "paused"` (distinct state, not a flag)
@@ -680,7 +680,7 @@ In relay mode, when the daemon disconnects from the relay, the peer transitions 
 
 1. Relay sends `session_paused` control frame to client
 2. SDK transitions `"active"` → `"paused"`; emits `stateChange` and `sessionPaused`
-3. Outbound messages buffered client-side (up to `maxBufferedEvents`)
+3. Outbound events buffered client-side (up to `eventPolicy.maxBufferedEvents`); unsent RPC calls buffered up to `rpcPolicy.disconnectBufferLimitBytes` if `onDisconnect: "pause"`
 4. When daemon reconnects, relay sends `session_resumed`
 5. SDK transitions `"paused"` → `"active"`; emits `stateChange` and `sessionResumed`
 6. Buffered messages sent; pending RPC calls continue waiting for response
@@ -730,11 +730,11 @@ Client and daemon roles use distinct negotiators because their handshake respons
 
 ### 10.4 TOFU Trust Policies
 
-| Policy     | First Connection  | Mismatch      | Use Case             |
-| ---------- | ----------------- | ------------- | -------------------- |
-| `"auto"`   | Auto-accept, warn | Call callback | Development only     |
-| `"prompt"` | Require callback  | Call callback | Production (default) |
-| `"strict"` | Reject if no pin  | Abort         | High-security        |
+| Policy     | First Connection | Mismatch                                       | Use Case             |
+| ---------- | ---------------- | ---------------------------------------------- | -------------------- |
+| `"auto"`   | Auto-accept      | Silent re-pin                                  | Development only     |
+| `"prompt"` | Require callback | Call `onIdentityMismatch()`, abort if rejected | Production (default) |
+| `"strict"` | Reject if no pin | Abort                                          | High-security        |
 
 ```typescript
 // Development: auto-accept (NOT RECOMMENDED for production)
@@ -784,7 +784,7 @@ const peer = createPeer({
 │     - "auto": Accept, pin, emit warning                          │
 │     - "prompt": Call onFirstConnection (REQUIRED)                │
 │     - "strict": Abort with handshake_failed                      │
-│  3. Events: stateChange → sessionPaused/active                   │
+│  3. State transitions to "active" via stateChange event          │
 └──────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -793,9 +793,10 @@ const peer = createPeer({
 │  1. SDK checks identityKeyStore for pinned key                   │
 │  2. Pin found; compare against daemon's key from handshake       │
 │  3a. Match → connection proceeds normally                        │
-│  3b. Mismatch → call onIdentityMismatch() callback               │
-│      - "strict": Abort (callback not called)                     │
-│      - "auto"/"prompt": Call callback, default abort             │
+│  3b. Mismatch:                                                   │
+│      - "strict": Abort (no callback)                             │
+│      - "prompt": Call onIdentityMismatch(), abort if rejected    │
+│      - "auto": Silent re-pin (no callback)                       │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -831,7 +832,7 @@ await peer.connect();
 **Local Daemon (Server):**
 
 ```typescript
-import { listen } from "@sideband/peer";
+import { listen } from "@sideband/peer/server";
 import { watch } from "fs";
 
 const server = await listen({

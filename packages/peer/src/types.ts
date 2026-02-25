@@ -34,7 +34,6 @@ export type Unsubscribe = () => void;
  * `"pause"`: unsent calls are buffered from any non-ready state, including
  *   before the first `connect()` (up to `rpcPolicy.disconnectBufferLimitBytes`);
  *   already in-flight calls are still rejected on disconnect.
- *   Full in-flight preservation requires Phase 5 pause signals.
  */
 export interface ConnectionPolicy {
   onDisconnect: "fail" | "pause";
@@ -239,7 +238,7 @@ export interface Peer {
 
   /**
    * Initiate connection. Returns a Promise that resolves on first `"active"`.
-   * Idempotent: returns the same Promise if already `"connecting"` / `"negotiating"`.
+   * No-op if already `"connecting"` or `"negotiating"` (returns a Promise resolving on `"active"`).
    * Throws synchronously from any other state.
    * Fatal errors are both rejected on the Promise AND emitted via `on("error")`.
    */

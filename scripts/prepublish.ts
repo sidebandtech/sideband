@@ -4,7 +4,8 @@
 // Prepublish script run before `changeset publish`:
 // 1. Replaces `workspace:^` with actual versions (npm doesn't understand workspace protocol)
 // 2. Removes the `bun` export condition (only needed for local dev)
-// 3. Copies LICENSE to each package's dist/
+// 3. Copies LICENSE to each package root (npm auto-includes it; keeps it out of dist/)
+// 4. Writes .npmignore to exclude test files from src/ in published tarballs
 
 import { readdirSync } from "fs";
 import { join } from "path";
@@ -39,7 +40,6 @@ const depFields = [
 
 for (const pkg of packages) {
   const pkgPath = join(packagesDir, pkg, "package.json");
-  const distDir = join(packagesDir, pkg, "dist");
   const pkgJson = JSON.parse(await Bun.file(pkgPath).text());
 
   let updated = false;
@@ -73,13 +73,16 @@ for (const pkg of packages) {
     console.log(`✓ Updated ${pkgJson.name}`);
   }
 
-  // Copy LICENSE to dist/
+  // Copy LICENSE to package root (npm auto-includes LICENSE from package root)
   try {
     const license = await Bun.file(licenseFile).text();
-    await Bun.write(join(distDir, "LICENSE"), license);
+    await Bun.write(join(packagesDir, pkg, "LICENSE"), license);
   } catch {
     console.warn(`⚠ Failed to copy LICENSE for ${pkgJson.name}`);
   }
+
+  // Exclude test files from src/ — src is shipped for AI tooling / source browsing
+  await Bun.write(join(packagesDir, pkg, ".npmignore"), "**/*.test.ts\n");
 }
 
 console.log("\n✓ Prepublish complete");

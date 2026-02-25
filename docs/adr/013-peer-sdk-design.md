@@ -38,7 +38,7 @@ function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
 
 **Grammar:**
 
-```
+```text
 event_name = segment ("." segment)*
 segment    = token | "*" | ">"
 token      = 1*SAFE_CHAR
@@ -68,14 +68,22 @@ SAFE_CHAR  = ALPHA | DIGIT | "-" | "_"
 
 **Rationale:** NATS semantics are proven in production messaging systems, have a simple non-regex matching implementation, and are familiar to pub/sub developers. Explicit prohibition of `**` prevents confusion with filesystem glob patterns.
 
+### 3. Server-only export split (`@sideband/peer/server`)
+
+`listen()` and server-side types are exported from the `@sideband/peer/server` subpath, not from the package root.
+
+**Rationale:** `listen()` imports Node/Bun server APIs. Including it in the root bundle would pull these into browser builds. Isolating it under `/server` keeps the main entry point tree-shakeable and safe for browser consumers without requiring conditional imports or polyfills.
+
 ## Consequences
 
 - `@sideband/peer` exposes `sbrpClientNegotiator` and `sbrpDaemonNegotiator`. They live in peer (not secure-relay) because peer already depends on runtime for `Negotiator`/`SbpNegotiator`, while secure-relay stays a pure crypto library with zero runtime dependencies.
 - `@sideband/peer` validates event patterns client-side via `onPattern()` / `validatePattern()`.
 - All documentation and examples MUST use `>` (not `**`) for multi-segment wildcard patterns.
+- Server-side consumers import from `@sideband/peer/server`; browser consumers import from `@sideband/peer`.
 
 ## References
 
 - `docs/sdk/peer.md` §6.4, §6.8 — Peer SDK RFC (SBRP negotiator and pub/sub API)
 - ADR-008: Channel Subject Validation
 - ADR-006: RPC Envelope
+- ADR-014: Peer SDK Session Signal Handling

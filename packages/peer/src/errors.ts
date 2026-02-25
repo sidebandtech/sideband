@@ -26,6 +26,8 @@ export const PeerErrorCode = {
   BufferOverflow: "buffer_overflow",
   /** Peer exists but is not yet connected or is reconnecting */
   NotConnected: "not_connected",
+  /** Send blocked because the session is temporarily paused by the relay */
+  SessionPaused: "session_paused",
   /** Operation rejected because peer is in the wrong lifecycle state */
   InvalidState: "invalid_state",
   /** Operation cancelled by AbortSignal (non-RPC contexts, e.g. whenReady) */

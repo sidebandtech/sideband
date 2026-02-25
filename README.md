@@ -12,7 +12,7 @@ Sideband is for apps that run a local process (daemon, agent, service) and need 
 ## Quick start
 
 ```ts
-import { createPeer, listen } from "@sideband/peer";
+import { listen } from "@sideband/peer/server";
 
 // Daemon
 const server = await listen({
@@ -21,6 +21,10 @@ const server = await listen({
     peer.rpc.handle<{ msg: string }, string>("echo", (p) => p.msg);
   },
 });
+```
+
+```ts
+import { createPeer } from "@sideband/peer";
 
 // Browser / client
 const peer = createPeer({ endpoint: "ws://localhost:8080" });
