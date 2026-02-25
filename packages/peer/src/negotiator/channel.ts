@@ -47,8 +47,7 @@ export function createSignalReplayer(): {
         throw new Error("SBRP channel: signals already subscribed");
       }
       listener = handler;
-      for (const s of buffer) handler(s);
-      buffer.length = 0;
+      for (const s of buffer.splice(0)) handler(s);
       return () => {
         listener = undefined;
       };
@@ -113,11 +112,8 @@ export function createSbrpChannel(
 
     inbound: {
       async *[Symbol.asyncIterator]() {
-        // Teardown strategy: natural close runs teardown() after the loop;
-        // exceptions (terminal frames, decrypt errors) go through catch.
-        // Consumer break (generator .return()) skips both — teardown is deferred
-        // to explicit close() so session keys stay live through the data phase.
-        // `finally` cannot be used: it fires on break too, premature-zeroizing keys.
+        // Consumer break (.return()) defers teardown to explicit close() so keys
+        // stay live through the data phase — `finally` would premature-zeroize them.
         try {
           for await (const bytes of conn.inbound) {
             if (closed) return;

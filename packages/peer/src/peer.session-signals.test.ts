@@ -3,6 +3,7 @@
 import type { Negotiator, SessionSignal } from "@sideband/runtime";
 import { LoopbackTransport } from "@sideband/transport";
 import { describe, expect, it } from "bun:test";
+import { PeerErrorCode } from "./errors.js";
 import { listen } from "./listen.js";
 import { createPeer, sbpNegotiator } from "./peer.js";
 import { waitFor } from "./peer.test-helpers.js";
@@ -439,6 +440,38 @@ describe("session signals — client Peer", () => {
         expect(result.value).toBe("pong");
         expect(result.reconnected).toBe(true);
       }
+    } finally {
+      await client.disconnect();
+      await server.close();
+    }
+  });
+
+  it("rpc.call() rejects with SessionPaused (not NotConnected) when paused and fail policy", async () => {
+    const transport = new LoopbackTransport();
+    const endpoint = `loopback://sig-client-rpc-paused-fail-${++testCounter}`;
+    const { negotiator, emitSignal } = withControllableSignals(sbpNegotiator());
+
+    const server = await listen({
+      endpoint,
+      transport,
+      onConnection: () => {},
+    });
+    // Default connectionPolicy: { onDisconnect: "fail" }
+    const client = createPeer({
+      endpoint,
+      transport,
+      negotiator,
+      retryPolicy: { mode: "never" },
+    });
+
+    try {
+      await client.connect();
+      emitSignal({ type: "session_paused" });
+      await waitFor(() => client.state === "paused");
+
+      await expect(client.rpc.call("anything")).rejects.toMatchObject({
+        code: PeerErrorCode.SessionPaused,
+      });
     } finally {
       await client.disconnect();
       await server.close();

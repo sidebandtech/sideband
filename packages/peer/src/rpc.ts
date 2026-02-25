@@ -364,6 +364,13 @@ export class RpcImpl implements RpcInterface {
 
     // Not ready — apply disconnect policy
     if (this.host.connectionPolicy.onDisconnect === "fail") {
+      // Mirror sendRaw: distinguish a paused relay from a missing connection so
+      // callers can react to rate-limiting vs. a dropped socket differently.
+      if (state === "paused") {
+        return Promise.reject(
+          new PeerError(PeerErrorCode.SessionPaused, "Session is paused"),
+        );
+      }
       return Promise.reject(
         new PeerError(PeerErrorCode.NotConnected, "Peer not connected"),
       );

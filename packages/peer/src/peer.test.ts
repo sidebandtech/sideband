@@ -5,7 +5,7 @@ import { LoopbackTransport } from "@sideband/transport";
 import { describe, expect, it } from "bun:test";
 import { PeerError, PeerErrorCode } from "./errors.js";
 import { listen } from "./listen.js";
-import { createPeer } from "./peer.js";
+import { createPeer, sbpNegotiator } from "./peer.js";
 import { waitFor } from "./peer.test-helpers.js";
 import type { AcceptedPeer, Peer, PeerServer, PeerState } from "./types.js";
 
@@ -1520,6 +1520,104 @@ describe("AcceptedPeer", () => {
 
     await client1.disconnect();
     await client2.disconnect().catch(() => {});
+    await server.close();
+  });
+});
+
+// ─── SbrpError duck-type forwarding ──────────────────────────────────────────
+//
+// @sideband/secure-relay is an optional peer dependency. listen.ts uses a
+// duck-type check (err.name === "SbrpError") instead of a static import so the
+// module loads correctly when the package is absent. These tests verify that the
+// duck-type contract is honoured: SbrpError-named errors reach onUnhandledError,
+// while generic errors from the frame loop are silently discarded.
+
+describe("SbrpError duck-type forwarding", () => {
+  function makeFaultyNegotiator(errName: string): Negotiator {
+    const base = sbpNegotiator();
+    return {
+      negotiate: async (conn) => {
+        const result = await base.negotiate(conn);
+        const err = new Error("frame loop failure");
+        err.name = errName;
+        return {
+          ...result,
+          // Replace the data-phase channel with one that throws immediately.
+          // The SBP handshake already completed over conn above, so substituting
+          // the inbound here only affects the frame loop, not negotiation.
+          channel: {
+            id: conn.id,
+            endpoint: conn.endpoint,
+            send: (data) => conn.send(data),
+            close: (opts) => conn.close(opts),
+            inbound: {
+              async *[Symbol.asyncIterator]() {
+                throw err;
+              },
+            },
+          },
+        };
+      },
+      classifyError: (e) => base.classifyError(e),
+      terminate: (c, o) => base.terminate(c, o),
+    };
+  }
+
+  it("errors named SbrpError are forwarded to onUnhandledError", async () => {
+    const transport = new LoopbackTransport();
+    const endpoint = `loopback://sbrp-err-fwd-${++testCounter}`;
+
+    const unhandled: Error[] = [];
+    const server = await listen({
+      endpoint,
+      transport,
+      negotiator: makeFaultyNegotiator("SbrpError"),
+      onConnection: () => {},
+      onUnhandledError(err) {
+        unhandled.push(err);
+      },
+    });
+    const client = createPeer({
+      endpoint,
+      transport,
+      retryPolicy: { mode: "never" },
+    });
+
+    await client.connect();
+    await waitFor(() => unhandled.length > 0, { timeoutMs: 1000 });
+    expect(unhandled[0]?.name).toBe("SbrpError");
+    expect(unhandled[0]?.message).toBe("frame loop failure");
+
+    await client.disconnect();
+    await server.close();
+  });
+
+  it("generic errors from the frame loop are silently discarded", async () => {
+    const transport = new LoopbackTransport();
+    const endpoint = `loopback://sbrp-err-drop-${++testCounter}`;
+
+    const unhandled: Error[] = [];
+    const server = await listen({
+      endpoint,
+      transport,
+      negotiator: makeFaultyNegotiator("Error"), // plain Error, not SbrpError
+      onConnection: () => {},
+      onUnhandledError(err) {
+        unhandled.push(err);
+      },
+    });
+    const client = createPeer({
+      endpoint,
+      transport,
+      retryPolicy: { mode: "never" },
+    });
+
+    await client.connect();
+    // Wait for the server-side peer to close (frame loop threw and finalised)
+    await waitFor(() => server.connections.size === 0, { timeoutMs: 1000 });
+    expect(unhandled).toHaveLength(0);
+
+    await client.disconnect();
     await server.close();
   });
 });

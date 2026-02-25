@@ -306,26 +306,24 @@ class PeerImpl implements Peer, RpcHost, EventHost {
   // ────────────────── Connection loop ─────────────────────────────────────
 
   private async runLoop(): Promise<void> {
-    // Capture subscribeSignals from the negotiation result but do NOT call it
-    // yet: calling it during negotiate() would replay buffered signals while
-    // state is still "negotiating", causing handleSessionSignal to discard them
-    // (the guard requires "active" or "paused"). Instead, call it after the
-    // peer transitions to "active" so replayed signals are correctly processed.
-    let pendingSubscribeSignals:
-      | ((h: (s: SessionSignal) => void) => () => void)
-      | undefined;
-
-    const wrappedNegotiator: Negotiator = {
-      negotiate: async (conn) => {
-        const result = await this.opts.negotiator.negotiate(conn);
-        pendingSubscribeSignals = result.subscribeSignals;
-        return result;
-      },
-      classifyError: (err) => this.opts.negotiator.classifyError(err),
-      terminate: (conn, opts) => this.opts.negotiator.terminate(conn, opts),
-    };
-
     while (!this.terminated) {
+      // Scoped per iteration: each reconnect attempt is fully isolated with no
+      // state bleed from the previous session's negotiation result.
+      // Capture subscribeSignals during negotiation but defer calling it until
+      // state is "active" — replayed signals must not fire while "negotiating".
+      let pendingSubscribeSignals:
+        | ((h: (s: SessionSignal) => void) => () => void)
+        | undefined;
+
+      const wrappedNegotiator: Negotiator = {
+        negotiate: async (conn) => {
+          const result = await this.opts.negotiator.negotiate(conn);
+          pendingSubscribeSignals = result.subscribeSignals;
+          return result;
+        },
+        classifyError: (err) => this.opts.negotiator.classifyError(err),
+        terminate: (conn, opts) => this.opts.negotiator.terminate(conn, opts),
+      };
       // Deferred for "this session closed"
       const closedDeferred = Promise.withResolvers<{
         reason: string;

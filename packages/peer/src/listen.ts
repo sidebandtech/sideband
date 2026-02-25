@@ -26,7 +26,6 @@ import {
   type MessageFrame,
 } from "@sideband/protocol";
 import { SbpNegotiator, type SessionSignal } from "@sideband/runtime";
-import { SbrpError } from "@sideband/secure-relay";
 import {
   unsafeAsTransportEndpoint,
   type TransportConnection,
@@ -375,7 +374,9 @@ class AcceptedPeerImpl implements AcceptedPeer, RpcHost, EventHost {
       // Surface SBRP errors (decrypt failures, malformed frames) so operators
       // can observe tampering or protocol bugs. Ignore plain transport closures
       // (TCP reset, etc.) — those are expected and not actionable.
-      if (err instanceof SbrpError) {
+      // Duck-type check avoids a static import of the optional @sideband/secure-relay
+      // peer dependency — a missing package would crash the module at load time.
+      if (err instanceof Error && err.name === "SbrpError") {
         this.opts.onUnhandledError(err);
       }
     } finally {
