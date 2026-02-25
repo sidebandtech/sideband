@@ -1,7 +1,7 @@
 # Session Lifecycle
 
-> **Authority**: Primary (Behavioral)
-> **Purpose**: Normative behavioral contract for session lifecycle, negotiators, retry policy, and termination ordering.
+> **Authority**: Primary (Behavioral)  
+> **Purpose**: Normative behavioral contract for session lifecycle, negotiators, retry policy, and termination ordering.  
 > **Status: Stub** — Normative content is captured in [ADR-009](../adr/009-runtime-peer-lifecycle.md) pending promotion to this document.
 
 ## Layer Boundary

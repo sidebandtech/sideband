@@ -22,7 +22,7 @@ Every document MUST start with:
 ```markdown
 # Document Title
 
-> **Authority**: Primary (Normative) | Supporting (Reference) | Navigation (Non-normative)
+> **Authority**: Primary (Normative) | Supporting (Reference) | Navigation (Non-normative)  
 > **Purpose**: One-line description of what this document defines.
 ```
 

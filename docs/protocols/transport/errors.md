@@ -1,7 +1,7 @@
 # Transport Errors
 
-> **Authority**: Primary (Normative)
-> **Purpose**: Error taxonomy and classification for transport operations
+> **Authority**: Primary (Normative)  
+> **Purpose**: Error taxonomy and classification for transport operations  
 > **See also**: [error-codes.md](../error-codes.md) (wire protocol errors), [transport/abi.md](./abi.md)
 
 ## Scope

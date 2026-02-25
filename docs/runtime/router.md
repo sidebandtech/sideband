@@ -1,6 +1,6 @@
 # Message Routing
 
-> **Authority**: Primary (Behavioral)
+> **Authority**: Primary (Behavioral)  
 > **Purpose**: Normative behavioral contract for handler registration, dispatch ordering, and error propagation.
 
 The router dispatches decoded `MessageFrame` payloads to registered handlers. It has no knowledge

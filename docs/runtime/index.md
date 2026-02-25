@@ -1,6 +1,6 @@
 # Runtime Behavioral Contracts
 
-> **Authority**: Navigation (non-normative)
+> **Authority**: Navigation (non-normative)  
 > **Purpose**: Index and layer boundary for runtime behavioral contracts.
 
 The `runtime/` layer defines externally observable behavioral contracts for `@sideband/runtime` — the session lifecycle, message routing, and RPC correlation semantics that peer and application layers depend on.

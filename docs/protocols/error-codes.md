@@ -1,6 +1,6 @@
 # Error Code Registry
 
-> **Authority**: Primary (Normative)
+> **Authority**: Primary (Normative)  
 > **Purpose**: Canonical registry for all error codes across protocol layers.
 
 This document is the single source of truth for error codes. Specifications MUST reference this registry; they MUST NOT define codes inline.

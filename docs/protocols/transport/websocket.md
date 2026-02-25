@@ -1,7 +1,7 @@
 # WebSocket Transport
 
-> **Authority**: Primary (Normative)
-> **Purpose**: WebSocket-specific transport rules and constraints.
+> **Authority**: Primary (Normative)  
+> **Purpose**: WebSocket-specific transport rules and constraints.  
 > **See also**: [transport/abi.md](./abi.md), [transport/errors.md](./errors.md), [RFC 6455](https://datatracker.ietf.org/doc/html/rfc6455)
 
 WebSocket-specific behaviors for `@sideband/transport-ws`. Complements the transport ABI with WebSocket protocol constraints.
