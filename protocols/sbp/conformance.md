@@ -5,6 +5,7 @@ url: /protocols/sbp/conformance.md
 
 > **Authority**: Supporting (Test specification)\
 > **Purpose**: Test vectors, fixtures, and validation checklist for SBP implementations.
+> **Status: Stub** — This document is a plan and not a complete conformance suite.
 
 Lightweight checklist for cross-implementation compatibility. Use deterministic fixtures; avoid network in golden tests.
 
@@ -25,11 +26,11 @@ Lightweight checklist for cross-implementation compatibility. Use deterministic 
 
 ## Subject namespace validation
 
-* MUST reject unknown prefix (e.g., `foo/bar`) with `ErrorFrame{code=1002}`
-* MUST reject `stream/` in v1 with `ErrorFrame{code=1003}`
+* MUST reject unknown subjects (e.g., `foo/bar`) with `ErrorFrame{code=1002}`
+* MUST reject `stream` in v1 with `ErrorFrame{code=1003}`
 * MUST set `ErrorFrame.id` to the offending frame's `frameId`
 * MUST continue processing after rejection (non-fatal)
-* MUST accept valid prefixes (`rpc/`, `event/`, `app/`)
+* MUST accept valid channels (`rpc`, `event`) and `app/` prefix
 * Round-trip: valid subjects route without error
 
 ## Negative fuzzing

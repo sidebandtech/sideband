@@ -1,21 +1,21 @@
 ---
 url: /adr/011-runtime-message-routing.md
 ---
-# ADR 011: Runtime Message Routing
+# ADR-011: Runtime Message Routing
 
 * **Date**: 2025-01-11
 * **Status**: Accepted
-* **Applies to**: Runtime
-* **Tags**: runtime, routing, handlers, dispatch
+* **Affects**: Runtime
 
 ## Context
 
-The runtime's Router layer dispatches incoming frames to handlers. The existing specs define subject namespaces (ADR-006, ADR-008) and RPC envelope structure (ADR-010), but do not specify:
+The runtime needs a message routing layer between the session (which delivers decoded frames) and application logic (which handles RPC, events, and custom protocols). The existing specs define subject namespaces (ADR-006, ADR-008) and RPC envelope structure (ADR-010), but do not specify:
 
 1. How handlers are registered and matched
 2. Dispatch ordering when multiple handlers match
 3. Error propagation from handlers
-4. Per-peer vs global handler scoping
+
+**Scope:** This ADR defines the `Router` in `@sideband/runtime` — a lower-level building block for subject-based message dispatch. `@sideband/peer` provides higher-level `rpc.handle()` and `events.on()` APIs with its own internal dispatch; it does not use the Router. The Router is intended for advanced use cases: custom `app/` prefix protocols, or building alternative SDKs that need subject-level routing.
 
 Key design goals:
 
@@ -33,10 +33,18 @@ The Router manages handler registration and dispatch:
 ```ts
 interface Router {
   /** Register handler for exact subject match */
-  route(subject: string, handler: MessageHandler, options?: RouteOptions): Unsubscribe;
+  route(
+    subject: string,
+    handler: MessageHandler,
+    options?: RouteOptions,
+  ): Unsubscribe;
 
   /** Register handler for subject prefix */
-  routePrefix(prefix: string, handler: MessageHandler, options?: RouteOptions): Unsubscribe;
+  routePrefix(
+    prefix: string,
+    handler: MessageHandler,
+    options?: RouteOptions,
+  ): Unsubscribe;
 
   /** Remove all handlers for a subject */
   unroute(subject: string): void;
@@ -46,7 +54,7 @@ interface Router {
 }
 
 interface RouteOptions {
-  mode?: "exclusive" | "broadcast";  // Default: inferred from prefix
+  mode?: "exclusive" | "broadcast"; // Default: inferred from prefix
 }
 
 type Unsubscribe = () => void;
@@ -71,7 +79,7 @@ interface InboundMessage {
   /** Send a response message (generates fresh frameId) */
   send(subject: Subject, data: Uint8Array): Promise<void>;
 
-  /** RPC context (only present for rpc/ subjects with valid envelope) */
+  /** RPC context (only present for `rpc` channel with valid envelope) */
   readonly rpc?: RpcContext;
 }
 
@@ -101,11 +109,14 @@ Subject prefixes are **policy-driven**, not type-locked:
 
 ```ts
 interface SubjectPolicy {
-  /** Required prefixes (default: ["rpc/", "event/", "stream/", "app/"]) */
-  allowedPrefixes: string[];
+  /** Exact-match channels (default: ["rpc", "event"]) */
+  allowedChannels: string[];
 
-  /** Prefixes that are reserved/rejected (default: ["stream/"]) */
-  reservedPrefixes: string[];
+  /** Channels that are reserved/rejected (default: ["stream"]) */
+  reservedChannels: string[];
+
+  /** Allowed prefixes (default: ["app/"]) */
+  allowedPrefixes: string[];
 
   /** Custom classifier for dispatch semantics */
   classify?(subject: string): SubjectKind;
@@ -116,35 +127,39 @@ type SubjectKind = "rpc" | "event" | "custom" | "reserved";
 
 **Validation order:**
 
-1. Check `reservedPrefixes` → reject with `ErrorFrame{code: 1003}` (UnsupportedFeature)
-2. Check `allowedPrefixes` → reject with `ErrorFrame{code: 1002}` (InvalidFrame) if no match
+1. Check `reservedChannels` → reject with `ErrorFrame{code: 1003}` (UnsupportedFeature)
+2. Check `allowedChannels` (exact match) or `allowedPrefixes` (prefix match) → reject with `ErrorFrame{code: 1002}` (InvalidFrame) if no match
 3. Run `classify()` if provided → determines dispatch semantics
 
-**Precedence:** `reservedPrefixes` always takes precedence over `allowedPrefixes`. If a prefix appears in both, it is reserved.
+**Precedence:** `reservedChannels` always takes precedence over `allowedChannels`. If a channel appears in both, it is reserved.
 
 **Classification invariant:** If `classify()` returns `"rpc"`, the message MUST contain a valid RPC envelope; otherwise the message is rejected with `ErrorFrame{code: 1002}` (InvalidFrame: malformed payload). This prevents semantic spoofing where non-RPC messages bypass envelope validation.
 
 **Default validation:**
 
-| Prefix | Kind | Default mode | Behavior |
-|--------|------|--------------|----------|
-| `rpc/` | `rpc` | `exclusive` | Single handler, must reply |
-| `event/` | `event` | `broadcast` | Fan-out, no reply |
-| `stream/` | `reserved` | — | Reject with ErrorFrame(1003) |
-| `app/` | `custom` | `broadcast` | User-defined semantics |
+| Subject  | Kind       | Default mode | Behavior                     |
+| -------- | ---------- | ------------ | ---------------------------- |
+| `rpc`    | `rpc`      | `exclusive`  | Single handler, must reply   |
+| `event`  | `event`    | `broadcast`  | Fan-out, no reply            |
+| `stream` | `reserved` | —            | Reject with ErrorFrame(1003) |
+| `app/*`  | `custom`   | `broadcast`  | User-defined semantics       |
 
-**Future extensibility:** Reserved prefixes (e.g., `stream/`) may be reclassified by negotiators in future protocol versions. V2 negotiators can advertise streaming capability and override the default reserved status.
+Note: `rpc`, `event`, and `stream` are exact-match channels. `app/` is a prefix supporting arbitrary sub-paths.
+
+**Future extensibility:** Reserved channels (e.g., `stream`) may be reclassified by negotiators in future protocol versions. V2 negotiators can advertise streaming capability and override the default reserved status.
 
 **Extensibility:**
 
 ```ts
-// Allow custom prefix
-const router = createRouter({
-  subjectPolicy: {
-    allowedPrefixes: ["rpc/", "event/", "app/", "debug/", "admin/"],
-    reservedPrefixes: ["stream/"],
-  }
-});
+// Allow custom prefixes for app protocols
+const router = createRouter(
+  {},
+  {
+    allowedChannels: ["rpc", "event"],
+    reservedChannels: ["stream"],
+    allowedPrefixes: ["app/", "debug/", "admin/"],
+  },
+);
 
 router.routePrefix("debug/", debugHandler);
 router.routePrefix("admin/", adminHandler, { mode: "exclusive" });
@@ -165,25 +180,27 @@ When multiple handlers match, dispatch follows deterministic rules:
 
 **Invocation:**
 
-| Mode | Behavior |
-|------|----------|
+| Mode        | Behavior                                    |
+| ----------- | ------------------------------------------- |
 | `exclusive` | First matching handler only; others ignored |
-| `broadcast` | All matching handlers invoked sequentially |
+| `broadcast` | All matching handlers invoked sequentially  |
 
 **Why sequential broadcast?** Handlers are awaited sequentially—the next handler is invoked only after the previous one resolves. This ensures deterministic side-effects. Concurrent invocation would introduce race conditions and make debugging harder. If parallel execution is needed, handlers can spawn their own async tasks.
 
-**Example:**
+**Example (for `app/` prefix subjects):**
 
 ```ts
-router.route("event/user.joined", handlerA);           // exact
-router.routePrefix("event/user.", handlerB);           // prefix (longer)
-router.routePrefix("event/", handlerC);                // prefix (shorter)
+router.route("app/metrics/cpu", handlerA); // exact
+router.routePrefix("app/metrics/", handlerB); // prefix (longer)
+router.routePrefix("app/", handlerC); // prefix (shorter)
 
-// Incoming: "event/user.joined"
+// Incoming: "app/metrics/cpu"
 // Dispatch order: handlerA (exact), then handlerB (longer prefix), then handlerC
 // For broadcast mode: all three called in order
 // For exclusive mode: only handlerA called
 ```
+
+Note: For `rpc` and `event` channels, dispatch is determined by envelope fields (`m` for RPC methods, `e` for event names), not by subject matching. The example above applies to `app/` prefix subjects and any custom prefixes.
 
 ### 5. RPC Dispatch Rules
 
@@ -201,13 +218,13 @@ For subjects classified as `rpc`:
 
 ```ts
 interface RouterConfig {
-  rpcTimeoutMs: number;  // Default: 30000 (30s)
+  rpcTimeoutMs: number; // Default: 30000 (30s)
 }
 ```
 
 ### 6. Event Dispatch Rules
 
-For `event/` subjects:
+For the `event` channel:
 
 1. Decode envelope (expect `RpcNotification`)
 2. If decode fails → log warning, drop (no response)
@@ -236,7 +253,7 @@ interface RpcErrorPayload {
 
 ```ts
 const defaultErrorMapper = (error: Error): RpcErrorPayload => ({
-  code: 2000,  // Application error range
+  code: 2000, // Application error range
   message: error.message,
 });
 ```
@@ -253,41 +270,36 @@ const router = createRouter({
       return { code: 2002, message: "Resource not found" };
     }
     return { code: 2000, message: error.message };
-  }
+  },
 });
 ```
 
 **Error code ranges** (see `docs/protocols/error-codes.md`):
 
-| Range | Owner | Examples |
-|-------|-------|----------|
-| 1000–1099 | SBP (protocol) | `InvalidFrame`, `ProtocolViolation` |
-| 1100–1199 | RPC (runtime) | `UnsupportedMethod` (1101), `Timeout` (1103) |
-| 2000+ | Application | User-defined |
+| Range     | Owner          | Examples                                     |
+| --------- | -------------- | -------------------------------------------- |
+| 1000–1099 | SBP (protocol) | `InvalidFrame`, `ProtocolViolation`          |
+| 1100–1199 | RPC (runtime)  | `UnsupportedMethod` (1101), `Timeout` (1103) |
+| 2000+     | Application    | User-defined                                 |
 
-### 8. Per-Session vs Global Handlers
+### 8. Handler Scoping
 
-Handlers can be registered at two levels:
+The Router is a standalone object created via `createRouter()`. It has no built-in concept of session scoping — all handlers registered on a Router instance live until explicitly unsubscribed or `clear()` is called.
+
+Session-scoped behavior is the caller's responsibility:
 
 ```ts
-// Global: survives session reconnects
-runtime.router.route("rpc/getStatus", handler);
+const router = createRouter();
 
-// Per-session: auto-cleared on session close
-session.router.route("rpc/sessionSpecific", handler);
+// Long-lived handler
+router.routePrefix("app/metrics/", metricsHandler);
+
+// Session-scoped: unsubscribe when session closes
+const unsub = router.route("app/session/state", sessionHandler);
+session.on("closed", () => unsub());
 ```
 
-**Use cases:**
-
-* Global: Service methods that should always be available
-* Per-session: Handlers tied to session state (e.g., authenticated user context)
-
-**Cleanup:**
-
-* `session.close()` → clears session-scoped handlers
-* `runtime.close()` → clears all handlers
-
-**Cleanup timing:** Session-scoped handlers are cleared **after** the `closed` event is emitted. This allows cleanup logic in event handlers to still inspect registered handlers if needed.
+For RPC and events, prefer the higher-level `peer.rpc.handle()` and `peer.events.on()` APIs from `@sideband/peer`, which handle lifecycle automatically. The Router API is for custom `app/` protocols or building alternative SDKs.
 
 ### 9. Preventing frameId Misuse
 
@@ -295,39 +307,38 @@ The API makes it hard to accidentally reuse frameId:
 
 ```ts
 // WRONG: Exposing frame for modification
-ctx.frame.frameId  // This would allow reuse
+ctx.frame.frameId; // This would allow reuse
 
 // RIGHT: Read-only frame, send() generates new frameId
-msg.send(subject, data);  // Always fresh frameId
+msg.send(subject, data); // Always fresh frameId
 
 // RIGHT: RPC reply uses cid for correlation, fresh frameId for response
-msg.rpc.reply(result);  // cid from request, new frameId
+msg.rpc.reply(result); // cid from request, new frameId
 ```
 
 Implementation:
 
 ```ts
 async function send(subject: Subject, data: Uint8Array): Promise<void> {
-  const frame = createMessageFrame(subject, data);  // Generates new frameId
-  await session.transport.send(encodeFrame(frame));
+  const frame = createMessageFrame(subject, data); // Generates new frameId
+  await session.send(encodeFrame(frame));
 }
 
 async function rpcReply(result: unknown): Promise<void> {
   const envelope: RpcSuccess = { t: "R", cid: this.cid, result };
   const frame = createMessageFrame(this.subject, encodeRpcEnvelope(envelope));
-  await session.transport.send(encodeFrame(frame));
+  await session.send(encodeFrame(frame));
 }
 ```
 
 ## Alternatives Considered
 
-| Alternative | Why Rejected |
-|-------------|--------------|
-| Type-locked `SubjectPrefix` union | Prevents custom prefixes; forces workarounds via `app/` |
-| `reply()` always available | Confusing for events; RPC-specific methods belong in `rpc` context |
-| Concurrent dispatch for all modes | Unpredictable ordering; sequential is safer default |
-| Global handlers only | Forces manual filtering by peerId; per-session is cleaner |
-| Glob/regex patterns | Over-engineering for v1; prefix matching covers 95% of cases |
+| Alternative                       | Why Rejected                                                       |
+| --------------------------------- | ------------------------------------------------------------------ |
+| Type-locked `SubjectPrefix` union | Prevents custom prefixes; forces workarounds via `app/`            |
+| `reply()` always available        | Confusing for events; RPC-specific methods belong in `rpc` context |
+| Concurrent dispatch for all modes | Unpredictable ordering; sequential is safer default                |
+| Glob/regex patterns               | Over-engineering for v1; prefix matching covers 95% of cases       |
 
 ## Consequences
 
@@ -336,12 +347,13 @@ async function rpcReply(result: unknown): Promise<void> {
 * **Extensible prefixes**: Policy-driven, not type-locked
 * **Clear RPC boundary**: `msg.rpc` only present when appropriate
 * **Flexible error handling**: Custom mappers for domain-specific codes
-* **Two scopes**: Global handlers persist; session handlers auto-clean
+* **Layered**: `@sideband/peer` provides high-level RPC/events APIs; the Router serves advanced use cases and custom protocols
 
 ## References
 
-* ADR-006 (RPC envelope, subject namespaces)
-* ADR-008 (subject namespace validation)
+* ADR-006 (RPC envelope, channel subjects)
+* ADR-008 (channel subject validation)
 * ADR-009 (session lifecycle)
 * ADR-010 (RPC correlation via `cid`)
-* `docs/protocols/sbp/errors.md` (error code ranges)
+* ADR-013 (peer SDK design — uses its own dispatch, not the Router)
+* `docs/protocols/error-codes.md` (error code ranges)

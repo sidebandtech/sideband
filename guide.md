@@ -14,20 +14,42 @@ bun add @sideband/peer
 ## Quick Example
 
 ```typescript
+import { listen } from "@sideband/peer/server";
 import { createPeer } from "@sideband/peer";
 
-const peer = createPeer({
-  peerId: "my-peer",
+// Server: register RPC handlers, push events to clients
+const server = await listen({
+  endpoint: "ws://0.0.0.0:8080",
+  onConnection(peer) {
+    peer.rpc.handle<{ path: string }, { content: string }>(
+      "file.read",
+      async ({ path }) => ({ content: await Bun.file(path).text() }),
+    );
+  },
 });
 
-// Subscribe to messages
-peer.subscribe("chat/*", (msg) => {
-  console.log("Received:", msg.data);
-});
+// Client: call RPCs, subscribe to events
+const peer = createPeer({ endpoint: "ws://localhost:8080" });
+await peer.connect();
 
-// Publish a message
-peer.publish("chat/general", { text: "Hello!" });
+const { content } = await peer.rpc.call<{ content: string }>("file.read", {
+  path: "./README.md",
+});
 ```
+
+## Guides
+
+Recommended order for new users:
+
+| Guide                           | Description                                                   |
+| ------------------------------- | ------------------------------------------------------------- |
+| [Concepts](concepts.md)         | 1) Mental model: peers, sessions, subjects, state machine     |
+| [RPC](rpc.md)                   | 2) Request/response patterns, typed clients, errors, timeouts |
+| [Events](events.md)             | 3) Fire-and-forget events, NATS pattern subscriptions         |
+| [Server](server.md)             | 4) `listen()`, AcceptedPeer, connection management            |
+| [E2EE Relay](e2ee.md)           | 5) End-to-end encrypted sessions via SBRP and TOFU            |
+| [Testing](testing.md)           | 6) LoopbackTransport and integration testing patterns         |
+| [Self-Hosting](self-hosting.md) | Relay architecture and deployment status (roadmap-oriented)   |
 
 ## Packages
 

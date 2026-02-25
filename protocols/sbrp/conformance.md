@@ -8,7 +8,7 @@ url: /protocols/sbrp/conformance.md
 
 Use this checklist to verify conformance with SBRP. Requirements reference:
 
-* [cryptography-and-wire.md](./cryptography-and-wire.md) — crypto primitives and wire format
+* [wire-crypto.md](./wire-crypto.md) — crypto primitives and wire format
 * [state-machine.md](./state-machine.md) — state transitions and control semantics
 * [control-codes.md](./control-codes.md) — code values
 * [authentication.md](./authentication.md) — token validation
@@ -28,6 +28,7 @@ Items tagged MUST/SHOULD mirror normative requirements.
 * \[ ] MUST start sequence numbers at 0 and increment per message per direction.
 * \[ ] MUST reject messages outside the replay window; MUST use bitmap window >= 64 and SHOULD use >= 128.
 * \[ ] MUST handle large sequence jumps in O(1) by resetting the bitmap rather than iterating.
+* \[ ] MUST NOT allow sequence wrap with the same directional traffic key; on sequence exhaustion, MUST terminate the session and re-handshake before sending more encrypted frames.
 * \[ ] MUST preserve sequence state on resume without handshake; if lost, MUST force full handshake.
 
 ## Client (UI)
@@ -43,18 +44,18 @@ Items tagged MUST/SHOULD mirror normative requirements.
 * \[ ] MUST handle `Control(session_pending)` to indicate daemon reconnected, awaiting readiness.
 * \[ ] MUST handle `Control(session_resumed)` by resuming with retained session state.
 * \[ ] MUST handle `Control(session_expired)` by initiating full reconnect with new handshake.
-* \[ ] SHOULD complete handshake within 30 seconds of WebSocket open; MUST abort with `handshake_failed` on timeout.
+* \[ ] SHOULD complete handshake within 30 seconds of WebSocket open; MUST abort with `handshake_timeout` on timeout.
 * \[ ] SHOULD warn when storage is unavailable or ephemeral (private/incognito).
 * \[ ] MUST NOT parse Control message text for behavioral decisions; use only the code.
 
 ## Daemon (Agent)
 
 * \[ ] MUST generate and persist a long-lived Ed25519 identity keypair; register public key with control plane.
-* \[ ] MUST sign its ephemeral X25519 public key in `HandshakeAccept`.
+* \[ ] MUST include identity public key and signed ephemeral X25519 public key in `HandshakeAccept`.
 * \[ ] MUST sign with the identity key currently registered as active at the control plane.
 * \[ ] MUST maintain per-client session state (keys, seq, replay window) independently.
 * \[ ] MUST handle `Control(session_ended)` by cleaning up per-session state (keys, seq counters, replay window).
-* \[ ] SHOULD complete handshake within 30 seconds of receiving `HandshakeInit`; MUST abort with `handshake_failed` on timeout.
+* \[ ] SHOULD complete handshake within 30 seconds of receiving `HandshakeInit`; MUST abort with `handshake_timeout` on timeout.
 * \[ ] SHOULD store identity keys with restrictive permissions (e.g., 0600).
 * \[ ] SHOULD best-effort zeroize ephemeral key material after use.
 
@@ -85,13 +86,13 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 * \[ ] MUST reject `Signal` (`0x04`) received from clients as `disallowed_sender` if header is parseable.
 * \[ ] MUST reject `Control` (`0x20`) received from peers as `disallowed_sender` if header is parseable.
 * \[ ] MUST close WebSocket with `Control(malformed_frame, SessionID=0)` if frame header is malformed or truncated.
-* \[ ] MUST rate-limit connections and message throughput per §8.6.
+* \[ ] MUST rate-limit connections and message throughput; when throttling, MUST use `Control(rate_limited)` with SID=0 (connection-level).
 * \[ ] MUST send `Control(session_paused)` to client when daemon disconnects.
 * \[ ] MUST send `Control(session_pending)` to client when resumable daemon reconnects within grace period.
 * \[ ] MUST NOT send `Control(session_resumed)` until receiving `Signal(ready)` from daemon (resumable daemons only).
 * \[ ] MUST send `Control(session_expired)` to client and close WebSocket when grace window expires.
 * \[ ] MUST send `Control(session_ended)` to daemon when client disconnects, if daemon is connected; silently tear down pairing if daemon is offline.
-* \[ ] MUST validate JWT tokens: issuer, audience (`sideband-relay`), expiration, and role/daemon/client claims per Appendix C.
+* \[ ] MUST validate JWT tokens per [authentication.md](./authentication.md): signature/JWKS, issuer, audience (`sideband-relay`), expiration, and required role/daemon/client claims.
 * \[ ] MUST verify `sid` in token (base64url-decoded to uint64) matches frame header SessionID for client connections.
 * \[ ] MUST NOT generate Control frames that leak information derived from encrypted payloads.
 * \[ ] MUST NOT include identifiers (daemonId, clientId, sessionId, tokens) in Control message text.
@@ -100,10 +101,10 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 
 ### Frame Validation Order
 
-* \[ ] MUST validate frames in order per §13.3: header parse → payload size → frame type → SessionID validity → frame direction.
+* \[ ] MUST validate frames in order per [wire-crypto.md](./wire-crypto.md): header parse → payload size → frame type → SessionID validity → frame direction.
 * \[ ] MUST use `invalid_session_id` (SID=0) if session-bound frame has SessionID=0 or Ping/Pong has non-zero SessionID.
 * \[ ] MUST use `disallowed_sender` with header's SessionID only after SessionID validity passes.
-* \[ ] MUST use `rate_limited` with SID=0 (connection-level per §8.6).
+* \[ ] MUST use `rate_limited` with SID=0 (connection-level).
 
 ### Keepalive (Ping/Pong)
 
@@ -117,10 +118,10 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 
 ### Wire Codes (Relay → Endpoint)
 
-* \[ ] MUST use code ranges per §14.1: 0x01xx auth, 0x02xx routing, 0x03xx session, 0x04xx wire, 0x06xx internal, 0x09xx rate, 0x10xx state.
-* \[ ] MUST use correct SessionID scope per §14.1 SID column: 0 for connection-level errors, non-zero for session-specific events.
-* \[ ] Terminal codes (T in §14.1) MUST close WebSocket after sending.
-* \[ ] Non-terminal codes (N in §14.1) MUST NOT close WebSocket.
+* \[ ] MUST use code ranges per [control-codes.md](./control-codes.md): 0x01xx auth, 0x02xx routing, 0x03xx session, 0x04xx wire, 0x06xx internal, 0x09xx rate, 0x10xx state.
+* \[ ] MUST use correct SessionID scope per [control-codes.md](./control-codes.md) SID column: 0 for connection-level errors, non-zero for session-specific events.
+* \[ ] Terminal codes (T in [control-codes.md](./control-codes.md)) MUST close WebSocket after sending.
+* \[ ] Non-terminal codes (N in [control-codes.md](./control-codes.md)) MUST NOT close WebSocket.
 
 ### Endpoint Codes (SDK Only)
 
@@ -130,13 +131,3 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 * \[ ] `handshake_timeout` (0xE003) MUST trigger connection close after 30s.
 * \[ ] `decrypt_failed` (0xE004) MUST trigger connection close.
 * \[ ] `sequence_error` (0xE005) MUST reject message; MAY trigger connection close.
-
-## Optional: Quick Connect (Control Plane)
-
-* \[ ] MUST be disabled by default; require explicit operator opt-in for production deployments.
-* \[ ] MUST issue time-limited codes (≤5 minutes) and enforce expiry server-side.
-* \[ ] MUST rate-limit code generation (e.g., max 10 per minute per daemon).
-* \[ ] MUST enforce TTL eviction; SHOULD enforce one-time use; MAY use durable storage with TTL for HA.
-* \[ ] MUST issue standard relay session token after code validation; relay sees no difference.
-* \[ ] Client MUST perform normal E2EE handshake with signature verification.
-* \[ ] SHOULD warn that Quick Connect provides reduced authentication guarantees.

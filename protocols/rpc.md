@@ -10,14 +10,13 @@ RPC is a **semantic layer** carried inside SBP Message frames. It does not defin
 
 ## Relationship to SBP
 
-RPC envelopes are encoded in `MessageFrame.data`. Subject prefixes determine envelope semantics: `rpc/` for request/response, `event/` for notifications. See [envelope.md#subject-namespacing](./envelope.md#subject-namespacing).
+RPC envelopes are encoded in `MessageFrame.data`. Channel subjects determine envelope semantics: `rpc` for request/response, `event` for notifications. See [envelope.md#subject-namespacing](./envelope.md#subject-namespacing).
 
 ## Delegation
 
 This protocol delegates:
 
 * **Wire format**: Inherits SBP frame structure (see [sbp/wire-format.md](../sbp/wire-format.md))
-* **Error codes**: Reuses SBP protocol errors (1000-1999); defines application errors (2000+) in envelope.md
 * **Ordering**: Inherits SBP ordering guarantees (see [sbp/behavior.md](../sbp/behavior.md))
 
 This protocol defines:
@@ -25,15 +24,16 @@ This protocol defines:
 * **Envelope format**: See [envelope.md](./envelope.md)
 * **Correlation**: See [behavior.md](./behavior.md)
 * **Subject namespacing**: See [envelope.md](./envelope.md)
+* **Error code range**: Defines codes 1100-1199 for envelope errors.
 
 ## Errors
 
-RPC defines error codes in the 1050–1099 range (see [envelope.md](./envelope.md#error-codes)). It also uses:
+RPC defines error codes in the 1100–1199 range. See [envelope.md](./envelope.md#error-codes). It operates alongside:
 
-* SBP protocol errors (1000–1049) — see [sbp/errors.md](../sbp/errors.md)
+* SBP protocol errors (1000–1099) — see [sbp/errors.md](../sbp/errors.md)
 * Application errors (2000+) — defined per-method
 
-See [Error Code Ownership](../architecture.md#error-code-ownership) for the full allocation.
+See the canonical [Error Code Registry](../error-codes.md) for all assignments.
 
 ## Documents
 

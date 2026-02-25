@@ -32,7 +32,7 @@ and can be carried over relay (SBRP) or direct (SBDP) session layers.
 
 ## Related Documents
 
-* [Protocol Architecture](../architecture.md): Layer stack, wrapping rules, dependency invariants
+* [Protocol Architecture](../stack.md): Layer stack, wrapping rules, dependency invariants
 * ADR-001: Protocol versioning
 * ADR-002: Naming matrix
 * ADR-003: Control frame invariants

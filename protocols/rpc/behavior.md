@@ -62,7 +62,7 @@ Multiple requests MAY be in flight simultaneously:
 
 `RpcNotification` (`t:"N"`) is fire-and-forget:
 
-* MUST use `event/` subjects (see [envelope.md](./envelope.md#subject-namespacing))
+* MUST use `event` channel (see [envelope.md](./envelope.md#subject-namespacing))
 * No `cid` (no correlation)
 * No response expected
 * No delivery guarantee beyond transport layer
@@ -73,15 +73,15 @@ RpcError is request-scoped and MUST NOT trigger transport close.
 
 ## Invalid Envelope Handling
 
-Error handling differs by subject prefix to prevent amplification attacks while preserving diagnostics.
+Error handling differs by subject channel to prevent amplification attacks while preserving diagnostics.
 
-### For `rpc/*` Subjects
+### For `rpc` Channel
 
 * If envelope is invalid **but `cid` is extractable**: respond with `RpcError{code: 1100, cid, message}`
 * If envelope is invalid **and `cid` is not extractable**: emit `ErrorFrame{code: 1002}` and continue (non-fatal)
 * MUST NOT close connection for a single invalid envelope
 
-### For `event/*` Subjects
+### For `event` Channel
 
 * If envelope is invalid: MUST drop
 * MAY log (rate-limited to prevent log DoS)

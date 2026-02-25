@@ -4,7 +4,7 @@ url: /protocols/sbrp/security-checklist.md
 # Security Checklist
 
 > **Authority**: Supporting (Non-normative)\
-> **Purpose**: Auditor-facing verification checklist. Requirements are defined in [cryptography-and-wire.md](./cryptography-and-wire.md) and [state-machine.md](./state-machine.md).
+> **Purpose**: Auditor-facing verification checklist. Requirements are defined in [wire-crypto.md](./wire-crypto.md) and [state-machine.md](./state-machine.md).
 
 This checklist summarizes security requirements from normative documents. For authoritative definitions, see the referenced specifications.
 

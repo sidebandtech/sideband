@@ -1,7 +1,7 @@
 ---
 url: /adr/001-protocol-versioning-and-compatibility.md
 ---
-# ADR 001: Protocol Versioning & Compatibility
+# ADR-001: Protocol Versioning & Compatibility
 
 * **Date**: 2025-11-22
 * **Status**: Accepted

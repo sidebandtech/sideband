@@ -5,11 +5,11 @@ url: /protocols.md
 
 Sideband is a layered communication stack for browser-to-daemon communication, designed to work reliably behind NAT with end-to-end encryption.
 
-> These specifications are implementation-neutral. You may implement them in any language or runtime, including proprietary systems, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) terms.
+> These specifications are implementation-neutral. You may implement them in any language or runtime, including proprietary systems, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) terms. The wire format uses standard binary encoding (little-endian, length-prefixed) and widely supported cryptographic primitives (ChaCha20-Poly1305, X25519, Ed25519). The reference implementation and SDK are TypeScript.
 
 ## Architecture
 
-**Start here**: [Protocol Architecture](./architecture.md) defines layering, frame wrapping rules, and dependency invariants. All specifications below must be consistent with the architecture document.
+**Start here**: [Protocol Architecture](./stack.md) defines layering, frame wrapping rules, and dependency invariants. All specifications below must be consistent with the architecture document.
 
 ```text
 ┌───────────────────────────────────────────────────┐
@@ -33,7 +33,7 @@ Sideband is a layered communication stack for browser-to-daemon communication, d
 | Semantic       | RPC      | v1     | Typed request/response patterns        |
 
 ::: info
-RPC envelopes live inside `MessageFrame.data`. Session layers (SBRP/SBDP) encrypt entire SBP frames; they never inspect RPC content. See [architecture](./architecture.md) for wrapping rules.
+RPC envelopes live inside `MessageFrame.data`. Session layers (SBRP/SBDP) encrypt entire SBP frames; they never inspect RPC content. See [architecture](./stack.md) for wrapping rules.
 :::
 
 ## SBP (Sideband Protocol)

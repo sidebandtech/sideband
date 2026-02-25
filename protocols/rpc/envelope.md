@@ -4,10 +4,10 @@ url: /protocols/rpc/envelope.md
 # RPC Envelope Specification
 
 > **Authority**: Primary (Normative)\
-> **Purpose**: Defines envelope structure, subject namespacing, and validation rules for RPC.
+> **Purpose**: Defines envelope structure, channel subject rules, and validation for RPC.
 
 **Date**: 2025-11-23
-**References**: [Protocol Architecture](../architecture.md), ADR-010, ADR-006, ADR-002
+**References**: [Protocol Architecture](../stack.md), ADR-010, ADR-006, ADR-002
 
 ## Overview
 
@@ -15,18 +15,20 @@ The RPC envelope is a canonical structure carried inside `MessageFrame.data`. It
 
 Encoded as JSON (v1) or CBOR (v2+).
 
-## Subject Namespacing
+## Channel Subjects
 
-RPC envelope semantics apply to `rpc/` and `event/` namespaces. The `MessageFrame.subject` prefix determines which envelope types are valid.
+RPC envelope semantics apply to `rpc` and `event` channel subjects. The `MessageFrame.subject` determines which envelope types are valid.
 
-| Subject Prefix | Allowed `t`         | Semantics                          |
-| -------------- | ------------------- | ---------------------------------- |
-| `rpc/`         | `"r"`, `"R"`, `"E"` | Bidirectional request/response     |
-| `event/`       | `"N"`               | Fire-and-forget notification       |
-| `stream/`      | —                   | Reserved (v2); reject per SBP      |
-| `app/`         | —                   | Vendor-defined; not parsed as RPC envelope |
+| Subject  | Allowed `t`         | Semantics                                  |
+| -------- | ------------------- | ------------------------------------------ |
+| `rpc`    | `"r"`, `"R"`, `"E"` | Bidirectional request/response             |
+| `event`  | `"N"`               | Fire-and-forget notification               |
+| `stream` | —                   | Reserved (v2); reject per SBP              |
+| `app/*`  | —                   | Vendor-defined; not parsed as RPC envelope |
 
-Receivers MUST validate envelope `t` against subject prefix for `rpc/` and `event/` subjects. Mismatched envelopes MUST be dropped; receivers SHOULD log. This is non-fatal; continue processing subsequent frames.
+Note: `rpc`, `event`, and `stream` are exact-match channel subjects. Method/event dispatch happens via envelope fields (`m` for RPC methods, `e` for event names). The `app/` prefix supports arbitrary sub-paths.
+
+Receivers MUST validate envelope `t` against subject channel for `rpc` and `event` subjects. Mismatched envelopes MUST be dropped; receivers SHOULD log. This is non-fatal; continue processing subsequent frames.
 
 Rationale: There is no valid subject to reply on. The sender receives a timeout, which signals failure; the receiver log provides diagnostics.
 
@@ -73,7 +75,7 @@ RPC defines error codes in the 1100–1199 range:
 | 1101 | UnsupportedMethod   | Method not recognized by handler                |
 | 1102 | CorrelationMismatch | Response cid does not match any pending request |
 | 1103 | Timeout             | Request timed out waiting for response          |
-| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject prefix  |
+| 1104 | EnvelopeMismatch    | Envelope type incompatible with subject channel |
 
 Application errors use range 2000+ (user-defined).
 
@@ -99,9 +101,9 @@ This preserves the `frameId` invariant and enables relays, proxies, and fan-out 
 
 ## Validation Rules
 
-* **Subject**: Must match allowed `t` per [Subject Namespacing](#subject-namespacing)
+* **Subject**: Must match allowed `t` per [Channel Subjects](#channel-subjects)
 * **Request**: `t: "r"`, `m` and `cid` required
 * **Response**: `t: "R"` or `t: "E"` with `code`, `message`, `cid`
-* **Notification**: `t: "N"`, `e` required; uses `event/` subjects
+* **Notification**: `t: "N"`, `e` required; uses `event` channel
 
-Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `architecture.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).
+Unroutable envelope failures (e.g., unparseable payload) escalate to `ErrorFrame` per `stack.md#error-scope-and-transport-authority`. Subject-envelope mismatches are handled per [Subject Namespacing](#subject-namespacing).

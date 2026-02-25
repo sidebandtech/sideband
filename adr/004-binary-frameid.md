@@ -1,7 +1,7 @@
 ---
 url: /adr/004-binary-frameid.md
 ---
-# ADR 004: Binary FrameId Representation
+# ADR-004: Binary FrameId Representation
 
 * **Date**: 2025-11-23
 * **Status**: Accepted

@@ -18,14 +18,16 @@ Semantic guarantees and expectations that sit above the raw frame format. Applie
 
 SBP defines the canonical subject namespace for `MessageFrame.subject`. Higher layers (RPC, pub/sub) interpret payloads but do not own namespace rules.
 
-### Recognized prefixes
+### Recognized subjects
 
-| Prefix    | Purpose                         |
-| --------- | ------------------------------- |
-| `rpc/`    | RPC request/response            |
-| `event/`  | Fire-and-forget pub/sub         |
-| `stream/` | Streaming (reserved for v2)     |
-| `app/`    | Vendor-specific / custom        |
+| Subject  | Purpose                     |
+| -------- | --------------------------- |
+| `rpc`    | RPC request/response        |
+| `event`  | Fire-and-forget events      |
+| `stream` | Streaming (reserved for v2) |
+| `app/*`  | Vendor-specific / custom    |
+
+Note: `rpc`, `event`, and `stream` are exact-match channel subjects. The `app/` prefix supports arbitrary sub-paths.
 
 Subjects MUST be non-empty UTF-8 with no NUL characters. Implementations SHOULD limit to 256 bytes; oversize subjects MAY be rejected.
 
