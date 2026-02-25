@@ -43,10 +43,10 @@ if (frame.kind === FrameKind.Control) {
   console.log("control frame received");
 }
 
-// Send an application message
+// Send an application message (method identity lives in the payload, not the subject)
 const msg = createMessageFrame(
-  asSubject("rpc/echo"),
-  new TextEncoder().encode("hello"),
+  asSubject("rpc"),
+  new TextEncoder().encode(JSON.stringify({ m: "echo", p: "hello" })),
 );
 const msgBytes = encodeFrame(msg);
 ```
