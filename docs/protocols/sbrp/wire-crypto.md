@@ -46,6 +46,7 @@ Client                     Relay                    Daemon
    │                         │                         │  2. Sign ephemeral with Ed25519
    │                         │                         │
    │◄───────────────────────────── HandshakeAccept (0x02)
+   │                         │   [32B Ed25519 key]     │  ← identityPublicKey (TOFU)
    │                         │   [32B X25519 key]      │  ← daemonEphemeralPublicKey
    │                         │   [64B signature]       │  ← Ed25519 signature
    │                         │                         │
@@ -84,7 +85,7 @@ valid = Ed25519.verify(pinnedIdentityPublicKey, signaturePayload, signature)
 
 If verification fails, abort handshake immediately.
 
-**Handshake timeout:** Handshake SHOULD complete within 30 seconds. Client measures from WebSocket open; daemon measures from receiving `HandshakeInit`. Implementations MUST abort with `handshake_failed` if the timeout expires.
+**Handshake timeout:** Handshake SHOULD complete within 30 seconds. Client measures from WebSocket open; daemon measures from receiving `HandshakeInit`. Implementations MUST abort with `handshake_timeout` if the timeout expires.
 
 **Why this prevents MITM:**
 
@@ -93,7 +94,7 @@ If verification fails, abort handshake immediately.
 3. Signature binds to specific daemonId, preventing cross-daemon confusion
 4. Signature binds to specific clientEphemeralPublicKey, preventing replay
 
-**Design note:** The relay origin is not included in the signature payload because daemonId is globally unique within the control plane's namespace. Token claims (`did`, optional `region`) bind sessions to specific daemons and relays. Cross-region replay is prevented by the `region` claim validation at token verification time, not at the cryptographic layer.
+**Scope note:** Relay-region or relay-origin binding belongs to token validation in [authentication.md](./authentication.md), not the handshake signature payload.
 
 ### 1.5 Key Derivation
 
@@ -226,15 +227,15 @@ All relay communication uses binary frames over WebSocket (binary message type).
 
 ### 3.2 Frame Types
 
-| Type            | Hex    | Direction       | SessionID | Description                            |
-| --------------- | ------ | --------------- | --------- | -------------------------------------- |
-| HandshakeInit   | `0x01` | Client → Daemon | Required  | Client's ephemeral X25519 key          |
-| HandshakeAccept | `0x02` | Daemon → Client | Required  | Daemon's signed ephemeral key          |
-| Data            | `0x03` | Either          | Required  | E2EE application payload               |
-| Signal          | `0x04` | Daemon → Relay  | Required  | Session lifecycle command              |
-| Ping            | `0x10` | Either          | Zero      | Keepalive request (connection-scoped)  |
-| Pong            | `0x11` | Either          | Zero      | Keepalive response (connection-scoped) |
-| Control         | `0x20` | Relay → Peer    | Varies    | Errors and state notifications         |
+| Type            | Hex    | Direction       | SessionID | Description                              |
+| --------------- | ------ | --------------- | --------- | ---------------------------------------- |
+| HandshakeInit   | `0x01` | Client → Daemon | Required  | Client's ephemeral X25519 key            |
+| HandshakeAccept | `0x02` | Daemon → Client | Required  | Daemon's identity key + signed ephemeral |
+| Data            | `0x03` | Either          | Required  | E2EE application payload                 |
+| Signal          | `0x04` | Daemon → Relay  | Required  | Session lifecycle command                |
+| Ping            | `0x10` | Either          | Zero      | Keepalive request (connection-scoped)    |
+| Pong            | `0x11` | Either          | Zero      | Keepalive response (connection-scoped)   |
+| Control         | `0x20` | Relay → Peer    | Varies    | Errors and state notifications           |
 
 **Reserved frame type ranges:**
 
@@ -273,14 +274,16 @@ Payload structure is defined per frame type. These formats are parsed by endpoin
 └─────────────────────────┘
 ```
 
-**HandshakeAccept (`0x02`)** — 96 bytes:
+**HandshakeAccept (`0x02`)** — 128 bytes:
 
 ```text
-┌─────────────────────────┐
-│ acceptPublicKey (32B)   │  X25519 ephemeral public key
-├─────────────────────────┤
-│ signature (64B)         │  Ed25519 signature (see §1.4)
-└─────────────────────────┘
+┌──────────────────────────┐
+│ identityPublicKey (32B)  │  Ed25519 identity public key (TOFU)
+├──────────────────────────┤
+│ acceptPublicKey (32B)    │  X25519 ephemeral public key
+├──────────────────────────┤
+│ signature (64B)          │  Ed25519 signature (see §1.4)
+└──────────────────────────┘
 ```
 
 **Data (`0x03`)** — variable length:
@@ -446,10 +449,10 @@ Client → Relay → Daemon:
          └─ Type = HandshakeInit
 
 Daemon → Relay → Client:
-  Frame: 02 00000060 0000000000000001 <32 bytes acceptPublicKey><64 bytes signature>
-         │  │        │                └─ Payload (96 bytes)
+  Frame: 02 00000080 0000000000000001 <32 bytes identityPublicKey><32 bytes acceptPublicKey><64 bytes signature>
+         │  │        │                └─ Payload (128 bytes)
          │  │        └─ SessionID = 1
-         │  └─ Length = 96
+         │  └─ Length = 128
          └─ Type = HandshakeAccept
 
 Client → Relay → Daemon (first encrypted message):
@@ -511,10 +514,10 @@ Frame: 20 00000002 0000000000000001 10 01
 With optional diagnostic message:
 
 ```text
-Frame: 20 00000016 0000000000000001 10 01 "Daemon disconnected"
+Frame: 20 00000015 0000000000000001 10 01 "Daemon disconnected"
        │  │        │                │     └─ UTF-8 message (optional)
        │  │        │                └─ code = 0x1001 (session_paused)
        │  │        └─ SessionID = 1
-       │  └─ Length = 22 (2 bytes code + 20 bytes message)
+       │  └─ Length = 21 (2 bytes code + 19 bytes message)
        └─ Type = Control
 ```

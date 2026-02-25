@@ -109,7 +109,7 @@ Client                     Relay                    Daemon
    │                         │                         │  Generate ephemeral
    │                         │                         │  Sign with Ed25519
    │◄───────────────────────────── HandshakeAccept (0x02)
-   │                         │   [32B key + 64B sig]   │
+   │                         │   [32B id + 32B key + 64B sig]
    │  Verify signature       │                         │
    │  Derive session keys    │                         │
    │◄══════════ Encrypted frames (0x03) ══════════════►│

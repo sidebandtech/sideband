@@ -1,8 +1,8 @@
 # RFC: @sideband/peer SDK
 
-**Status:** Draft · Phases 0–4, 6, and 7 (partial) implemented · Phase 5 (SBRP) pending
+**Status:** Active
 **Created:** 2026-01-13
-**Updated:** 2026-02-24
+**Updated:** 2026-02-25
 
 ## 1. Summary
 
@@ -18,97 +18,50 @@
 
 This includes indie developers building local-first tools (AI agents, dev tools, desktop apps) who need browser↔daemon communication today, and secure relay access tomorrow.
 
-**Design Goals:**
-
-1. Progressive disclosure: `createPeer()` with `sbpNegotiator()` for localhost, `sbrpClientNegotiator()` for relay
-2. Full TypeScript inference without manual casts
-3. Secure by default: explicit negotiator selection, no URL-based auto-detection
-4. Hard to misuse: invalid configuration fails at construction, not runtime
-5. Graduation path: same SDK for local dev and production E2EE relay
-
 ---
 
 ## 2. Use Cases
 
 ### UC1: Local Development (Browser ↔ Local Daemon)
 
-**Actor:** Frontend developer building a desktop app with a web-based UI.
-
-**Scenario:** Browser UI communicates with a local daemon (Bun/Node on `localhost:8080`) for file system access, system commands, or local services.
-
-```
+```text
 Browser (UI) ←—— WebSocket ——→ Local Daemon (localhost:8080)
 ```
 
-**Requirements:**
-
-- Direct WebSocket connection (no relay)
-- Fast reconnection on daemon restart
-- Bidirectional RPC (UI calls daemon; daemon pushes events to UI)
-
-**Security:** Transport is trusted (loopback interface). No E2EE required.
-
----
+Direct WebSocket on loopback. Fast reconnection on daemon restart. Bidirectional RPC. No E2EE required.
 
 ### UC2: Remote Management (Browser ↔ Cloud Daemon via E2EE Relay)
 
-**Actor:** DevOps engineer managing cloud infrastructure through a web dashboard.
-
-**Scenario:** Browser connects to a daemon on a remote VM. Traffic routes through `wss://relay.sideband.cloud` which handles routing but cannot read message contents.
-
-```
+```text
 Browser ←—— E2EE (SBRP) ——→ Relay Server ←—— E2EE (SBRP) ——→ Cloud Daemon
 ```
 
-**Requirements:**
-
-- End-to-end encryption (relay sees only metadata)
-- TOFU identity pinning (detect daemon impersonation)
-- Automatic reconnection through relay
-- Session pause/resume when daemon temporarily disconnects
-
-**Security:** Relay is untrusted. All application data encrypted with ChaCha20-Poly1305. Daemon identity verified via Ed25519 signatures.
-
----
+End-to-end encrypted via ChaCha20-Poly1305 over an untrusted relay. TOFU identity pinning. Session pause/resume when daemon temporarily disconnects.
 
 ### UC3: Service Mesh (Daemon ↔ Daemon)
 
-**Actor:** Backend services communicating within a cluster.
-
-**Scenario:** Multiple daemons communicate directly for service-to-service RPC or event propagation.
-
-```
+```text
 Daemon A ←—— WebSocket/TCP ——→ Daemon B
 ```
 
-**Requirements:**
-
-- Server-side listening capability
-- Multiple concurrent connections
-- High throughput with backpressure handling
-
-**Security:** Transport security via TLS. Application-level E2EE optional.
+Server-side listening, multiple concurrent connections. Application-level E2EE optional.
 
 ---
 
-## 3. Non-Goals (v1)
+## 3. Out of Scope
 
-| Non-Goal                            | Rationale                                         |
-| ----------------------------------- | ------------------------------------------------- |
-| **Data synchronization / CRDTs**    | Use Yjs, Automerge, or Gun.js                     |
-| **Service discovery**               | Peers must know endpoints upfront                 |
-| **Multi-party group communication** | v1 is point-to-point                              |
-| **Offline-first / message queuing** | SDK requires active connection                    |
-| **Streaming RPC**                   | Reserved for v2 via `stream/` subject prefix      |
-| **Built-in presence**               | Defer to v2; requires additional protocol support |
+- Data synchronization / CRDTs
+- Service discovery (peers must know endpoints upfront)
+- Multi-party group communication (point-to-point only)
+- Offline-first / message queuing
+- Streaming RPC
+- Built-in presence
 
 ---
 
 ## 4. Design Principles
 
-### 4.1 Layered Architecture (Not God Object)
-
-The SDK separates concerns into distinct components:
+### 4.1 Layered Architecture
 
 | Component          | Responsibility                                          |
 | ------------------ | ------------------------------------------------------- |
@@ -117,109 +70,42 @@ The SDK separates concerns into distinct components:
 | **Events**         | Fire-and-forget event emission and listening            |
 | **Peer**           | Coordinator exposing the three above; no business logic |
 
-This separation enables:
+### 4.2 Explicit Negotiator Selection
 
-- Independent testing of each layer
-- Future extraction (e.g., `@sideband/rpc-browser` standalone)
-- Clear error attribution by layer
+The negotiator determines the session protocol (SBP for direct, SBRP for relay). This is security-critical — URL-based auto-detection is deliberately avoided. Security posture must be explicit and auditable. Defaults to `sbpNegotiator()` for direct connections. See ADR-013.
 
-### 4.2 Explicit Negotiator Selection (No Auto-Detection)
+### 4.3 Fail Fast
 
-The negotiator determines the session protocol (SBP for direct, SBRP for relay). This is security-critical and must be explicit:
+Invalid configuration and programming errors throw synchronously at the call site:
 
 ```typescript
-// Direct mode: plain SBP handshake (default when negotiator omitted)
-const peer = createPeer({
-  endpoint: "ws://localhost:8080",
-  negotiator: sbpNegotiator(),
-});
-
-// Relay mode: E2EE with TOFU identity (Phase 5)
-const peer = createPeer({
-  endpoint: "wss://relay.example.com",
-  negotiator: sbrpClientNegotiator({
-    daemonId: "my-daemon",
-    keyStorage: createBrowserKeyStorage(),
-  }),
-});
-```
-
-**Why no auto-detection:**
-
-- URL patterns are unreliable (self-hosted relays, TLS for direct P2P)
-- Security posture should be explicit and auditable
-- Enables future protocols (TURN, QUIC+SBRP) without API changes
-
-### 4.3 Explicit Construction, No Sugar Wrappers
-
-`createPeer()` requires an explicit `negotiator`. There are no `createDirectPeer()` / `createRelayPeer()` shortcuts — explicit construction keeps the security model visible and auditable. `sbpNegotiator()` is the default and is ergonomic enough that no alias is needed.
-
-### 4.4 Type Safety Without Ceremony
-
-Full TypeScript inference using function-signature format for `TypedRpcClient<T>`:
-
-```typescript
-interface Api {
-  "user.get": (params: { id: string }) => User;
-  "user.list": (params: void) => User[];
-}
-
-const api = peer.rpc.client<Api>();
-const user = await api["user.get"]({ id: "123" }); // user: User, inferred
-const users = await api["user.list"](); // no params required
-```
-
-### 4.5 Fail Fast, Fail Loud
-
-Invalid configuration and programming errors throw synchronously at the call site, not at runtime:
-
-```typescript
-// Throws synchronously: method already registered
 peer.rpc.handle("user.get", handlerA);
 peer.rpc.handle("user.get", handlerB); // PeerError{ code: "rpc_method_already_registered" }
-
-// Throws synchronously: invalid pattern
-peer.events.onPattern("user.**", handler); // PeerError{ code: "invalid_pattern" }
-```
-
-### 4.6 Policy vs Mechanism Separation
-
-Behavior is configurable via policy objects, not hardcoded:
-
-```typescript
-const peer = createPeer({
-  endpoint: "ws://localhost:8080",
-  connectionPolicy: { onDisconnect: "pause" },
-  rpcPolicy: { defaultTimeoutMs: 5_000 },
-  eventPolicy: { maxBufferedEvents: 256 },
-});
 ```
 
 ---
 
 ## 5. Architecture
 
-### 5.1 Layer Diagram
-
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        @sideband/peer                           │
 │                                                                 │
-│  ┌─────────────────┐  ┌──────────────┐  ┌──────────────────┐   │
-│  │ PeerConnection  │  │  RpcClient   │  │     Events       │   │
-│  │  (lifecycle +   │  │  (request/   │  │  (emit/on,       │   │
-│  │   negotiation)  │  │   response)  │  │   fire-forget)   │   │
-│  └────────┬────────┘  └──────┬───────┘  └────────┬─────────┘   │
+│  ┌─────────────────┐  ┌──────────────┐  ┌───────────────────┐   │
+│  │ PeerConnection  │  │  RpcClient   │  │      Events       │   │
+│  │  (lifecycle +   │  │  (request/   │  │     (emit/on,     │   │
+│  │   negotiation)  │  │   response)  │  │    fire-forget)   │   │
+│  └────────┬────────┘  └──────┬───────┘  └─────────┬─────────┘   │
 │           │                  │                    │             │
 │  ┌────────┴──────────────────┴────────────────────┴──────────┐  │
-│  │                         Peer                               │  │
-│  │  (coordinator: wires connection + router + correlation)    │  │
-│  └────────┬───────────────────────────────────────────────────┘  │
-│           │                                                      │
-│  ┌────────┴─────────────┐              ┌──────────────────────┐  │
-│  │     Negotiator       │              │      Transport       │  │
-│  │  (SBP or SBRP)       │              │    (WebSocket)       │  │
-│  └──────────────────────┘              └──────────────────────┘  │
+│  │                         Peer                              │  │
+│  │  (coordinator: wires connection + router + correlation)   │  │
+│  └────────┬──────────────────────────────────────────────────┘  │
+│           │                                                     │
+│  ┌────────┴─────────────┐              ┌─────────────────────┐  │
+│  │     Negotiator       │              │      Transport      │  │
+│  │  (SBP or SBRP)       │              │    (WebSocket)      │  │
+│  └──────────────────────┘              └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
          │                                        │
          ▼                                        ▼
@@ -228,15 +114,13 @@ const peer = createPeer({
   @sideband/rpc                        @sideband/protocol
 ```
 
-### 5.2 Component Responsibilities
-
-| Component          | Responsibility                                   | Does NOT                          |
-| ------------------ | ------------------------------------------------ | --------------------------------- |
-| **Peer**           | Wire components together; expose namespaces      | Contain lifecycle/RPC/event logic |
-| **PeerConnection** | Transport lifecycle; state machine; reconnection | Parse message content             |
-| **RpcClient**      | Correlation; typed clients; timeouts             | Manage transport                  |
-| **Events**         | Subscriptions; client-side filtering             | Guarantee delivery                |
-| **Negotiator**     | Session establishment (SBP/SBRP)                 | Persist keys                      |
+| Component          | Responsibility                                   |
+| ------------------ | ------------------------------------------------ |
+| **Peer**           | Wire components together; expose namespaces      |
+| **PeerConnection** | Transport lifecycle; state machine; reconnection |
+| **RpcClient**      | Correlation; typed clients; timeouts             |
+| **Events**         | Subscriptions; client-side filtering             |
+| **Negotiator**     | Session establishment (SBP/SBRP)                 |
 
 ---
 
@@ -257,7 +141,7 @@ function sbpNegotiator(opts?: {
   capabilities?: string[];
   handshakeTimeoutMs?: number;
 }): Negotiator;
-// sbrpClientNegotiator / sbrpDaemonNegotiator — Phase 5, see §10
+// sbrpClientNegotiator / sbrpDaemonNegotiator — see §10
 
 // Pattern utilities (also exported from the package)
 function isValidEventName(name: string): boolean;
@@ -274,7 +158,7 @@ interface PeerOptions {
 
   /**
    * Session negotiator. Defaults to sbpNegotiator() (plain SBP handshake).
-   * Pass sbrpClientNegotiator(...) for E2EE relay mode (Phase 5).
+   * Pass sbrpClientNegotiator(...) for E2EE relay mode.
    */
   negotiator?: Negotiator;
 
@@ -310,8 +194,8 @@ interface ConnectionPolicy {
    * - "pause": Unsent calls are buffered up to rpcPolicy.disconnectBufferLimitBytes
    *   (from any non-ready state, including before first connect); overflow →
    *   PeerError{ code: "buffer_overflow" }. Already in-flight calls are still
-   *   rejected on disconnect. Full in-flight preservation requires Phase 5
-   *   pause signals.
+   *   rejected on disconnect. In-flight calls are not preserved across reconnects;
+   *   applications must implement retry or idempotency if required.
    */
   onDisconnect: "fail" | "pause";
 }
@@ -417,7 +301,7 @@ type ReconnectionOutcome =
 
 **State machine:**
 
-```
+```text
 idle → connecting → negotiating → active ↔ paused
 active | paused | connecting | negotiating → reconnecting → connecting → …
 any → closed  (terminal)
@@ -425,15 +309,6 @@ any → closed  (terminal)
 
 `"reconnecting"` creates `peer.reconnecting` promise (one per cycle).
 `"paused"` does not create a `reconnecting` promise — the session is alive.
-
-**State quick reference:**
-
-| Need                         | Check                                       |
-| ---------------------------- | ------------------------------------------- |
-| Can I send right now?        | `peer.ready` (`state === "active"`)         |
-| Is the session established?  | `peer.connected` (`"active"` or `"paused"`) |
-| Is reconnection in progress? | `peer.reconnecting !== undefined`           |
-| Is the peer in SBRP pause?   | `peer.state === "paused"`                   |
 
 ### 6.6 PeerEvents
 
@@ -473,8 +348,8 @@ interface RpcInterface {
 
   /**
    * Like call() but never throws. Returns { ok, value, reconnected }.
-   * reconnected: true means the call survived a readiness gap and completed after
-   * readiness was restored.
+   * reconnected: true means the peer was not in "active" state when the call
+   * was initiated (e.g., buffered before first connect or across a reconnect).
    */
   tryCall<R = unknown>(
     method: string,
@@ -594,7 +469,7 @@ Valid characters in segment tokens: `A-Z`, `a-z`, `0-9`, `-`, `_`. Case-sensitiv
 
 ### 6.9 AcceptedPeer
 
-`AcceptedPeer` is the server-side view of a connection. It is handed to `ListenOptions.onConnection` after negotiation completes.
+`AcceptedPeer` is the server-side view of a connection, handed to `ListenOptions.onConnection` after negotiation completes.
 
 ```typescript
 interface AcceptedPeer {
@@ -633,7 +508,7 @@ interface ListenOptions {
 
   /**
    * Session negotiator. Defaults to sbpNegotiator().
-   * Pass sbrpDaemonNegotiator(...) for E2EE relay mode (Phase 5).
+   * Pass sbrpDaemonNegotiator(...) for E2EE relay mode.
    */
   negotiator?: Negotiator;
   transport?: Transport;
@@ -669,17 +544,8 @@ class PeerError extends Error {
   readonly details?: Record<string, unknown>;
 }
 
-/** Transport-layer errors (WebSocket close, network failure). */
-class TransportPeerError extends PeerError {}
-
-/** Protocol-layer errors (handshake failure, version mismatch). */
-class ProtocolPeerError extends PeerError {}
-
 /** RPC-layer errors (timeout, cancellation, handler error). */
 class RpcPeerError extends PeerError {}
-
-/** SBRP-layer errors (identity mismatch, key storage). Phase 5. */
-class SbrpPeerError extends PeerError {}
 ```
 
 ### 7.2 Error Codes
@@ -698,8 +564,6 @@ const PeerErrorCode = {
   RpcError: "rpc_error",
   /** Invalid NATS pattern or event name (onPattern, on, emit). */
   InvalidPattern: "invalid_pattern",
-  /** Key storage I/O failure (SBRP only, Phase 5). */
-  KeyStorageError: "key_storage_error",
   /** Outbound RPC buffer full (onDisconnect: "pause" only). */
   BufferOverflow: "buffer_overflow",
   /** Peer exists but is not connected or is reconnecting. */
@@ -742,7 +606,7 @@ if (result.ok) {
 } else {
   console.error(result.error.code);
   if (result.reconnected) {
-    // Connection was lost and restored during the call; decide retry based on idempotency
+    // Connection was lost and restored during this call; decide retry based on idempotency
   }
 }
 ```
@@ -751,7 +615,7 @@ if (result.ok) {
 
 ## 8. Observability
 
-`onUnhandledError` (in `PeerOptions` and `ListenOptions`) is the v1 observability hook — it captures errors that have no other delivery path (e.g. event handler throws). A `PeerObserver` interface for OpenTelemetry-style instrumentation (state transitions, RPC durations, metrics) is deferred to v2.
+`onUnhandledError` (in `PeerOptions` and `ListenOptions`) is the observability hook — it captures errors that have no other delivery path (e.g. event handler throws). A `PeerObserver` interface for OpenTelemetry-style instrumentation is out of scope.
 
 ---
 
@@ -762,20 +626,11 @@ if (result.ok) {
 | Behavior               | Description                                      |
 | ---------------------- | ------------------------------------------------ |
 | Transport reconnect    | WebSocket closes → SDK reconnects after backoff  |
-| Session re-negotiation | Full SBP/SBRP handshake on each reconnect (v1)   |
+| Session re-negotiation | Full SBP/SBRP handshake on each reconnect        |
 | Handler preservation   | RPC handlers and subscriptions survive reconnect |
 | State reset            | In-flight RPCs fail or remain pending per policy |
 
-### 9.2 What Reconnection Does NOT Do (v1)
-
-| Behavior              | Why Not                                                          |
-| --------------------- | ---------------------------------------------------------------- |
-| Session resume        | Protocol v1 doesn't support resumption (except SBRP daemon-side) |
-| RPC retry             | Application must decide retry policy                             |
-| Message replay        | Fire-and-forget events are lost if not delivered                 |
-| Exactly-once delivery | Out of scope; use RPC for confirmation                           |
-
-### 9.3 Reconnection Handling
+### 9.2 Reconnection Handling
 
 ```typescript
 // Wait for current reconnection cycle
@@ -791,15 +646,17 @@ if (peer.reconnecting) {
 // RPC with reconnection awareness
 const result = await peer.rpc.tryCall("save", data);
 if (!result.ok && result.reconnected) {
-  // Connection dropped and restored during this call.
-  // Request may or may not have been delivered before the drop.
+  // Peer was not active when the call was initiated.
+  // Request may or may not have been delivered.
   // Decide retry based on operation idempotency.
 }
 ```
 
-### 9.4 SBRP Session Pause/Resume
+### 9.3 SBRP Session Pause/Resume
 
 In relay mode, when the daemon disconnects from the relay, the peer transitions to `"paused"` — the SBRP session is logically alive but traffic cannot flow.
+
+> **Note:** The `"paused"` state is wired in the state machine but relay control frame integration is not yet complete. The lifecycle below describes the target behavior.
 
 **State model during pause:**
 
@@ -811,13 +668,13 @@ In relay mode, when the daemon disconnects from the relay, the peer transitions 
 - RPC calls remain pending (up to limits) if `onDisconnect: "pause"`
 - RPC calls fail immediately if `onDisconnect: "fail"` (default)
 
-**Buffering ownership model:**
+**Buffering ownership:**
 
-| Layer  | Buffering responsibility                                   |
-| ------ | ---------------------------------------------------------- |
-| SDK    | Client-side buffer (authoritative); enforces all limits    |
-| Relay  | Best-effort forwarding; may drop if overwhelmed            |
-| Daemon | Server-side buffer for paused clients (SBRP daemon config) |
+| Layer      | Responsibility                                             |
+| ---------- | ---------------------------------------------------------- |
+| **SDK**    | Client-side buffer (authoritative); enforces all limits    |
+| **Relay**  | Best-effort forwarding; may drop if overwhelmed            |
+| **Daemon** | Server-side buffer for paused clients (SBRP daemon config) |
 
 **Pause lifecycle:**
 
@@ -832,9 +689,9 @@ If the session expires (daemon does not reconnect in time), the peer transitions
 
 ---
 
-## 10. Security Model (SBRP — Phase 5)
+## 10. Security Model (SBRP)
 
-SBRP (Sideband Bridge Relay Protocol) provides end-to-end encryption over an untrusted relay. Phase 5 implements this on top of the existing peer lifecycle.
+SBRP (Sideband Bridge Relay Protocol) provides end-to-end encryption over an untrusted relay, built on top of the existing peer lifecycle.
 
 ### 10.1 Threat Model
 
@@ -859,7 +716,7 @@ SBRP (Sideband Bridge Relay Protocol) provides end-to-end encryption over an unt
 | Daemon ID              | —         | Yes              |
 | Session ID             | —         | Yes              |
 
-### 10.3 Negotiator API (Phase 5)
+### 10.3 Negotiator API
 
 ```typescript
 // Client-side (browser / CLI)
@@ -869,7 +726,7 @@ function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator;
 function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
 ```
 
-The old single `sbrpNegotiator()` was never shipped. Client and daemon roles require distinct negotiators because their handshake responsibilities differ (client verifies daemon identity; daemon presents identity and registers with relay).
+Client and daemon roles use distinct negotiators because their handshake responsibilities differ: the client verifies daemon identity via TOFU, while the daemon presents its identity key pair and registers with the relay. See ADR-013.
 
 ### 10.4 TOFU Trust Policies
 
@@ -885,7 +742,8 @@ const peer = createPeer({
   endpoint: "wss://relay.example.com",
   negotiator: sbrpClientNegotiator({
     daemonId: "dev-daemon",
-    keyStorage,
+    sessionId,
+    identityKeyStore,
     trustPolicy: "auto",
   }),
 });
@@ -895,7 +753,8 @@ const peer = createPeer({
   endpoint: "wss://relay.example.com",
   negotiator: sbrpClientNegotiator({
     daemonId: "prod-daemon",
-    keyStorage,
+    sessionId,
+    identityKeyStore,
     trustPolicy: "prompt",
     onFirstConnection: ({ fingerprint }) => {
       return showConfirmDialog(`Trust daemon ${fingerprint}?`);
@@ -908,7 +767,8 @@ const peer = createPeer({
   endpoint: "wss://relay.example.com",
   negotiator: sbrpClientNegotiator({
     daemonId: "secure-daemon",
-    keyStorage, // Must already contain the pinned key
+    sessionId,
+    identityKeyStore, // Must already contain the pinned key
     trustPolicy: "strict",
   }),
 });
@@ -916,26 +776,26 @@ const peer = createPeer({
 
 ### 10.5 TOFU Lifecycle
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────────┐
-│                     First Connection                              │
-│  1. SDK checks keyStorage for pinned key                          │
-│  2. No pin found:                                                 │
-│     - "auto": Accept, pin, emit warning                           │
-│     - "prompt": Call onFirstConnection (REQUIRED)                 │
-│     - "strict": Abort with key_storage_error                      │
-│  3. Events: stateChange → sessionPaused/active                    │
+│                     First Connection                             │
+│  1. SDK checks identityKeyStore for pinned key                   │
+│  2. No pin found:                                                │
+│     - "auto": Accept, pin, emit warning                          │
+│     - "prompt": Call onFirstConnection (REQUIRED)                │
+│     - "strict": Abort with handshake_failed                      │
+│  3. Events: stateChange → sessionPaused/active                   │
 └──────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                   Subsequent Connections                          │
-│  1. SDK checks keyStorage for pinned key                          │
-│  2. Pin found; compare against daemon's key from handshake        │
-│  3a. Match → connection proceeds normally                         │
-│  3b. Mismatch → call onIdentityMismatch() callback                │
-│      - "strict": Abort (callback not called)                      │
-│      - "auto"/"prompt": Call callback, default abort              │
+│                   Subsequent Connections                         │
+│  1. SDK checks identityKeyStore for pinned key                   │
+│  2. Pin found; compare against daemon's key from handshake       │
+│  3a. Match → connection proceeds normally                        │
+│  3b. Mismatch → call onIdentityMismatch() callback               │
+│      - "strict": Abort (callback not called)                     │
+│      - "auto"/"prompt": Call callback, default abort             │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -943,7 +803,7 @@ const peer = createPeer({
 
 ## 11. Usage Examples
 
-### 11.1 UC1: Local Development
+### 11.1 Local Development
 
 **Browser (Client):**
 
@@ -1003,26 +863,31 @@ const server = await listen({
 console.log("Listening on", server.address);
 ```
 
-### 11.2 UC2: E2EE Relay (Phase 5)
+### 11.2 E2EE Relay
 
 **Browser (Client):**
 
 ```typescript
-import { createPeer, sbrpClientNegotiator } from "@sideband/peer";
+import { createPeer } from "@sideband/peer";
+import {
+  sbrpClientNegotiator,
+  createMemoryIdentityKeyStore,
+} from "@sideband/peer/sbrp";
 
 const peer = createPeer({
   endpoint: "wss://relay.sideband.cloud",
   negotiator: sbrpClientNegotiator({
     daemonId: "daemon-prod-001",
-    keyStorage: createBrowserKeyStorage(),
+    sessionId,
+    identityKeyStore: createMemoryIdentityKeyStore(),
     trustPolicy: "prompt",
     onFirstConnection: ({ fingerprint }) => {
       return showConfirmDialog(`Trust daemon ${fingerprint}?`);
     },
-    onIdentityMismatch: ({ expected, received }) => {
+    onIdentityMismatch: ({ expectedFingerprint, receivedFingerprint }) => {
       return showSecurityDialog({
         title: "Security Warning",
-        message: `Daemon identity changed!\nExpected: ${expected}\nReceived: ${received}`,
+        message: `Daemon identity changed!\nExpected: ${expectedFingerprint}\nReceived: ${receivedFingerprint}`,
       });
     },
   }),
@@ -1039,13 +904,14 @@ const status = await peer.rpc.call("system.status");
 **Cloud Daemon:**
 
 ```typescript
-import { createPeer, sbrpDaemonNegotiator } from "@sideband/peer";
+import { createPeer } from "@sideband/peer";
+import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
 
 const peer = createPeer({
   endpoint: "wss://relay.sideband.cloud",
   negotiator: sbrpDaemonNegotiator({
     daemonId: process.env.DAEMON_ID!,
-    serverIdentity: await loadIdentityKeyPair("./daemon-identity.key"),
+    identityKeyPair: await loadIdentityKeyPair("./daemon-identity.key"),
   }),
 });
 
@@ -1059,72 +925,17 @@ await peer.connect();
 console.log("Daemon connected to relay");
 ```
 
-### 11.3 UC3: Typed RPC
-
-```typescript
-// shared/api.ts — shared type definitions
-export interface DaemonApi {
-  "user.get": (params: { id: string }) => {
-    id: string;
-    name: string;
-    email: string;
-  };
-  "user.list": (params: void) => { users: User[]; total: number };
-  "user.update": (params: { id: string; data: Partial<User> }) => {
-    success: boolean;
-  };
-}
-
-// client.ts — browser
-import type { DaemonApi } from "./shared/api";
-import { createPeer, sbpNegotiator } from "@sideband/peer";
-
-const peer = createPeer({ endpoint: "ws://localhost:8080" });
-await peer.connect();
-
-const api = peer.rpc.client<DaemonApi>();
-
-const user = await api["user.get"]({ id: "123" });
-//    ^? { id: string; name: string; email: string }
-
-const { users, total } = await api["user.list"]();
-//      ^? User[]
-
-// server.ts — daemon
-const server = await listen({
-  endpoint: "ws://0.0.0.0:8080",
-  onConnection(peer) {
-    peer.rpc.handle<{ id: string }>("user.get", ({ id }) =>
-      db.users.findById(id),
-    );
-
-    peer.rpc.handle("user.list", () =>
-      db.users.all().then((users) => ({ users, total: users.length })),
-    );
-  },
-});
-```
-
 ---
 
 ## 12. References
 
-### Internal
-
-- [ADR-002: Naming Matrix](../adr/002-naming-matrix.md)
 - [ADR-006: RPC Envelope](../adr/006-rpc-envelope.md)
 - [ADR-009: Runtime Peer Lifecycle](../adr/009-runtime-peer-lifecycle.md)
 - [ADR-010: RPC Correlation](../adr/010-rpc-correlation-cid.md)
 - [ADR-011: Runtime Message Routing](../adr/011-runtime-message-routing.md)
 - [ADR-012: WebSocket Transport Design](../adr/012-websocket-transport-design.md)
+- [ADR-013: Peer SDK Design](../adr/013-peer-sdk-design.md)
 - [Project Structure](../architecture/project-structure.md)
 - [SBP Protocol](../protocols/sbp/)
 - [SBRP Protocol](../protocols/sbrp/)
 - [RPC Spec](../protocols/rpc/)
-
-### External
-
-- [Socket.IO Client API](https://socket.io/docs/v4/client-api/) — Event patterns, reconnection
-- [Phoenix Channels](https://hexdocs.pm/phoenix/channels.html) — Push/receive, presence
-- [Ably Realtime](https://ably.com/docs/api/realtime-sdk) — Connection states, error handling
-- [libp2p JavaScript](https://github.com/libp2p/js-libp2p) — Peer identity, protocols

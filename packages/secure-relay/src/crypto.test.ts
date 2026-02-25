@@ -153,7 +153,7 @@ describe("crypto", () => {
 
       const signature = signPayload(payload, privateKey);
       // Tamper with signature
-      signature[0] ^= 0xff;
+      signature[0] = signature[0]! ^ 0xff;
 
       const valid = verifySignature(payload, signature, publicKey);
       expect(valid).toBe(false);
@@ -398,7 +398,7 @@ describe("crypto", () => {
       expect(encrypted.length).toBeGreaterThanOrEqual(NONCE_LENGTH + 16); // nonce + authTag
       const nonce = encrypted.slice(0, NONCE_LENGTH);
       const expected = constructNonce(Direction.ClientToDaemon, 42n);
-      expect(nonce).toEqual(expected);
+      expect(Array.from(nonce)).toEqual(Array.from(expected));
     });
 
     it("decryption fails with wrong key", () => {
@@ -416,7 +416,7 @@ describe("crypto", () => {
 
       const encrypted = encrypt(key, Direction.ClientToDaemon, 1n, plaintext);
       // Tamper with ciphertext (after nonce)
-      encrypted[NONCE_LENGTH + 1] ^= 0xff;
+      encrypted[NONCE_LENGTH + 1] = encrypted[NONCE_LENGTH + 1]! ^ 0xff;
 
       expect(() => decrypt(key, encrypted)).toThrow();
     });
@@ -427,7 +427,7 @@ describe("crypto", () => {
 
       const encrypted = encrypt(key, Direction.ClientToDaemon, 1n, plaintext);
       // Tamper with last byte (auth tag)
-      encrypted[encrypted.length - 1] ^= 0xff;
+      encrypted[encrypted.length - 1] = encrypted[encrypted.length - 1]! ^ 0xff;
 
       expect(() => decrypt(key, encrypted)).toThrow();
     });
@@ -438,7 +438,7 @@ describe("crypto", () => {
 
       const encrypted = encrypt(key, Direction.ClientToDaemon, 1n, plaintext);
       // Tamper with nonce
-      encrypted[0] ^= 0xff;
+      encrypted[0] = encrypted[0]! ^ 0xff;
 
       expect(() => decrypt(key, encrypted)).toThrow();
     });

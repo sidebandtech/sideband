@@ -36,6 +36,9 @@
 export { listen } from "./listen.js";
 export { createPeer, sbpNegotiator } from "./peer.js";
 
+// SBRP negotiators available via "@sideband/peer/sbrp" subpath
+// (requires @sideband/secure-relay as a peer dependency)
+
 // Error types
 export { PeerError, PeerErrorCode, RpcPeerError } from "./errors.js";
 export type { PeerErrorCode as PeerErrorCodeType } from "./errors.js";

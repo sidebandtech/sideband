@@ -1,291 +1,136 @@
 # Package Architecture
 
-Final architecture supporting relay (SBRP) now and P2P later.
+Package boundaries and dependency direction for the current Sideband workspace.
 
 ## Design Principles
 
-1. **Neutral core** — protocol, transport, runtime know nothing about topology
-2. **Layered protocols** — SBP for application frames, SBRP/SBDP for session layers
-3. **Clear boundaries** — each package has one job
-4. **No premature abstraction** — P2P designed when needed, not before
+1. Core remains topology- and transport-agnostic.
+2. Session cryptography is isolated from runtime/transport.
+3. Public package APIs prioritize correctness and typing over feature breadth.
+4. Higher-level packages compose lower-level ones; lower layers never depend upward.
 
 ## Terminology
 
-| Term                  | Context        | Meaning                               |
-| --------------------- | -------------- | ------------------------------------- |
-| Cryptographic session | `secure-relay` | Key agreement state + encryption keys |
-| Connection            | `runtime`      | Logical peer-to-peer link             |
-| Peer session          | `peer` SDK     | User-facing connection abstraction    |
+| Term                  | Context                  | Meaning                                                            |
+| --------------------- | ------------------------ | ------------------------------------------------------------------ |
+| Cryptographic session | `@sideband/secure-relay` | Handshake state, traffic keys, sequence/replay state               |
+| Runtime connection    | `@sideband/runtime`      | Logical link over an attached transport                            |
+| Peer session          | `@sideband/peer`         | SDK-level lifecycle abstraction over runtime + optional negotiator |
 
-## Protocol Layers
+## Layered View
 
-Sideband uses a layered protocol architecture:
+| Layer                      | Package(s)                                      | Responsibility                                             |
+| -------------------------- | ----------------------------------------------- | ---------------------------------------------------------- |
+| Layer 0: Wire Contract     | `@sideband/protocol`                            | Canonical frame/types/constants + codecs                   |
+| Layer 1: I/O               | `@sideband/transport`, `@sideband/transport-ws` | Transport ABI + WebSocket transport                        |
+| Layer 2: Message Semantics | `@sideband/rpc`                                 | Typed RPC envelope/codec model                             |
+| Layer 3: Coordination      | `@sideband/runtime`                             | Peer lifecycle, routing, transport attachment              |
+| Layer 4: Session Crypto    | `@sideband/secure-relay`                        | SBRP handshake/encryption/replay protection                |
+| Layer 5: SDK               | `@sideband/peer`                                | User-facing composition of runtime, transport, negotiators |
+| Tooling                    | `@sideband/cli`, `@sideband/testing`            | Developer CLI and test helpers                             |
 
-| Layer          | Protocol                            | Package                     | Purpose                                      |
-| -------------- | ----------------------------------- | --------------------------- | -------------------------------------------- |
-| App Framing    | **SBP** (Sideband Protocol)         | `@sideband/protocol`        | Application-level frames (topology-agnostic) |
-| Relay Session  | **SBRP** (Sideband Relay Protocol)  | `@sideband/secure-relay`    | E2EE tunnel via relay server                 |
-| Direct Session | **SBDP** (Sideband Direct Protocol) | `@sideband/direct` (future) | P2P session via DTLS or similar              |
-
-**Relay mode:** SBRP wraps SBP. DATA frames contain encrypted SBP frames.
-
-```
-┌─────────────────────────────────────────┐
-│  SBRP Frame (DATA)                      │
-│  ┌───────────────────────────────────┐  │
-│  │  Encrypted SBP Frame (Message)    │  │
-│  │  ┌─────────────────────────────┐  │  │
-│  │  │  RPC Envelope / App Data    │  │  │
-│  │  └─────────────────────────────┘  │  │
-│  └───────────────────────────────────┘  │
-└─────────────────────────────────────────┘
-```
-
-**P2P mode (future):** SBP frames secured via SBDP session layer (DTLS or application-layer auth).
-
-## Layer Model
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Layer 4: SDK                                           │
-│  @sideband/peer                                         │
-│  Composes runtime + session + transports                │
-└─────────────────────────────────────────────────────────┘
-                            │
-          ┌─────────────────┴─────────────────┐
-          ▼                                   ▼
-┌───────────────────────┐       ┌───────────────────────┐
-│  Layer 3: Session     │       │  Layer 2: Coord       │
-│  @sideband/           │       │  @sideband/runtime    │
-│    secure-relay       │       │  @sideband/rpc        │
-│  (future: p2p)        │       │                       │
-└───────────────────────┘       └───────────┬───────────┘
-          │                                 │
-          │                     ┌───────────┴───────────┐
-          │                     ▼                       ▼
-          │           ┌───────────────┐       ┌───────────────┐
-          │           │  Layer 1: I/O │       │  Layer 0      │
-          │           │  @sideband/   │       │  @sideband/   │
-          │           │    transport  │       │    protocol   │
-          │           └───────────────┘       └───────────────┘
-          │                     │
-          │               ┌─────┴─────┐
-          │               │
-          │               ▼
-          │         ┌─────────┐
-          │         │   ws    │
-          │         └─────────┘
-          │
-    (standalone: @noble/*)
-```
-
-Key insight: **Session layer and runtime are siblings.** Peer composes them; neither depends on the other.
+`@sideband/runtime` and `@sideband/secure-relay` are sibling layers: neither depends on the other.
 
 ## Package Reference
 
-### Layer 0: Application Wire Contract
+### `@sideband/protocol`
 
-#### `@sideband/protocol` — Sideband Protocol (SBP)
+- Provides: canonical protocol types/constants, frame codecs, type guards.
+- Does not provide: I/O, transport implementations, cryptography, runtime/session logic.
+- Runtime dependencies: none.
 
-Application-level framing. The "inner" protocol.
+### `@sideband/transport`
 
-| Provides                                  | Does NOT provide   |
-| ----------------------------------------- | ------------------ |
-| Frame types: Control, Message, Ack, Error | I/O                |
-| ControlOp: Handshake, Ping, Pong, Close   | Crypto             |
-| Codecs: `encodeFrame()`, `decodeFrame()`  | Session management |
-| Type guards                               | Tunnel framing     |
+- Provides: transport interfaces and shared transport utilities.
+- Does not provide: concrete network transport stacks, runtime/session logic.
+- Runtime dependencies: `@sideband/protocol`.
 
-**Depends on:** none
+### `@sideband/transport-ws`
 
-### Layer 1: I/O
+- Provides: browser + Node/Bun WebSocket transport implementation.
+- Does not provide: runtime orchestration or cryptographic session behavior.
+- Runtime dependencies: `@sideband/protocol`, `@sideband/transport`, `ws`.
 
-#### `@sideband/transport`
+### `@sideband/rpc`
 
-Abstract transport interface.
+- Provides: typed RPC envelope model and JSON codec helpers.
+- Does not provide: transport delivery or encryption.
+- Runtime dependencies: `@sideband/protocol`.
 
-| Provides                        | Does NOT provide |
-| ------------------------------- | ---------------- |
-| `Transport` interface           | WebSocket impl   |
-| `TransportConnection` interface | Crypto           |
-| `LoopbackTransport` (testing)   | Session logic    |
+### `@sideband/runtime`
 
-**Depends on:** protocol
+- Provides: transport attachment, peer lifecycle, message routing, middleware hooks.
+- Does not provide: concrete transport implementations or cryptographic session primitives.
+- Runtime dependencies: `@sideband/protocol`, `@sideband/transport`, `@sideband/rpc`.
 
-#### `@sideband/transport-ws`
+### `@sideband/secure-relay`
 
-WebSocket transport for Browser/Node/Bun.
+- Provides: SBRP handshake, key derivation, frame codecs, encryption/decryption, replay protection.
+- Does not provide: WebSocket/network I/O, token issuance/validation, relay server behavior.
+- Runtime dependencies: `@noble/ciphers`, `@noble/curves`, `@noble/hashes`.
 
-**Depends on:** protocol, transport
+### `@sideband/peer`
 
-### Layer 2: Coordination
+- Provides: high-level SDK that composes runtime + transport + optional relay negotiators.
+- Does not provide: base wire contract definitions or low-level crypto primitives.
+- Runtime dependencies: `@sideband/protocol`, `@sideband/rpc`, `@sideband/runtime`, `@sideband/transport`, `@sideband/transport-ws`.
+- Optional peer dependency: `@sideband/secure-relay` (for SBRP negotiators).
 
-#### `@sideband/runtime`
+### `@sideband/cli`
 
-Transport-agnostic execution engine.
+- Provides: developer tooling and operational commands built on workspace packages.
+- Runtime dependencies: package-local only; may consume workspace libraries as needed.
 
-| Provides             | Does NOT provide       |
-| -------------------- | ---------------------- |
-| Peer lifecycle       | Concrete transports    |
-| Transport attachment | Crypto                 |
-| Message routing      | Topology knowledge     |
-| Middleware hooks     | Session-specific logic |
+### `@sideband/testing`
 
-**Depends on:** protocol, transport
+- Provides: shared test fixtures/fakes/helpers for workspace packages.
+- Runtime dependencies: package-local only; intended for test-only usage.
 
-#### `@sideband/rpc`
+## Current Workspace Packages
 
-Request/response semantics.
+| Package                  | Role                             |
+| ------------------------ | -------------------------------- |
+| `@sideband/protocol`     | Wire contract                    |
+| `@sideband/transport`    | Transport ABI                    |
+| `@sideband/transport-ws` | WebSocket transport              |
+| `@sideband/rpc`          | RPC envelope layer               |
+| `@sideband/runtime`      | Runtime coordination engine      |
+| `@sideband/secure-relay` | SBRP cryptographic session layer |
+| `@sideband/peer`         | User-facing SDK                  |
+| `@sideband/cli`          | Developer tooling                |
+| `@sideband/testing`      | Test helpers                     |
 
-| Provides           | Does NOT provide   |
-| ------------------ | ------------------ |
-| RPC envelope types | Delivery mechanism |
-| Correlation IDs    | Encryption         |
-| Subject namespaces |                    |
+## Dependency Direction
 
-**Depends on:** protocol
+```text
+@sideband/protocol
+├─> @sideband/transport ──> @sideband/transport-ws
+├─> @sideband/rpc
+├─> @sideband/runtime
+└─> @sideband/peer
 
-### Layer 3: Session
+@sideband/transport ──> @sideband/runtime
+@sideband/transport ──> @sideband/peer
+@sideband/rpc ──> @sideband/runtime
+@sideband/rpc ──> @sideband/peer
+@sideband/runtime ──> @sideband/peer
 
-#### `@sideband/secure-relay` — Sideband Relay Protocol (SBRP)
-
-E2EE session layer for relay topology. Standalone — no runtime dependency.
-
-| Provides                      | Does NOT provide  |
-| ----------------------------- | ----------------- |
-| Ed25519/X25519 key generation | WebSocket I/O     |
-| Signed ephemeral key exchange | Transport logic   |
-| ChaCha20-Poly1305 encryption  | Token issuance    |
-| TOFU identity pinning         | Relay server impl |
-| Replay protection             |                   |
-| SBRP frame codecs             |                   |
-
-Frame types: DATA, CONTROL, HANDSHAKE_INIT, HANDSHAKE_ACCEPT, PING, PONG, SIGNAL
-
-**Depends on:** @noble/\* (crypto only)
-
-> **Why standalone?** Pure crypto with no I/O deps improves testability, portability, and allows use outside Sideband.
-
-#### Future: `@sideband/direct` — Sideband Direct Protocol (SBDP)
-
-When P2P is needed, a separate session package with different primitives:
-
-- ICE/STUN/TURN
-- Signaling
-- Direct peer auth (DTLS or application-layer)
-
-Will wrap or directly use SBP frames, similar to how SBRP wraps SBP.
-
-### Layer 4: SDK
-
-#### `@sideband/peer`
-
-User-facing API. Composes session + runtime + transport.
-
-```ts
-// Relay mode
-const peer = new Peer({
-  transport: browserTransport(),
-  session: sbrpSession({ daemonId, pinnedKey }),
-});
-
-// P2P mode (future)
-const peer = new Peer({
-  transport: webrtcTransport(),
-  session: directSession({ ... }),
-});
+@sideband/secure-relay (optional peer dependency of @sideband/peer)
 ```
 
-| Provides                  | Does NOT provide    |
-| ------------------------- | ------------------- |
-| Simple connect/disconnect | Wire format details |
-| Pub/sub helpers           | Crypto primitives   |
-| RPC client                | Transport internals |
+## Relay Composition (SBRP + SBP)
 
-**Depends on:** runtime, rpc, transport-ws, secure-relay
+In relay mode, SBRP transports encrypted SBP payloads. Integration ownership is split:
 
-### Tooling
-
-#### `@sideband/cli`
-
-Developer tools: key generation, inspection, debugging.
-
-#### `@sideband/testing`
-
-Test utilities: fakes, loopback transports, fixtures.
-
-## Dependency Graph
-
-```
-@sideband/protocol (SBP)           @noble/* (crypto)
-        │                                │
-   ┌────┴────┬────────────┐              │
-   ▼         ▼            ▼              │
-transport  runtime     (used by)         │
-   │         │            │              │
-   └────►────┤            ▼              │
-             ▼     secure-relay (SBRP) ◄─┘
-            rpc           │
-             │            │
-             └─────┬──────┘
-                   ▼
-                  peer
-                   │
-             ┌─────┴─────┐
-             ▼           ▼
-            cli       testing
-```
-
-**Critical constraint:** `runtime` and `secure-relay` are **siblings**. Neither depends on the other. `peer` composes both.
-
-## Integration: How Relay Mode Works
-
-```
-Browser                    Relay Server                   Daemon
-   │                            │                            │
-   │◄─── WebSocket (TLS) ──────►│◄─── WebSocket (TLS) ──────►│
-   │                            │                            │
-   │         SBRP frames        │        SBRP frames         │
-   │◄──────────────────────────►│◄──────────────────────────►│
-   │                            │                            │
-   └────────────────────────────┼────────────────────────────┘
-              E2EE tunnel (secure-relay)
-
-   Inside DATA frames: encrypted SBP frames (protocol)
-```
-
-1. Transport layer: `transport-ws` handles WebSocket
-2. Session layer: `secure-relay` encrypts/decrypts, manages handshake
-3. Application layer: `protocol` frames (Message, Control, etc.)
-4. RPC layer: `rpc` envelopes inside Message frames
-5. SDK layer: `peer` orchestrates everything
-
-## Package List
-
-### Ship now (10 packages)
-
-| #   | Package                  | Layer | Description                                  |
-| --- | ------------------------ | ----- | -------------------------------------------- |
-| 1   | `@sideband/protocol`     | 0     | Application framing & wire contract (SBP)    |
-| 2   | `@sideband/transport`    | 1     | Abstract I/O interfaces                      |
-| 3   | `@sideband/transport-ws` | 1     | WebSocket adapter (Browser/Node/Bun)         |
-| 4   | `@sideband/rpc`          | 2     | RPC envelope & correlation                   |
-| 5   | `@sideband/runtime`      | 2     | Coordination engine (routing, lifecycle)     |
-| 6   | `@sideband/secure-relay` | 3     | Cryptographic session layer for relay (SBRP) |
-| 7   | `@sideband/peer`         | 4     | User-facing SDK                              |
-| 8   | `@sideband/cli`          | Tool  | Developer tooling                            |
-| 9   | `@sideband/testing`      | Tool  | Test utilities & fixtures                    |
-
-### Add later (when P2P needed)
-
-| Package                      | Description                |
-| ---------------------------- | -------------------------- |
-| `@sideband/transport-webrtc` | WebRTC DataChannel adapter |
-| `@sideband/direct`           | P2P session layer (SBDP)   |
+1. `@sideband/transport-ws`: WebSocket transport.
+2. `@sideband/secure-relay`: handshake + payload crypto.
+3. `@sideband/protocol`: inner application frames.
+4. `@sideband/rpc`: request/response envelopes inside protocol messages.
+5. `@sideband/peer`: user-facing orchestration.
 
 ## Summary
 
-- **SBP** (`protocol`) = application framing, topology-agnostic
-- **SBRP** (`secure-relay`) = relay session layer, wraps SBP with E2EE
-- **SBDP** (`direct`, future) = direct session layer for P2P
-- **runtime** and session layers are siblings, composed by **peer**
+- `@sideband/protocol` is the canonical wire contract.
+- `@sideband/runtime` coordinates transport and message flow.
+- `@sideband/secure-relay` is cryptographic/session logic only.
+- `@sideband/peer` composes runtime with optional relay negotiators.

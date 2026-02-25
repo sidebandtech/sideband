@@ -14,6 +14,8 @@
  */
 
 import {
+  ED25519_PUBLIC_KEY_LENGTH,
+  ED25519_SIGNATURE_LENGTH,
   FRAME_HEADER_SIZE,
   HANDSHAKE_ACCEPT_PAYLOAD_SIZE,
   HANDSHAKE_INIT_PAYLOAD_SIZE,
@@ -22,6 +24,7 @@ import {
   MIN_CONTROL_PAYLOAD_SIZE,
   MIN_ENCRYPTED_PAYLOAD_SIZE,
   SIGNAL_PAYLOAD_SIZE,
+  X25519_PUBLIC_KEY_LENGTH,
 } from "./constants.js";
 import { extractSequence } from "./crypto.js";
 import type {
@@ -29,10 +32,11 @@ import type {
   HandshakeAccept,
   HandshakeInit,
   SessionId,
-  SignalCode,
-  SignalReason,
 } from "./types.js";
-import { SbrpError, SbrpErrorCode } from "./types.js";
+import { SbrpError, SbrpErrorCode, SignalCode, SignalReason } from "./types.js";
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder("utf-8", { fatal: false });
 
 /**
  * Frame type discriminant (wire byte).
@@ -111,12 +115,17 @@ export type WireControlCode =
 
 /** Check if a control code is terminal (closes connection) */
 export function isTerminalCode(code: WireControlCode): boolean {
-  // Non-terminal codes: daemon_offline (0x0202), rate_limited (0x09xx), session state (0x10xx)
-  return (
-    code !== WireControlCode.DaemonOffline &&
-    code !== WireControlCode.RateLimited &&
-    code < 0x1000
-  );
+  switch (code) {
+    case WireControlCode.DaemonOffline:
+    case WireControlCode.RateLimited:
+    case WireControlCode.SessionPaused:
+    case WireControlCode.SessionResumed:
+    case WireControlCode.SessionEnded:
+    case WireControlCode.SessionPending:
+      return false;
+    default:
+      return true;
+  }
 }
 
 /** Decoded frame header */
@@ -332,6 +341,23 @@ export function readFrameHeader(data: Uint8Array): FrameHeader {
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const type = data[0] as FrameType;
+
+  switch (type) {
+    case FrameType.HandshakeInit:
+    case FrameType.HandshakeAccept:
+    case FrameType.Data:
+    case FrameType.Signal:
+    case FrameType.Ping:
+    case FrameType.Pong:
+    case FrameType.Control:
+      break;
+    default:
+      throw new SbrpError(
+        SbrpErrorCode.InvalidFrameType,
+        `Unknown frame type: 0x${(type as number).toString(16).padStart(2, "0")}`,
+      );
+  }
+
   const length = view.getUint32(1, false);
   const sessionId = view.getBigUint64(5, false);
 
@@ -391,28 +417,6 @@ export function decodeFrame(data: Uint8Array): Frame {
   return { ...header, payload };
 }
 
-/**
- * Decode frame allowing trailing bytes (for streaming use).
- * Returns the frame and number of bytes consumed.
- */
-function decodeFrameFromBuffer(data: Uint8Array): {
-  frame: Frame;
-  bytesConsumed: number;
-} {
-  const header = readFrameHeader(data);
-  const frameSize = FRAME_HEADER_SIZE + header.length;
-
-  if (data.length < frameSize) {
-    throw new SbrpError(
-      SbrpErrorCode.MalformedFrame,
-      `Frame truncated: got ${data.length}, expected ${frameSize}`,
-    );
-  }
-
-  const payload = data.subarray(FRAME_HEADER_SIZE, frameSize);
-  return { frame: { ...header, payload }, bytesConsumed: frameSize };
-}
-
 // ============================================================================
 // High-level frame encoding (typed message → binary)
 // ============================================================================
@@ -438,27 +442,39 @@ export function encodeHandshakeInit(
 /**
  * Encode HandshakeAccept to wire frame.
  *
- * @throws {SbrpError} if acceptPublicKey/signature have wrong sizes or sessionId is invalid
+ * Wire layout (128 bytes): identityPublicKey(32) + acceptPublicKey(32) + signature(64)
+ *
+ * @throws {SbrpError} if field sizes are wrong or sessionId is invalid
  */
 export function encodeHandshakeAccept(
   sessionId: SessionId,
   accept: HandshakeAccept,
 ): Uint8Array {
-  if (accept.acceptPublicKey.length !== 32) {
+  if (accept.identityPublicKey.length !== ED25519_PUBLIC_KEY_LENGTH) {
     throw new SbrpError(
       SbrpErrorCode.MalformedFrame,
-      `acceptPublicKey must be 32 bytes, got ${accept.acceptPublicKey.length}`,
+      `identityPublicKey must be ${ED25519_PUBLIC_KEY_LENGTH} bytes, got ${accept.identityPublicKey.length}`,
     );
   }
-  if (accept.signature.length !== 64) {
+  if (accept.acceptPublicKey.length !== X25519_PUBLIC_KEY_LENGTH) {
     throw new SbrpError(
       SbrpErrorCode.MalformedFrame,
-      `signature must be 64 bytes, got ${accept.signature.length}`,
+      `acceptPublicKey must be ${X25519_PUBLIC_KEY_LENGTH} bytes, got ${accept.acceptPublicKey.length}`,
+    );
+  }
+  if (accept.signature.length !== ED25519_SIGNATURE_LENGTH) {
+    throw new SbrpError(
+      SbrpErrorCode.MalformedFrame,
+      `signature must be ${ED25519_SIGNATURE_LENGTH} bytes, got ${accept.signature.length}`,
     );
   }
   const payload = new Uint8Array(HANDSHAKE_ACCEPT_PAYLOAD_SIZE);
-  payload.set(accept.acceptPublicKey, 0);
-  payload.set(accept.signature, 32);
+  payload.set(accept.identityPublicKey, 0);
+  payload.set(accept.acceptPublicKey, ED25519_PUBLIC_KEY_LENGTH);
+  payload.set(
+    accept.signature,
+    ED25519_PUBLIC_KEY_LENGTH + X25519_PUBLIC_KEY_LENGTH,
+  );
   return encodeFrame(FrameType.HandshakeAccept, sessionId, payload);
 }
 
@@ -490,7 +506,7 @@ export function encodeData(
 export function encodeSignal(
   sessionId: SessionId,
   signal: SignalCode,
-  reason: SignalReason = 0x00,
+  reason: SignalReason = SignalReason.None,
 ): Uint8Array {
   const payload = new Uint8Array(SIGNAL_PAYLOAD_SIZE);
   payload[0] = signal;
@@ -544,7 +560,7 @@ export function encodeControl(
   code: WireControlCode,
   message?: string,
 ): Uint8Array {
-  const msgBytes = message ? new TextEncoder().encode(message) : null;
+  const msgBytes = message ? textEncoder.encode(message) : null;
   const payload = new Uint8Array(2 + (msgBytes?.length ?? 0));
   new DataView(payload.buffer).setUint16(0, code, false);
   if (msgBytes) payload.set(msgBytes, 2);
@@ -555,26 +571,10 @@ export function encodeControl(
 // High-level frame decoding (Frame → typed message)
 // ============================================================================
 
-/** Validate sessionId for session-bound frames on decode path */
-function validateSessionIdOnDecode(frame: Frame): void {
-  if (isSessionBound(frame.type) && frame.sessionId === 0n) {
-    throw new SbrpError(
-      SbrpErrorCode.MalformedFrame,
-      `Session-bound frame type 0x${frame.type.toString(16).padStart(2, "0")} requires non-zero sessionId`,
-    );
-  }
-  if (isConnectionScoped(frame.type) && frame.sessionId !== 0n) {
-    throw new SbrpError(
-      SbrpErrorCode.MalformedFrame,
-      `Connection-scoped frame type 0x${frame.type.toString(16).padStart(2, "0")} requires sessionId = 0`,
-    );
-  }
-}
-
 /**
  * Decode HandshakeInit from frame.
  *
- * @throws {SbrpError} if frame type, payload size, or sessionId is invalid
+ * @throws {SbrpError} if frame type or payload size is invalid
  */
 export function decodeHandshakeInit(frame: Frame): HandshakeInit {
   if (frame.type !== FrameType.HandshakeInit) {
@@ -583,7 +583,6 @@ export function decodeHandshakeInit(frame: Frame): HandshakeInit {
       `Expected HandshakeInit (0x01), got 0x${frame.type.toString(16).padStart(2, "0")}`,
     );
   }
-  validateSessionIdOnDecode(frame);
   if (frame.payload.length !== HANDSHAKE_INIT_PAYLOAD_SIZE) {
     throw new SbrpError(
       SbrpErrorCode.MalformedFrame,
@@ -599,7 +598,9 @@ export function decodeHandshakeInit(frame: Frame): HandshakeInit {
 /**
  * Decode HandshakeAccept from frame.
  *
- * @throws {SbrpError} if frame type, payload size, or sessionId is invalid
+ * Wire layout (128 bytes): identityPublicKey(32) + acceptPublicKey(32) + signature(64)
+ *
+ * @throws {SbrpError} if frame type or payload size is invalid
  */
 export function decodeHandshakeAccept(frame: Frame): HandshakeAccept {
   if (frame.type !== FrameType.HandshakeAccept) {
@@ -608,24 +609,25 @@ export function decodeHandshakeAccept(frame: Frame): HandshakeAccept {
       `Expected HandshakeAccept (0x02), got 0x${frame.type.toString(16).padStart(2, "0")}`,
     );
   }
-  validateSessionIdOnDecode(frame);
   if (frame.payload.length !== HANDSHAKE_ACCEPT_PAYLOAD_SIZE) {
     throw new SbrpError(
       SbrpErrorCode.MalformedFrame,
       `HandshakeAccept payload must be ${HANDSHAKE_ACCEPT_PAYLOAD_SIZE} bytes, got ${frame.payload.length}`,
     );
   }
+  const keyEnd = ED25519_PUBLIC_KEY_LENGTH + X25519_PUBLIC_KEY_LENGTH;
   return {
     type: "handshake.accept",
-    acceptPublicKey: frame.payload.slice(0, 32),
-    signature: frame.payload.slice(32, 96),
+    identityPublicKey: frame.payload.slice(0, ED25519_PUBLIC_KEY_LENGTH),
+    acceptPublicKey: frame.payload.slice(ED25519_PUBLIC_KEY_LENGTH, keyEnd),
+    signature: frame.payload.slice(keyEnd, keyEnd + ED25519_SIGNATURE_LENGTH),
   };
 }
 
 /**
  * Decode Data frame (encrypted message).
  *
- * @throws {SbrpError} if frame type, payload, or sessionId is invalid
+ * @throws {SbrpError} if frame type or payload is invalid
  */
 export function decodeData(frame: Frame): EncryptedMessage {
   if (frame.type !== FrameType.Data) {
@@ -634,7 +636,6 @@ export function decodeData(frame: Frame): EncryptedMessage {
       `Expected Data (0x03), got 0x${frame.type.toString(16).padStart(2, "0")}`,
     );
   }
-  validateSessionIdOnDecode(frame);
   if (frame.payload.length < MIN_ENCRYPTED_PAYLOAD_SIZE) {
     throw new SbrpError(
       SbrpErrorCode.MalformedFrame,
@@ -652,7 +653,7 @@ export function decodeData(frame: Frame): EncryptedMessage {
 /**
  * Decode Signal frame (daemon → relay).
  *
- * @throws {SbrpError} if frame type, payload size, or sessionId is invalid
+ * @throws {SbrpError} if frame type, payload size, or signal values are invalid
  */
 export function decodeSignal(frame: Frame): SignalPayload {
   if (frame.type !== FrameType.Signal) {
@@ -661,17 +662,35 @@ export function decodeSignal(frame: Frame): SignalPayload {
       `Expected Signal (0x04), got 0x${frame.type.toString(16).padStart(2, "0")}`,
     );
   }
-  validateSessionIdOnDecode(frame);
   if (frame.payload.length !== SIGNAL_PAYLOAD_SIZE) {
     throw new SbrpError(
       SbrpErrorCode.MalformedFrame,
       `Signal payload must be ${SIGNAL_PAYLOAD_SIZE} bytes, got ${frame.payload.length}`,
     );
   }
-  return {
-    signal: frame.payload[0] as SignalCode,
-    reason: frame.payload[1] as SignalReason,
-  };
+  // Length validated above (exactly SIGNAL_PAYLOAD_SIZE = 2 bytes)
+  const signal = frame.payload[0]!;
+  const reason = frame.payload[1]!;
+  if (signal !== SignalCode.Ready && signal !== SignalCode.Close) {
+    throw new SbrpError(
+      SbrpErrorCode.MalformedFrame,
+      `Unknown signal code: 0x${signal.toString(16).padStart(2, "0")}`,
+    );
+  }
+  switch (reason) {
+    case SignalReason.None:
+    case SignalReason.StateLost:
+    case SignalReason.Shutdown:
+    case SignalReason.Policy:
+    case SignalReason.Error:
+      break;
+    default:
+      throw new SbrpError(
+        SbrpErrorCode.MalformedFrame,
+        `Unknown signal reason: 0x${reason.toString(16).padStart(2, "0")}`,
+      );
+  }
+  return { signal: signal as SignalCode, reason: reason as SignalReason };
 }
 
 /**
@@ -699,11 +718,16 @@ export function decodeControl(frame: Frame): ControlPayload {
     frame.payload.byteOffset,
     frame.payload.byteLength,
   );
-  const code = view.getUint16(0, false) as WireControlCode;
+  const rawCode = view.getUint16(0, false);
+  if (wireToSbrp[rawCode] === undefined) {
+    throw new SbrpError(
+      SbrpErrorCode.MalformedFrame,
+      `Unknown control code: 0x${rawCode.toString(16).padStart(4, "0")}`,
+    );
+  }
+  const code = rawCode as WireControlCode;
   // TextDecoder with fatal:false replaces invalid UTF-8 with U+FFFD
-  const message = new TextDecoder("utf-8", { fatal: false }).decode(
-    frame.payload.subarray(2),
-  );
+  const message = textDecoder.decode(frame.payload.subarray(2));
   return { code, message };
 }
 
@@ -753,9 +777,9 @@ export class FrameDecoder {
         break; // Incomplete frame, wait for more data
       }
 
-      const { frame, bytesConsumed } = decodeFrameFromBuffer(this.buffer);
-      yield frame;
-      this.buffer = this.buffer.subarray(bytesConsumed);
+      const payload = this.buffer.subarray(FRAME_HEADER_SIZE, frameSize);
+      yield { ...header, payload };
+      this.buffer = this.buffer.subarray(frameSize);
     }
   }
 

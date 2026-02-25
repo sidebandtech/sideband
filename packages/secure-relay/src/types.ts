@@ -29,18 +29,6 @@ export interface EphemeralKeyPair {
   privateKey: Uint8Array; // 32 bytes
 }
 
-/**
- * TOFU trust record for daemon identity.
- * Pinned on first connect, verified on reconnect to detect MITM.
- * Per-client; not synced via relay.
- */
-export interface PinnedIdentity {
-  daemonId: DaemonId;
-  identityPublicKey: Uint8Array; // 32 bytes Ed25519 public key
-  firstSeen: Date;
-  lastSeen: Date;
-}
-
 /** Session keys derived from handshake (directional symmetric keys) */
 export interface SessionKeys {
   /** Key for encrypting client→daemon messages */
@@ -58,6 +46,7 @@ export interface HandshakeInit {
 /** Handshake accept message (daemon → client) */
 export interface HandshakeAccept {
   type: "handshake.accept";
+  identityPublicKey: Uint8Array; // Ed25519 identity public key (for TOFU)
   acceptPublicKey: Uint8Array; // X25519 ephemeral public key
   signature: Uint8Array; // Ed25519 signature
 }

@@ -70,7 +70,7 @@ SAFE_CHAR  = ALPHA | DIGIT | "-" | "_"
 
 ## Consequences
 
-- `@sideband/secure-relay` must expose `sbrpClientNegotiator` and `sbrpDaemonNegotiator` (Phase 5).
+- `@sideband/peer` exposes `sbrpClientNegotiator` and `sbrpDaemonNegotiator`. They live in peer (not secure-relay) because peer already depends on runtime for `Negotiator`/`SbpNegotiator`, while secure-relay stays a pure crypto library with zero runtime dependencies.
 - `@sideband/peer` validates event patterns client-side via `onPattern()` / `validatePattern()`.
 - All documentation and examples MUST use `>` (not `**`) for multi-segment wildcard patterns.
 

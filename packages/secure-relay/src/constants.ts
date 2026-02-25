@@ -13,7 +13,7 @@ export const SBRP_TRANSCRIPT_CONTEXT = "sbrp-v1-transcript";
 /** HKDF info string for session key derivation */
 export const SBRP_SESSION_KEYS_INFO = "sbrp-session-keys";
 
-/** Length of session keys in bytes (browserToDaemon + daemonToBrowser) */
+/** Length of session keys in bytes (clientToDaemon + daemonToClient) */
 export const SESSION_KEYS_LENGTH = 64;
 
 /** Length of a single symmetric key in bytes */
@@ -58,8 +58,8 @@ export const MAX_PAYLOAD_SIZE = 65536;
 /** HandshakeInit payload: X25519 ephemeral public key */
 export const HANDSHAKE_INIT_PAYLOAD_SIZE = 32;
 
-/** HandshakeAccept payload: X25519 ephemeral (32) + Ed25519 signature (64) */
-export const HANDSHAKE_ACCEPT_PAYLOAD_SIZE = 96;
+/** HandshakeAccept payload: Ed25519 identity key (32) + X25519 ephemeral (32) + Ed25519 signature (64) */
+export const HANDSHAKE_ACCEPT_PAYLOAD_SIZE = 128;
 
 /** Minimum encrypted payload: nonce (12) + authTag (16), no plaintext */
 export const MIN_ENCRYPTED_PAYLOAD_SIZE = NONCE_LENGTH + AUTH_TAG_LENGTH;

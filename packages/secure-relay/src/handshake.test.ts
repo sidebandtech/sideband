@@ -21,14 +21,14 @@ describe("handshake", () => {
         createHandshakeInit();
 
       // Daemon processes init and creates accept
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
 
       // Client processes accept
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
@@ -36,8 +36,8 @@ describe("handshake", () => {
       );
 
       // Both should have valid session keys
-      expect(clientResult.sessionKeys).toBeDefined();
-      expect(daemonResult.sessionKeys).toBeDefined();
+      expect(clientKeys).toBeDefined();
+      expect(daemonKeys).toBeDefined();
     });
   });
 
@@ -47,12 +47,12 @@ describe("handshake", () => {
 
       const { message: init, ephemeralKeyPair: clientEphemeral } =
         createHandshakeInit();
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
@@ -60,12 +60,8 @@ describe("handshake", () => {
       );
 
       // Keys should be byte-for-byte identical
-      expect(clientResult.sessionKeys.clientToDaemon).toEqual(
-        daemonResult.sessionKeys.clientToDaemon,
-      );
-      expect(clientResult.sessionKeys.daemonToClient).toEqual(
-        daemonResult.sessionKeys.daemonToClient,
-      );
+      expect(clientKeys.clientToDaemon).toEqual(daemonKeys.clientToDaemon);
+      expect(clientKeys.daemonToClient).toEqual(daemonKeys.daemonToClient);
     });
 
     it("derives directional keys (clientToDaemon != daemonToClient)", () => {
@@ -73,12 +69,12 @@ describe("handshake", () => {
 
       const { message: init, ephemeralKeyPair: clientEphemeral } =
         createHandshakeInit();
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
@@ -86,12 +82,8 @@ describe("handshake", () => {
       );
 
       // Directional keys must differ to prevent reflection attacks
-      expect(clientResult.sessionKeys.clientToDaemon).not.toEqual(
-        clientResult.sessionKeys.daemonToClient,
-      );
-      expect(daemonResult.sessionKeys.clientToDaemon).not.toEqual(
-        daemonResult.sessionKeys.daemonToClient,
-      );
+      expect(clientKeys.clientToDaemon).not.toEqual(clientKeys.daemonToClient);
+      expect(daemonKeys.clientToDaemon).not.toEqual(daemonKeys.daemonToClient);
     });
 
     it("produces different keys for different handshakes (ephemeral randomness)", () => {
@@ -105,7 +97,7 @@ describe("handshake", () => {
         daemonId,
         daemonIdentity,
       );
-      const result1 = processHandshakeAccept(
+      const keys1 = processHandshakeAccept(
         accept1,
         daemonId,
         daemonIdentity.publicKey,
@@ -120,7 +112,7 @@ describe("handshake", () => {
         daemonId,
         daemonIdentity,
       );
-      const result2 = processHandshakeAccept(
+      const keys2 = processHandshakeAccept(
         accept2,
         daemonId,
         daemonIdentity.publicKey,
@@ -128,17 +120,13 @@ describe("handshake", () => {
       );
 
       // Keys from different handshakes should differ
-      expect(result1.sessionKeys.clientToDaemon).not.toEqual(
-        result2.sessionKeys.clientToDaemon,
-      );
-      expect(result1.sessionKeys.daemonToClient).not.toEqual(
-        result2.sessionKeys.daemonToClient,
-      );
+      expect(keys1.clientToDaemon).not.toEqual(keys2.clientToDaemon);
+      expect(keys1.daemonToClient).not.toEqual(keys2.daemonToClient);
     });
   });
 
   describe("signature verification", () => {
-    it("fails with wrong identity key (throws SbrpError with HandshakeFailed)", () => {
+    it("fails with wrong identity key (IdentityKeyChanged)", () => {
       const daemonIdentity = generateIdentityKeyPair();
       const wrongIdentity = generateIdentityKeyPair();
 
@@ -169,7 +157,7 @@ describe("handshake", () => {
         );
       } catch (err) {
         expect(err).toBeInstanceOf(SbrpError);
-        expect((err as SbrpError).code).toBe(SbrpErrorCode.HandshakeFailed);
+        expect((err as SbrpError).code).toBe(SbrpErrorCode.IdentityKeyChanged);
       }
     });
 
@@ -189,7 +177,7 @@ describe("handshake", () => {
         ...accept,
         signature: new Uint8Array(accept.signature),
       };
-      tamperedAccept.signature[0] ^= 0xff; // flip bits
+      tamperedAccept.signature[0] = tamperedAccept.signature[0]! ^ 0xff; // flip bits
 
       expect(() =>
         processHandshakeAccept(
@@ -262,11 +250,11 @@ describe("handshake", () => {
   });
 
   describe("processHandshakeInit", () => {
-    it("returns 64-byte signature and 32-byte ephemeral key", () => {
+    it("returns accept message with correct field sizes", () => {
       const daemonIdentity = generateIdentityKeyPair();
       const { message: init } = createHandshakeInit();
 
-      const { message: accept, result } = processHandshakeInit(
+      const { message: accept, sessionKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
@@ -277,8 +265,8 @@ describe("handshake", () => {
       expect(accept.acceptPublicKey.length).toBe(32);
       expect(accept.signature).toBeInstanceOf(Uint8Array);
       expect(accept.signature.length).toBe(64);
-      expect(result.signature).toEqual(accept.signature);
-      expect(result.ephemeralKeyPair.publicKey).toEqual(accept.acceptPublicKey);
+      expect(sessionKeys.clientToDaemon.length).toBe(32);
+      expect(sessionKeys.daemonToClient.length).toBe(32);
     });
 
     it("generates different ephemeral keys and signatures each time", () => {
@@ -304,22 +292,22 @@ describe("handshake", () => {
 
       const { message: init, ephemeralKeyPair: clientEphemeral } =
         createHandshakeInit();
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
         clientEphemeral,
       );
 
-      expect(clientResult.sessionKeys.clientToDaemon.length).toBe(32);
-      expect(clientResult.sessionKeys.daemonToClient.length).toBe(32);
-      expect(daemonResult.sessionKeys.clientToDaemon.length).toBe(32);
-      expect(daemonResult.sessionKeys.daemonToClient.length).toBe(32);
+      expect(clientKeys.clientToDaemon.length).toBe(32);
+      expect(clientKeys.daemonToClient.length).toBe(32);
+      expect(daemonKeys.clientToDaemon.length).toBe(32);
+      expect(daemonKeys.daemonToClient.length).toBe(32);
     });
   });
 });

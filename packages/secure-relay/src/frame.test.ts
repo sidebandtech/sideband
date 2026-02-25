@@ -100,6 +100,13 @@ describe("frame codec", () => {
       expect(() => readFrameHeader(short)).toThrow(SbrpError);
     });
 
+    it("rejects unknown frame type", () => {
+      const frame = new Uint8Array(FRAME_HEADER_SIZE);
+      frame[0] = 0x99; // Unknown type
+      expect(() => readFrameHeader(frame)).toThrow(SbrpError);
+      expect(() => readFrameHeader(frame)).toThrow(/Unknown frame type/);
+    });
+
     it("rejects invalid payload length in header", () => {
       const frame = new Uint8Array(FRAME_HEADER_SIZE);
       frame[0] = FrameType.Data;
@@ -222,9 +229,23 @@ describe("frame codec", () => {
       );
     });
 
+    it("rejects wrong identityPublicKey size", () => {
+      const wrongSize: HandshakeAccept = {
+        type: "handshake.accept",
+        identityPublicKey: new Uint8Array(16), // should be 32
+        acceptPublicKey: new Uint8Array(32),
+        signature: new Uint8Array(64),
+      };
+      expect(() => encodeHandshakeAccept(1n, wrongSize)).toThrow(SbrpError);
+      expect(() => encodeHandshakeAccept(1n, wrongSize)).toThrow(
+        /identityPublicKey must be 32 bytes/,
+      );
+    });
+
     it("rejects wrong acceptPublicKey size", () => {
       const wrongSize: HandshakeAccept = {
         type: "handshake.accept",
+        identityPublicKey: new Uint8Array(32),
         acceptPublicKey: new Uint8Array(16), // should be 32
         signature: new Uint8Array(64),
       };
@@ -234,6 +255,7 @@ describe("frame codec", () => {
     it("rejects wrong signature size", () => {
       const wrongSize: HandshakeAccept = {
         type: "handshake.accept",
+        identityPublicKey: new Uint8Array(32),
         acceptPublicKey: new Uint8Array(32),
         signature: new Uint8Array(32), // should be 64
       };
@@ -313,10 +335,12 @@ describe("frame codec", () => {
 
   describe("HandshakeAccept", () => {
     it("encodes and decodes correctly", () => {
+      const identityPublicKey = new Uint8Array(32).fill(0xab);
       const acceptPublicKey = new Uint8Array(32).fill(0xcd);
       const signature = new Uint8Array(64).fill(0xef);
       const accept: HandshakeAccept = {
         type: "handshake.accept",
+        identityPublicKey,
         acceptPublicKey,
         signature,
       };
@@ -331,6 +355,7 @@ describe("frame codec", () => {
 
       const decoded = decodeHandshakeAccept(frame);
       expect(decoded.type).toBe("handshake.accept");
+      expect(decoded.identityPublicKey).toEqual(identityPublicKey);
       expect(decoded.acceptPublicKey).toEqual(acceptPublicKey);
       expect(decoded.signature).toEqual(signature);
     });
@@ -343,10 +368,10 @@ describe("frame codec", () => {
     });
 
     it("rejects zero sessionId on decode", () => {
-      const payload = new Uint8Array(96);
-      const frame = new Uint8Array(FRAME_HEADER_SIZE + 96);
+      const payload = new Uint8Array(128);
+      const frame = new Uint8Array(FRAME_HEADER_SIZE + 128);
       frame[0] = FrameType.HandshakeAccept;
-      new DataView(frame.buffer).setUint32(1, 96, false);
+      new DataView(frame.buffer).setUint32(1, 128, false);
       frame.set(payload, FRAME_HEADER_SIZE);
 
       // Validation happens at decodeFrame level (via readFrameHeader)
@@ -434,7 +459,7 @@ describe("frame codec", () => {
 
       const signal = decodeSignal(frame);
       expect(signal.signal).toBe(SignalCode.Ready);
-      expect(signal.reason).toBe(0);
+      expect(signal.reason).toBe(SignalReason.None);
     });
 
     it("encodes and decodes close signal with reason", () => {
@@ -470,6 +495,22 @@ describe("frame codec", () => {
       const frame = decodeFrame(encoded);
       const signal = decodeSignal(frame);
       expect(signal.reason).toBe(SignalReason.None);
+    });
+
+    it("rejects unknown signal code", () => {
+      const payload = new Uint8Array([0xff, 0x00]); // Unknown signal, valid reason
+      const encoded = encodeFrame(FrameType.Signal, 1n, payload);
+      const frame = decodeFrame(encoded);
+      expect(() => decodeSignal(frame)).toThrow(SbrpError);
+      expect(() => decodeSignal(frame)).toThrow(/Unknown signal code/);
+    });
+
+    it("rejects unknown signal reason", () => {
+      const payload = new Uint8Array([0x01, 0xff]); // Valid signal (Close), unknown reason
+      const encoded = encodeFrame(FrameType.Signal, 1n, payload);
+      const frame = decodeFrame(encoded);
+      expect(() => decodeSignal(frame)).toThrow(SbrpError);
+      expect(() => decodeSignal(frame)).toThrow(/Unknown signal reason/);
     });
 
     it("rejects wrong payload size", () => {
@@ -530,6 +571,14 @@ describe("frame codec", () => {
       const encoded = encodeFrame(FrameType.Control, 0n, shortPayload);
       const frame = decodeFrame(encoded);
       expect(() => decodeControl(frame)).toThrow(SbrpError);
+    });
+
+    it("rejects unknown control code", () => {
+      const payload = new Uint8Array([0x99, 0x99]); // Unknown code 0x9999
+      const encoded = encodeFrame(FrameType.Control, 0n, payload);
+      const frame = decodeFrame(encoded);
+      expect(() => decodeControl(frame)).toThrow(SbrpError);
+      expect(() => decodeControl(frame)).toThrow(/Unknown control code/);
     });
   });
 
@@ -744,8 +793,8 @@ describe("frame codec", () => {
       const frame = encodePing();
       const frames = [...decoder.push(frame)];
       expect(frames.length).toBe(1);
-      expect(frames[0].type).toBe(FrameType.Ping);
-      expect(frames[0].sessionId).toBe(0n);
+      expect(frames[0]!.type).toBe(FrameType.Ping);
+      expect(frames[0]!.sessionId).toBe(0n);
     });
 
     it("decodes multiple frames in one push", () => {
@@ -758,8 +807,8 @@ describe("frame codec", () => {
 
       const frames = [...decoder.push(combined)];
       expect(frames.length).toBe(2);
-      expect(frames[0].type).toBe(FrameType.Ping);
-      expect(frames[1].type).toBe(FrameType.Pong);
+      expect(frames[0]!.type).toBe(FrameType.Ping);
+      expect(frames[1]!.type).toBe(FrameType.Pong);
     });
 
     it("buffers incomplete frames", () => {
@@ -774,7 +823,7 @@ describe("frame codec", () => {
       // Push rest
       frames = [...decoder.push(frame.subarray(FRAME_HEADER_SIZE))];
       expect(frames.length).toBe(1);
-      expect(frames[0].type).toBe(FrameType.Control);
+      expect(frames[0]!.type).toBe(FrameType.Control);
       expect(decoder.bufferedBytes).toBe(0);
     });
 
@@ -791,7 +840,7 @@ describe("frame codec", () => {
       }
 
       expect(allFrames.length).toBe(1);
-      expect(allFrames[0].type).toBe(FrameType.Ping);
+      expect(allFrames[0]!.type).toBe(FrameType.Ping);
     });
 
     it("resets state correctly", () => {

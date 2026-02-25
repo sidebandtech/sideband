@@ -195,15 +195,15 @@ describe("session", () => {
 
       // Decrypt latest 128 (within window)
       for (let i = 199; i >= 72; i--) {
-        decryptClientToDaemon(clientSession, messages[i]);
+        decryptClientToDaemon(clientSession, messages[i]!);
       }
 
       // Message with seq=0 is now outside the window (too old)
-      expect(() => decryptClientToDaemon(clientSession, messages[0])).toThrow(
+      expect(() => decryptClientToDaemon(clientSession, messages[0]!)).toThrow(
         SbrpError,
       );
       try {
-        decryptClientToDaemon(clientSession, messages[0]);
+        decryptClientToDaemon(clientSession, messages[0]!);
       } catch (e) {
         expect(e).toBeInstanceOf(SbrpError);
         expect((e as SbrpError).code).toBe(SbrpErrorCode.SequenceError);
@@ -227,11 +227,11 @@ describe("session", () => {
 
       // Decrypt latest 128 (within window)
       for (let i = 199; i >= 72; i--) {
-        decryptDaemonToClient(daemonSession, messages[i]);
+        decryptDaemonToClient(daemonSession, messages[i]!);
       }
 
       // Message with seq=0 is now outside the window (too old)
-      expect(() => decryptDaemonToClient(daemonSession, messages[0])).toThrow(
+      expect(() => decryptDaemonToClient(daemonSession, messages[0]!)).toThrow(
         SbrpError,
       );
     });
@@ -377,7 +377,8 @@ describe("session", () => {
 
       // Tamper with the ciphertext (flip a bit after nonce, in the ciphertext area)
       const tamperedData = new Uint8Array(encrypted.data);
-      tamperedData[20] ^= 0xff;
+      expect(tamperedData.length).toBeGreaterThan(20);
+      tamperedData[20] = tamperedData[20]! ^ 0xff;
       const tamperedMessage: EncryptedMessage = {
         type: "encrypted",
         seq: encrypted.seq,
@@ -413,7 +414,8 @@ describe("session", () => {
 
       // Tamper with the auth tag (last 16 bytes)
       const tamperedData = new Uint8Array(encrypted.data);
-      tamperedData[tamperedData.length - 1] ^= 0x01;
+      tamperedData[tamperedData.length - 1] =
+        tamperedData[tamperedData.length - 1]! ^ 0x01;
       const tamperedMessage: EncryptedMessage = {
         type: "encrypted",
         seq: encrypted.seq,
@@ -450,7 +452,7 @@ describe("session", () => {
       // Tamper with the direction bytes in nonce (first 4 bytes)
       // This will change the nonce used for decryption
       const tamperedData = new Uint8Array(encrypted.data);
-      tamperedData[0] ^= 0xff;
+      tamperedData[0] = tamperedData[0]! ^ 0xff;
       const tamperedMessage: EncryptedMessage = {
         type: "encrypted",
         seq: encrypted.seq,
@@ -724,14 +726,14 @@ describe("session", () => {
       // Decrypt in random order
       const c2dOrder = [5, 2, 8, 0, 3, 9, 1, 6, 4, 7];
       for (const i of c2dOrder) {
-        expect(decryptClientToDaemon(clientSession, c2dMessages[i])).toEqual(
+        expect(decryptClientToDaemon(clientSession, c2dMessages[i]!)).toEqual(
           new Uint8Array([i]),
         );
       }
 
       const d2cOrder = [7, 4, 1, 9, 6, 3, 0, 8, 2, 5];
       for (const i of d2cOrder) {
-        expect(decryptDaemonToClient(daemonSession, d2cMessages[i])).toEqual(
+        expect(decryptDaemonToClient(daemonSession, d2cMessages[i]!)).toEqual(
           new Uint8Array([i + 100]),
         );
       }

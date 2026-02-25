@@ -11,7 +11,7 @@ SDK docs may reference `runtime/` for behavioral contracts and `protocols/` for 
 
 | Document             | Scope                                                   | Status |
 | -------------------- | ------------------------------------------------------- | ------ |
-| [peer.md](./peer.md) | Peer SDK API design, lifecycle, pub/sub, error handling | Draft  |
+| [peer.md](./peer.md) | Peer SDK API design, lifecycle, pub/sub, error handling | Active |
 
 ## Layer Boundary
 
