@@ -1,5 +1,25 @@
 # @sideband/peer
 
+## 0.1.0
+
+### Minor Changes
+
+- [#21](https://github.com/sidebandtech/sideband/pull/21) [`c23e3aa`](https://github.com/sidebandtech/sideband/commit/c23e3aacb0cbb45ce95d11a4dbba95cd86a630b3) Thanks [@koistya](https://github.com/koistya)! - Add SBRP E2EE negotiators and `@sideband/peer/sbrp` subpath export
+
+  `@sideband/peer` gains `sbrpClientNegotiator` and `sbrpDaemonNegotiator` via a new
+  `@sideband/peer/sbrp` entry point (requires `@sideband/secure-relay` as a peer dep).
+  Includes TOFU identity pinning, configurable trust policies (`auto`/`prompt`/`strict`),
+  ephemeral key zeroization, and an encrypted channel wrapper with injected crypto ops.
+
+  `@sideband/secure-relay` updates the SBRP handshake wire format: `HandshakeAccept`
+  payload grows to 128 bytes and now includes the daemon's Ed25519 identity public key
+  inline, removing the need for a separate identity-key frame.
+
+### Patch Changes
+
+- Updated dependencies [[`c23e3aa`](https://github.com/sidebandtech/sideband/commit/c23e3aacb0cbb45ce95d11a4dbba95cd86a630b3)]:
+  - @sideband/secure-relay@0.2.3
+
 ## 0.0.1
 
 ### Patch Changes
