@@ -4,7 +4,7 @@
 > **Purpose**: Overview and future roadmap for direct P2P sessions.  
 > **Status: Stub** — This protocol is not yet specified.
 
-SBDP is the planned direct (peer-to-peer) session protocol for Sideband. It will provide secure SBP transport without a relay, using direct connectivity mechanisms such as WebRTC or DTLS-based channels.
+SBDP is the planned direct (peer-to-peer) session protocol for Sideband. It will provide secure SBP transport without a relay, using mutual-authenticated session negotiation (ADR-015) over direct transports such as WebRTC DataChannel, QUIC, or TCP.
 
 ## Status
 
@@ -29,13 +29,13 @@ This protocol delegates:
 This protocol will define:
 
 - **P2P session establishment**: Direct connection setup
-- **DTLS integration**: Secure transport (likely)
+- **Noise XX session negotiation**: Mutual authentication and key derivation
 - **NAT traversal**: ICE/STUN/TURN or similar
 
 ## Design Principles (Preview)
 
 - No relay dependency
-- Secure session establishment (likely DTLS or Noise)
+- Secure session establishment (Noise XX per ADR-015)
 - Reuse SBP framing unchanged
 - Pluggable transport (WebRTC, raw UDP, etc.)
 
