@@ -3,7 +3,7 @@ url: /sdk.md
 ---
 # SDK Design
 
-> **Authority**: Navigation (non-normative)
+> **Authority**: Navigation (non-normative)\
 > **Purpose**: Index and layer boundary for public SDK contracts and design documents.
 
 The `sdk/` layer covers the public API surface of `@sideband/peer` and related consumer-facing packages. It sits above the runtime layer and does not define wire encoding or session cryptography.

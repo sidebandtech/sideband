@@ -3,8 +3,8 @@ url: /protocols/transport/abi.md
 ---
 # Transport ABI
 
-> **Authority**: Primary (Normative)
-> **Purpose**: Extended semantics for the `TransportConnection` interface
+> **Authority**: Primary (Normative)\
+> **Purpose**: Extended semantics for the `TransportConnection` interface\
 > **See also**: ADR-005, transport/errors.md, transport/websocket.md
 
 This document extends ADR-005 with normative behavioral semantics for transport implementations. ADR-005 defines the interface shape; this document specifies runtime behavior.

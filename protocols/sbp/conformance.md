@@ -4,7 +4,7 @@ url: /protocols/sbp/conformance.md
 # SBP Conformance Tests (v0.1 plan)
 
 > **Authority**: Supporting (Test specification)\
-> **Purpose**: Test vectors, fixtures, and validation checklist for SBP implementations.
+> **Purpose**: Test vectors, fixtures, and validation checklist for SBP implementations.\
 > **Status: Stub** — This document is a plan and not a complete conformance suite.
 
 Lightweight checklist for cross-implementation compatibility. Use deterministic fixtures; avoid network in golden tests.

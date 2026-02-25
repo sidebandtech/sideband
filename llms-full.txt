@@ -2114,7 +2114,7 @@ url: /protocols/sbrp/control-codes.md
 # Control Codes
 
 > **Authority**: Primary (Reference)\
-> **Purpose**: Catalog of control code values, names, and flags. Behavioral semantics defined in [state-machine.md](./state-machine.md).
+> **Purpose**: Catalog of control code values, names, and flags. Behavioral semantics defined in [state-machine.md](./state-machine.md).\
 > **Stability Note**: This document exists to stabilize numeric code assignments. Once the control code set is frozen, this catalog MAY be inlined into state-machine.md as an appendix.
 
 ## Code Ranges
@@ -3130,7 +3130,7 @@ url: /protocols/error-codes.md
 ---
 # Error Code Registry
 
-> **Authority**: Primary (Normative)
+> **Authority**: Primary (Normative)\
 > **Purpose**: Canonical registry for all error codes across protocol layers.
 
 This document is the single source of truth for error codes. Specifications MUST reference this registry; they MUST NOT define codes inline.
@@ -3439,7 +3439,7 @@ url: /runtime/router.md
 ---
 # Message Routing
 
-> **Authority**: Primary (Behavioral)
+> **Authority**: Primary (Behavioral)\
 > **Purpose**: Normative behavioral contract for handler registration, dispatch ordering, and error propagation.
 
 The router dispatches decoded `MessageFrame` payloads to registered handlers. It has no knowledge
@@ -4155,7 +4155,7 @@ Every document MUST start with:
 ```markdown
 # Document Title
 
-> **Authority**: Primary (Normative) | Supporting (Reference) | Navigation (Non-normative)
+> **Authority**: Primary (Normative) | Supporting (Reference) | Navigation (Non-normative)  
 > **Purpose**: One-line description of what this document defines.
 ```
 
@@ -5998,7 +5998,7 @@ url: /runtime.md
 ---
 # Runtime Behavioral Contracts
 
-> **Authority**: Navigation (non-normative)
+> **Authority**: Navigation (non-normative)\
 > **Purpose**: Index and layer boundary for runtime behavioral contracts.
 
 The `runtime/` layer defines externally observable behavioral contracts for `@sideband/runtime` — the session lifecycle, message routing, and RPC correlation semantics that peer and application layers depend on.
@@ -6310,7 +6310,7 @@ url: /protocols/sbp/conformance.md
 # SBP Conformance Tests (v0.1 plan)
 
 > **Authority**: Supporting (Test specification)\
-> **Purpose**: Test vectors, fixtures, and validation checklist for SBP implementations.
+> **Purpose**: Test vectors, fixtures, and validation checklist for SBP implementations.\
 > **Status: Stub** — This document is a plan and not a complete conformance suite.
 
 Lightweight checklist for cross-implementation compatibility. Use deterministic fixtures; avoid network in golden tests.
@@ -6642,7 +6642,7 @@ url: /sdk.md
 ---
 # SDK Design
 
-> **Authority**: Navigation (non-normative)
+> **Authority**: Navigation (non-normative)\
 > **Purpose**: Index and layer boundary for public SDK contracts and design documents.
 
 The `sdk/` layer covers the public API surface of `@sideband/peer` and related consumer-facing packages. It sits above the runtime layer and does not define wire encoding or session cryptography.
@@ -6936,8 +6936,8 @@ url: /runtime/session.md
 ---
 # Session Lifecycle
 
-> **Authority**: Primary (Behavioral)
-> **Purpose**: Normative behavioral contract for session lifecycle, negotiators, retry policy, and termination ordering.
+> **Authority**: Primary (Behavioral)\
+> **Purpose**: Normative behavioral contract for session lifecycle, negotiators, retry policy, and termination ordering.\
 > **Status: Stub** — Normative content is captured in [ADR-009](../adr/009-runtime-peer-lifecycle.md) pending promotion to this document.
 
 ## Layer Boundary
@@ -7779,8 +7779,8 @@ url: /protocols/transport/abi.md
 ---
 # Transport ABI
 
-> **Authority**: Primary (Normative)
-> **Purpose**: Extended semantics for the `TransportConnection` interface
+> **Authority**: Primary (Normative)\
+> **Purpose**: Extended semantics for the `TransportConnection` interface\
 > **See also**: ADR-005, transport/errors.md, transport/websocket.md
 
 This document extends ADR-005 with normative behavioral semantics for transport implementations. ADR-005 defines the interface shape; this document specifies runtime behavior.
@@ -8138,8 +8138,8 @@ url: /protocols/transport/conformance.md
 ---
 # Transport Conformance
 
-> **Authority**: Primary (Normative)
-> **Purpose**: Conformance test matrix and harness specification for transport implementations.
+> **Authority**: Primary (Normative)\
+> **Purpose**: Conformance test matrix and harness specification for transport implementations.\
 > **See also**: transport/abi.md, transport/errors.md, transport/websocket.md
 
 This document defines the conformance requirements and test infrastructure for transport implementations. All transports (`browser`, `node`, `loopback`) must pass the applicable tests to be considered conformant.
@@ -8561,8 +8561,8 @@ url: /protocols/transport/errors.md
 ---
 # Transport Errors
 
-> **Authority**: Primary (Normative)
-> **Purpose**: Error taxonomy and classification for transport operations
+> **Authority**: Primary (Normative)\
+> **Purpose**: Error taxonomy and classification for transport operations\
 > **See also**: [error-codes.md](../error-codes.md) (wire protocol errors), [transport/abi.md](./abi.md)
 
 ## Scope
@@ -8864,8 +8864,8 @@ url: /protocols/transport/websocket.md
 ---
 # WebSocket Transport
 
-> **Authority**: Primary (Normative)
-> **Purpose**: WebSocket-specific transport rules and constraints.
+> **Authority**: Primary (Normative)\
+> **Purpose**: WebSocket-specific transport rules and constraints.\
 > **See also**: [transport/abi.md](./abi.md), [transport/errors.md](./errors.md), [RFC 6455](https://datatracker.ietf.org/doc/html/rfc6455)
 
 WebSocket-specific behaviors for `@sideband/transport-ws`. Complements the transport ABI with WebSocket protocol constraints.
