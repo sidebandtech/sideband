@@ -10,13 +10,18 @@ import type {
   TransportConnection,
   TransportEndpoint,
 } from "@sideband/transport";
+import type {
+  WsConnectOptions,
+  WsEndpoint,
+  WsTransportOptions,
+} from "./types.js";
 import { TransportError } from "@sideband/transport";
 import { WsConnection } from "./connection.js";
-import type { WsConnectOptions, WsEndpoint } from "./types.js";
 import { normalizeError } from "./ws-errors.js";
 
-export { WsConnection } from "./connection.js";
-export type { WsConnectOptions, WsEndpoint };
+export { WsConnection, type WsConnectionInit } from "./connection.js";
+export * from "./types.js";
+export * from "./ws-errors.js";
 
 /**
  * Browser WebSocket transport.
@@ -226,4 +231,13 @@ export function wsEndpointFromHttp(url: string | URL): WsEndpoint {
  */
 export function browserWsTransport(): Transport {
   return new BrowserWsTransport();
+}
+
+/**
+ * Unified wsTransport factory for browser context.
+ * Always returns a browser WebSocket transport; the `platform` option is accepted
+ * for API parity with the root index export but ignored (browser has one platform).
+ */
+export function wsTransport(_options?: WsTransportOptions): Transport {
+  return browserWsTransport();
 }
