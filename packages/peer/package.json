@@ -35,6 +35,11 @@
       "bun": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./sbrp": {
+      "types": "./dist/sbrp.d.ts",
+      "bun": "./src/sbrp.ts",
+      "default": "./dist/sbrp.js"
+    },
     "./package.json": "./package.json"
   },
   "dependencies": {

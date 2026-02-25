@@ -18,7 +18,7 @@ import { createPeer, listen } from "@sideband/peer";
 const server = await listen({
   endpoint: "ws://localhost:8080",
   onConnection(peer) {
-    peer.rpc.handle("echo", (params) => (params as { msg: string }).msg);
+    peer.rpc.handle<{ msg: string }, string>("echo", (p) => p.msg);
   },
 });
 

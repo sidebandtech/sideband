@@ -27,19 +27,6 @@ import type {
 } from "./types.js";
 import { SbrpError, SbrpErrorCode } from "./types.js";
 
-/** Result of a successful daemon handshake */
-export interface DaemonHandshakeResult {
-  sessionKeys: SessionKeys;
-  ephemeralKeyPair: EphemeralKeyPair;
-  signature: Uint8Array;
-}
-
-/** Result of a successful client handshake */
-export interface ClientHandshakeResult {
-  sessionKeys: SessionKeys;
-  ephemeralKeyPair: EphemeralKeyPair;
-}
-
 /**
  * Create a handshake init message (client side).
  *
@@ -73,7 +60,7 @@ export function processHandshakeInit(
   init: HandshakeInit,
   daemonId: DaemonId,
   identityKeyPair: IdentityKeyPair,
-): { message: HandshakeAccept; result: DaemonHandshakeResult } {
+): { message: HandshakeAccept; sessionKeys: SessionKeys } {
   const ephemeralKeyPair = generateEphemeralKeyPair();
 
   // Sign ephemeral key with context binding
@@ -97,20 +84,18 @@ export function processHandshakeInit(
   );
   const sessionKeys = deriveSessionKeys(sharedSecret, transcriptHash);
 
-  // Best-effort zeroize shared secret
+  // Best-effort zeroize secrets
   zeroize(sharedSecret);
+  zeroize(ephemeralKeyPair.privateKey);
 
   return {
     message: {
       type: "handshake.accept",
+      identityPublicKey: identityKeyPair.publicKey,
       acceptPublicKey: ephemeralKeyPair.publicKey,
       signature,
     },
-    result: {
-      sessionKeys,
-      ephemeralKeyPair,
-      signature,
-    },
+    sessionKeys,
   };
 }
 
@@ -123,14 +108,29 @@ export function processHandshakeInit(
  * NOTE: Callers MUST enforce a 30-second handshake timeout per SBRP §1.4.
  * This function does not track time; timeout enforcement is a transport concern.
  *
- * @throws {SbrpError} with code HandshakeFailed if signature verification fails
+ * @param ephemeralKeyPair The privateKey is zeroized in-place after key derivation.
+ * @throws {SbrpError} IdentityKeyChanged if advertised key doesn't match pinned key
+ * @throws {SbrpError} HandshakeFailed if signature verification fails
  */
 export function processHandshakeAccept(
   accept: HandshakeAccept,
   daemonId: DaemonId,
   pinnedIdentityPublicKey: Uint8Array,
   ephemeralKeyPair: EphemeralKeyPair,
-): ClientHandshakeResult {
+): SessionKeys {
+  // Reject if advertised identity key doesn't match pinned key.
+  // Signature is verified against pinnedIdentityPublicKey, but an attacker
+  // could swap the advertised field to mislead higher layers.
+  if (
+    accept.identityPublicKey.length !== pinnedIdentityPublicKey.length ||
+    !accept.identityPublicKey.every((b, i) => b === pinnedIdentityPublicKey[i])
+  ) {
+    throw new SbrpError(
+      SbrpErrorCode.IdentityKeyChanged,
+      "Advertised identity key does not match pinned key",
+    );
+  }
+
   // Verify daemon signature using PINNED key (not relay-provided!)
   const signaturePayload = createSignaturePayload(
     daemonId,
@@ -164,11 +164,9 @@ export function processHandshakeAccept(
   );
   const sessionKeys = deriveSessionKeys(sharedSecret, transcriptHash);
 
-  // Best-effort zeroize shared secret
+  // Best-effort zeroize secrets
   zeroize(sharedSecret);
+  zeroize(ephemeralKeyPair.privateKey);
 
-  return {
-    sessionKeys,
-    ephemeralKeyPair,
-  };
+  return sessionKeys;
 }

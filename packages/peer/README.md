@@ -2,8 +2,6 @@
 
 High-level SDK for Sideband. Handles connection lifecycle, typed RPC, pub/sub events, and reconnection on top of `@sideband/runtime` and `@sideband/transport-ws`.
 
-> **Alpha.** Core lifecycle, RPC, and events are implemented. SBRP relay mode is not yet available.
-
 ## Install
 
 ```bash
@@ -40,10 +38,9 @@ import { listen } from "@sideband/peer";
 const server = await listen({
   endpoint: "ws://0.0.0.0:8080",
   onConnection(peer) {
-    peer.rpc.handle("user.get", (params) => {
-      const { id } = params as { id: number };
-      return { name: id === 1 ? "Ada" : "Unknown" };
-    });
+    peer.rpc.handle<{ id: number }, { name: string }>("user.get", (p) => ({
+      name: p.id === 1 ? "Ada" : "Unknown",
+    }));
   },
 });
 
@@ -56,7 +53,12 @@ await server.close();
 ```ts
 const peer = createPeer({
   endpoint: "ws://localhost:8080",
-  retryPolicy: { maxAttempts: 5, baseDelayMs: 500, maxDelayMs: 10_000 },
+  retryPolicy: {
+    mode: "on-error",
+    maxAttempts: 5,
+    initialDelayMs: 500,
+    maxDelayMs: 10_000,
+  },
   connectionPolicy: { onDisconnect: "pause" }, // buffer RPCs during reconnect
 });
 
@@ -70,6 +72,31 @@ States: `idle → connecting → negotiating → active ↔ paused`. Reconnectio
 
 - `"fail"` (default) — in-flight and queued RPC calls are rejected immediately on disconnect
 - `"pause"` — unsent calls are buffered (up to `rpcPolicy.disconnectBufferLimitBytes`, default 64 KiB) and flushed on reconnect
+
+## SBRP relay mode (E2EE)
+
+For end-to-end encrypted relay sessions via `@sideband/secure-relay`:
+
+```ts
+import { createPeer } from "@sideband/peer";
+import {
+  sbrpClientNegotiator,
+  createMemoryIdentityKeyStore,
+} from "@sideband/peer/sbrp";
+
+const store = createMemoryIdentityKeyStore();
+const peer = createPeer({
+  endpoint: "ws://relay.example.com",
+  negotiator: sbrpClientNegotiator({
+    daemonId: "target-daemon-id",
+    sessionId: 1n,
+    identityKeyStore: store,
+    trustPolicy: "auto",
+  }),
+});
+```
+
+Server side uses `sbrpDaemonNegotiator` with an `identityKeyPair`. See `@sideband/secure-relay` for details.
 
 ## Events (NATS patterns)
 
@@ -112,7 +139,6 @@ await peer.connect();
 
 ## What's not yet implemented
 
-- **SBRP relay mode** — `sbrpClientNegotiator` / `sbrpDaemonNegotiator` for E2EE relay sessions; requires `@sideband/secure-relay` negotiator integration
 - **Streaming RPC** — `stream/` channel reserved for v2
 
 For lower-level control, see [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime).

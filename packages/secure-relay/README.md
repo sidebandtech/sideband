@@ -71,24 +71,24 @@ const daemonId = asDaemonId("my-daemon");
 const { message: init, ephemeralKeyPair } = createHandshakeInit();
 
 // Daemon: process init, create accept
-const { message: accept, result } = processHandshakeInit(
+const { message: accept, sessionKeys } = processHandshakeInit(
   init,
   daemonId,
   identity,
 );
 const clientSession = createClientSession(
   asClientId("client-123"),
-  result.sessionKeys,
+  sessionKeys,
 );
 
 // Client: verify signature against TOFU-pinned key, derive session
-const { sessionKeys } = processHandshakeAccept(
+const clientKeys = processHandshakeAccept(
   accept,
   daemonId,
   pinnedIdentityKey, // from local storage
   ephemeralKeyPair,
 );
-const daemonSession = createDaemonSession(sessionKeys);
+const daemonSession = createDaemonSession(clientKeys);
 
 // Encrypt/decrypt messages (sessions are stateful — do not clone)
 const encrypted = encryptClientToDaemon(daemonSession, plaintext);
@@ -114,6 +114,7 @@ import {
   SbrpError,
   SbrpErrorCode,
 } from "@sideband/secure-relay";
+import { equalBytes } from "@noble/hashes/utils";
 
 // Load pinned key from storage (null on first connection)
 const pinnedKey = await storage.get(`tofu:${daemonId}`);
@@ -148,6 +149,7 @@ All errors throw `SbrpError` with a specific `code`:
 | ---------------------- | ----------------------------------------- | ------------------------- |
 | `identity_key_changed` | Pinned key doesn't match (potential MITM) | Close session, alert user |
 | `handshake_failed`     | Signature verification failed             | Close session             |
+| `handshake_timeout`    | Handshake exceeded time limit             | Close session, retry      |
 | `decrypt_failed`       | Message authentication failed             | Close session             |
 | `sequence_error`       | Replay detected or sequence out of window | Close session             |
 

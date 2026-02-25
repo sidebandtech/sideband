@@ -33,7 +33,7 @@ import {
   encryptClientToDaemon,
   encryptDaemonToClient,
 } from "./session.js";
-import { asDaemonId, asClientId, SbrpError, SbrpErrorCode } from "./types.js";
+import { asClientId, asDaemonId, SbrpError } from "./types.js";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -52,14 +52,14 @@ describe("SBRP E2EE integration", () => {
       expect(initMessage.initPublicKey.length).toBe(32);
 
       // Step 2: Daemon processes init and creates accept
-      const { message: acceptMessage, result: daemonResult } =
+      const { message: acceptMessage, sessionKeys: daemonKeys } =
         processHandshakeInit(initMessage, daemonId, daemonIdentity);
       expect(acceptMessage.type).toBe("handshake.accept");
       expect(acceptMessage.acceptPublicKey.length).toBe(32);
       expect(acceptMessage.signature.length).toBe(64);
 
       // Step 3: Client verifies signature and derives keys (TOFU - first connection)
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         acceptMessage,
         daemonId,
         daemonIdentity.publicKey, // Pinned identity key
@@ -67,20 +67,13 @@ describe("SBRP E2EE integration", () => {
       );
 
       // Verify both sides derived the same session keys
-      expect(clientResult.sessionKeys.clientToDaemon).toEqual(
-        daemonResult.sessionKeys.clientToDaemon,
-      );
-      expect(clientResult.sessionKeys.daemonToClient).toEqual(
-        daemonResult.sessionKeys.daemonToClient,
-      );
+      expect(clientKeys.clientToDaemon).toEqual(daemonKeys.clientToDaemon);
+      expect(clientKeys.daemonToClient).toEqual(daemonKeys.daemonToClient);
 
       // Step 4: Create sessions
       const clientId = asClientId("client-session-001");
-      const clientSession = createClientSession(
-        clientId,
-        daemonResult.sessionKeys,
-      );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const clientSession = createClientSession(clientId, daemonKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // Step 5: Client encrypts message to daemon
       const clientMessage = textEncoder.encode("Hello from client!");
@@ -123,20 +116,17 @@ describe("SBRP E2EE integration", () => {
       // Complete handshake
       const { message: initMessage, ephemeralKeyPair: clientEphemeral } =
         createHandshakeInit();
-      const { message: acceptMessage, result: daemonResult } =
+      const { message: acceptMessage, sessionKeys: daemonKeys } =
         processHandshakeInit(initMessage, daemonId, daemonIdentity);
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         acceptMessage,
         daemonId,
         daemonIdentity.publicKey,
         clientEphemeral,
       );
 
-      const clientSession = createClientSession(
-        clientId,
-        daemonResult.sessionKeys,
-      );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const clientSession = createClientSession(clientId, daemonKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // Send multiple messages from client to daemon
       for (let i = 0; i < 5; i++) {
@@ -166,20 +156,17 @@ describe("SBRP E2EE integration", () => {
 
       const { message: initMessage, ephemeralKeyPair: clientEphemeral } =
         createHandshakeInit();
-      const { message: acceptMessage, result: daemonResult } =
+      const { message: acceptMessage, sessionKeys: daemonKeys } =
         processHandshakeInit(initMessage, daemonId, daemonIdentity);
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         acceptMessage,
         daemonId,
         daemonIdentity.publicKey,
         clientEphemeral,
       );
 
-      const clientSession = createClientSession(
-        clientId,
-        daemonResult.sessionKeys,
-      );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const clientSession = createClientSession(clientId, daemonKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // Empty message from client
       const emptyMessage = new Uint8Array(0);
@@ -195,20 +182,17 @@ describe("SBRP E2EE integration", () => {
 
       const { message: initMessage, ephemeralKeyPair: clientEphemeral } =
         createHandshakeInit();
-      const { message: acceptMessage, result: daemonResult } =
+      const { message: acceptMessage, sessionKeys: daemonKeys } =
         processHandshakeInit(initMessage, daemonId, daemonIdentity);
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         acceptMessage,
         daemonId,
         daemonIdentity.publicKey,
         clientEphemeral,
       );
 
-      const clientSession = createClientSession(
-        clientId,
-        daemonResult.sessionKeys,
-      );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const clientSession = createClientSession(clientId, daemonKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // 32KB message
       const largeMessage = new Uint8Array(32 * 1024);
@@ -230,12 +214,9 @@ describe("SBRP E2EE integration", () => {
       // Client A initiates handshake
       const { message: initA, ephemeralKeyPair: ephemeralA } =
         createHandshakeInit();
-      const { message: acceptA, result: daemonResultA } = processHandshakeInit(
-        initA,
-        daemonId,
-        daemonIdentity,
-      );
-      const clientResultA = processHandshakeAccept(
+      const { message: acceptA, sessionKeys: daemonKeysA } =
+        processHandshakeInit(initA, daemonId, daemonIdentity);
+      const clientKeysA = processHandshakeAccept(
         acceptA,
         daemonId,
         daemonIdentity.publicKey,
@@ -245,12 +226,9 @@ describe("SBRP E2EE integration", () => {
       // Client B initiates handshake
       const { message: initB, ephemeralKeyPair: ephemeralB } =
         createHandshakeInit();
-      const { message: acceptB, result: daemonResultB } = processHandshakeInit(
-        initB,
-        daemonId,
-        daemonIdentity,
-      );
-      const clientResultB = processHandshakeAccept(
+      const { message: acceptB, sessionKeys: daemonKeysB } =
+        processHandshakeInit(initB, daemonId, daemonIdentity);
+      const clientKeysB = processHandshakeAccept(
         acceptB,
         daemonId,
         daemonIdentity.publicKey,
@@ -258,24 +236,24 @@ describe("SBRP E2EE integration", () => {
       );
 
       // Verify different session keys for each client
-      expect(clientResultA.sessionKeys.clientToDaemon).not.toEqual(
-        clientResultB.sessionKeys.clientToDaemon,
+      expect(clientKeysA.clientToDaemon).not.toEqual(
+        clientKeysB.clientToDaemon,
       );
-      expect(clientResultA.sessionKeys.daemonToClient).not.toEqual(
-        clientResultB.sessionKeys.daemonToClient,
+      expect(clientKeysA.daemonToClient).not.toEqual(
+        clientKeysB.daemonToClient,
       );
 
       // Create sessions
       const clientSessionA = createClientSession(
         asClientId("client-A"),
-        daemonResultA.sessionKeys,
+        daemonKeysA,
       );
       const clientSessionB = createClientSession(
         asClientId("client-B"),
-        daemonResultB.sessionKeys,
+        daemonKeysB,
       );
-      const daemonSessionA = createDaemonSession(clientResultA.sessionKeys);
-      const daemonSessionB = createDaemonSession(clientResultB.sessionKeys);
+      const daemonSessionA = createDaemonSession(clientKeysA);
+      const daemonSessionB = createDaemonSession(clientKeysB);
 
       // Client A sends message
       const messageA = textEncoder.encode("From client A");
@@ -299,12 +277,9 @@ describe("SBRP E2EE integration", () => {
 
       // Two separate sessions
       const { message: init1, ephemeralKeyPair: eph1 } = createHandshakeInit();
-      const { message: accept1, result: daemonResult1 } = processHandshakeInit(
-        init1,
-        daemonId,
-        daemonIdentity,
-      );
-      const clientResult1 = processHandshakeAccept(
+      const { message: accept1, sessionKeys: daemonKeys1 } =
+        processHandshakeInit(init1, daemonId, daemonIdentity);
+      const clientKeys1 = processHandshakeAccept(
         accept1,
         daemonId,
         daemonIdentity.publicKey,
@@ -312,12 +287,9 @@ describe("SBRP E2EE integration", () => {
       );
 
       const { message: init2, ephemeralKeyPair: eph2 } = createHandshakeInit();
-      const { message: accept2, result: daemonResult2 } = processHandshakeInit(
-        init2,
-        daemonId,
-        daemonIdentity,
-      );
-      const clientResult2 = processHandshakeAccept(
+      const { message: accept2, sessionKeys: daemonKeys2 } =
+        processHandshakeInit(init2, daemonId, daemonIdentity);
+      const clientKeys2 = processHandshakeAccept(
         accept2,
         daemonId,
         daemonIdentity.publicKey,
@@ -326,13 +298,13 @@ describe("SBRP E2EE integration", () => {
 
       const clientSession1 = createClientSession(
         asClientId("session-1"),
-        daemonResult1.sessionKeys,
+        daemonKeys1,
       );
       const clientSession2 = createClientSession(
         asClientId("session-2"),
-        daemonResult2.sessionKeys,
+        daemonKeys2,
       );
-      const daemonSession1 = createDaemonSession(clientResult1.sessionKeys);
+      const daemonSession1 = createDaemonSession(clientKeys1);
 
       // Encrypt with session 1
       const message = textEncoder.encode("Secret message");
@@ -365,7 +337,7 @@ describe("SBRP E2EE integration", () => {
       expect(decodedInit.initPublicKey).toEqual(initMessage.initPublicKey);
 
       // Step 2: Daemon receives wire frame, processes, creates accept
-      const { message: acceptMessage, result: daemonResult } =
+      const { message: acceptMessage, sessionKeys: daemonKeys } =
         processHandshakeInit(decodedInit, daemonId, daemonIdentity);
       const acceptWireFrame = encodeHandshakeAccept(sessionId, acceptMessage);
 
@@ -377,7 +349,7 @@ describe("SBRP E2EE integration", () => {
       const decodedAccept = decodeHandshakeAccept(acceptFrame);
 
       // Step 3: Client receives accept, verifies, derives keys
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         decodedAccept,
         daemonId,
         daemonIdentity.publicKey,
@@ -387,9 +359,9 @@ describe("SBRP E2EE integration", () => {
       // Create sessions
       const clientSession = createClientSession(
         asClientId("wire-client"),
-        daemonResult.sessionKeys,
+        daemonKeys,
       );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // Step 4: Client sends encrypted data frame
       const clientMessage = textEncoder.encode("Wire format test!");
@@ -453,24 +425,24 @@ describe("SBRP E2EE integration", () => {
       expect(initFrame1.sessionId).not.toBe(initFrame2.sessionId);
 
       // Process both handshakes
-      const { message: accept1, result: dr1 } = processHandshakeInit(
+      const { message: accept1, sessionKeys: dk1 } = processHandshakeInit(
         decodeHandshakeInit(initFrame1),
         daemonId,
         daemonIdentity,
       );
-      const { message: accept2, result: dr2 } = processHandshakeInit(
+      const { message: accept2, sessionKeys: dk2 } = processHandshakeInit(
         decodeHandshakeInit(initFrame2),
         daemonId,
         daemonIdentity,
       );
 
-      const cr1 = processHandshakeAccept(
+      const ck1 = processHandshakeAccept(
         accept1,
         daemonId,
         daemonIdentity.publicKey,
         eph1,
       );
-      const cr2 = processHandshakeAccept(
+      const ck2 = processHandshakeAccept(
         accept2,
         daemonId,
         daemonIdentity.publicKey,
@@ -478,10 +450,10 @@ describe("SBRP E2EE integration", () => {
       );
 
       // Create sessions
-      const cs1 = createClientSession(asClientId("c1"), dr1.sessionKeys);
-      const cs2 = createClientSession(asClientId("c2"), dr2.sessionKeys);
-      const ds1 = createDaemonSession(cr1.sessionKeys);
-      const ds2 = createDaemonSession(cr2.sessionKeys);
+      const cs1 = createClientSession(asClientId("c1"), dk1);
+      const cs2 = createClientSession(asClientId("c2"), dk2);
+      const ds1 = createDaemonSession(ck1);
+      const ds2 = createDaemonSession(ck2);
 
       // Messages on session 100
       const msg1 = encryptClientToDaemon(
@@ -557,13 +529,8 @@ describe("SBRP E2EE integration", () => {
       const pinnedKey = realDaemonIdentity.publicKey;
 
       // Verify first connection succeeds
-      const result1 = processHandshakeAccept(
-        accept1,
-        daemonId,
-        pinnedKey,
-        eph1,
-      );
-      expect(result1.sessionKeys).toBeDefined();
+      const keys1 = processHandshakeAccept(accept1, daemonId, pinnedKey, eph1);
+      expect(keys1).toBeDefined();
 
       // Second connection: Attacker tries to impersonate daemon
       const { message: init2, ephemeralKeyPair: eph2 } = createHandshakeInit();
@@ -579,7 +546,7 @@ describe("SBRP E2EE integration", () => {
       ).toThrow(SbrpError);
       expect(() =>
         processHandshakeAccept(attackerAccept, daemonId, pinnedKey, eph2),
-      ).toThrow(/Signature verification failed/);
+      ).toThrow(/identity key does not match pinned key/);
     });
 
     it("detects identity key change scenario", () => {
@@ -621,12 +588,12 @@ describe("SBRP E2EE integration", () => {
       const daemonIdentity = generateIdentityKeyPair();
 
       const { message: init, ephemeralKeyPair } = createHandshakeInit();
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
@@ -635,9 +602,9 @@ describe("SBRP E2EE integration", () => {
 
       const clientSession = createClientSession(
         asClientId("clear-test"),
-        daemonResult.sessionKeys,
+        daemonKeys,
       );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // Encrypt before clearing
       const message = textEncoder.encode("Before clear");
@@ -668,12 +635,12 @@ describe("SBRP E2EE integration", () => {
 
       // First session
       const { message: init1, ephemeralKeyPair: eph1 } = createHandshakeInit();
-      const { message: accept1, result: dr1 } = processHandshakeInit(
+      const { message: accept1, sessionKeys: dk1 } = processHandshakeInit(
         init1,
         daemonId,
         daemonIdentity,
       );
-      const cr1 = processHandshakeAccept(
+      const ck1 = processHandshakeAccept(
         accept1,
         daemonId,
         daemonIdentity.publicKey,
@@ -682,21 +649,21 @@ describe("SBRP E2EE integration", () => {
 
       const clientSession1 = createClientSession(
         asClientId("session-old"),
-        dr1.sessionKeys,
+        dk1,
       );
-      const daemonSession1 = createDaemonSession(cr1.sessionKeys);
+      const daemonSession1 = createDaemonSession(ck1);
 
       // Clear sessions
       clearDaemonSession(daemonSession1);
 
       // New handshake creates new session with new keys
       const { message: init2, ephemeralKeyPair: eph2 } = createHandshakeInit();
-      const { message: accept2, result: dr2 } = processHandshakeInit(
+      const { message: accept2, sessionKeys: dk2 } = processHandshakeInit(
         init2,
         daemonId,
         daemonIdentity,
       );
-      const cr2 = processHandshakeAccept(
+      const ck2 = processHandshakeAccept(
         accept2,
         daemonId,
         daemonIdentity.publicKey,
@@ -705,9 +672,9 @@ describe("SBRP E2EE integration", () => {
 
       const clientSession2 = createClientSession(
         asClientId("session-new"),
-        dr2.sessionKeys,
+        dk2,
       );
-      const daemonSession2 = createDaemonSession(cr2.sessionKeys);
+      const daemonSession2 = createDaemonSession(ck2);
 
       // New session works
       const message = textEncoder.encode("New session message");
@@ -791,12 +758,12 @@ describe("SBRP E2EE integration", () => {
       const daemonIdentity = generateIdentityKeyPair();
 
       const { message: init, ephemeralKeyPair } = createHandshakeInit();
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
@@ -805,9 +772,9 @@ describe("SBRP E2EE integration", () => {
 
       const clientSession = createClientSession(
         asClientId("replay-test"),
-        daemonResult.sessionKeys,
+        daemonKeys,
       );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // Send legitimate message
       const message = textEncoder.encode("Original message");
@@ -832,12 +799,12 @@ describe("SBRP E2EE integration", () => {
 
       // Session A
       const { message: initA, ephemeralKeyPair: ephA } = createHandshakeInit();
-      const { message: acceptA, result: drA } = processHandshakeInit(
+      const { message: acceptA, sessionKeys: dkA } = processHandshakeInit(
         initA,
         daemonId,
         daemonIdentity,
       );
-      const crA = processHandshakeAccept(
+      const ckA = processHandshakeAccept(
         acceptA,
         daemonId,
         daemonIdentity.publicKey,
@@ -846,27 +813,21 @@ describe("SBRP E2EE integration", () => {
 
       // Session B
       const { message: initB, ephemeralKeyPair: ephB } = createHandshakeInit();
-      const { message: acceptB, result: drB } = processHandshakeInit(
+      const { message: acceptB, sessionKeys: dkB } = processHandshakeInit(
         initB,
         daemonId,
         daemonIdentity,
       );
-      const crB = processHandshakeAccept(
+      const ckB = processHandshakeAccept(
         acceptB,
         daemonId,
         daemonIdentity.publicKey,
         ephB,
       );
 
-      const clientSessionA = createClientSession(
-        asClientId("A"),
-        drA.sessionKeys,
-      );
-      const clientSessionB = createClientSession(
-        asClientId("B"),
-        drB.sessionKeys,
-      );
-      const daemonSessionB = createDaemonSession(crB.sessionKeys);
+      const clientSessionA = createClientSession(asClientId("A"), dkA);
+      const clientSessionB = createClientSession(asClientId("B"), dkB);
+      const daemonSessionB = createDaemonSession(ckB);
 
       // Encrypt with session B keys
       const message = textEncoder.encode("Wrong session test");
@@ -887,12 +848,12 @@ describe("SBRP E2EE integration", () => {
       const daemonIdentity = generateIdentityKeyPair();
 
       const { message: init, ephemeralKeyPair } = createHandshakeInit();
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
@@ -901,16 +862,17 @@ describe("SBRP E2EE integration", () => {
 
       const clientSession = createClientSession(
         asClientId("tamper-test"),
-        daemonResult.sessionKeys,
+        daemonKeys,
       );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       const message = textEncoder.encode("Tamper test");
       const encrypted = encryptClientToDaemon(daemonSession, message);
 
       // Tamper with ciphertext (flip a bit in the middle)
       const tamperedData = new Uint8Array(encrypted.data);
-      tamperedData[20] ^= 0x01; // Flip a bit
+      expect(tamperedData.length).toBeGreaterThan(20);
+      tamperedData[20] = tamperedData[20]! ^ 0x01; // Flip a bit
 
       const tamperedMessage = {
         ...encrypted,
@@ -928,12 +890,12 @@ describe("SBRP E2EE integration", () => {
       const daemonIdentity = generateIdentityKeyPair();
 
       const { message: init, ephemeralKeyPair } = createHandshakeInit();
-      const { message: accept, result: daemonResult } = processHandshakeInit(
+      const { message: accept, sessionKeys: daemonKeys } = processHandshakeInit(
         init,
         daemonId,
         daemonIdentity,
       );
-      const clientResult = processHandshakeAccept(
+      const clientKeys = processHandshakeAccept(
         accept,
         daemonId,
         daemonIdentity.publicKey,
@@ -942,9 +904,9 @@ describe("SBRP E2EE integration", () => {
 
       const clientSession = createClientSession(
         asClientId("direction-test"),
-        daemonResult.sessionKeys,
+        daemonKeys,
       );
-      const daemonSession = createDaemonSession(clientResult.sessionKeys);
+      const daemonSession = createDaemonSession(clientKeys);
 
       // Client sends to daemon
       const clientMessage = textEncoder.encode("Client to daemon");
@@ -975,12 +937,9 @@ describe("SBRP E2EE integration", () => {
       // Create many sessions
       for (let i = 0; i < numSessions; i++) {
         const { message: init, ephemeralKeyPair } = createHandshakeInit();
-        const { message: accept, result: daemonResult } = processHandshakeInit(
-          init,
-          daemonId,
-          daemonIdentity,
-        );
-        const clientResult = processHandshakeAccept(
+        const { message: accept, sessionKeys: daemonKeys } =
+          processHandshakeInit(init, daemonId, daemonIdentity);
+        const clientKeys = processHandshakeAccept(
           accept,
           daemonId,
           daemonIdentity.publicKey,
@@ -990,9 +949,9 @@ describe("SBRP E2EE integration", () => {
         sessions.push({
           clientSession: createClientSession(
             asClientId(`stress-${i}`),
-            daemonResult.sessionKeys,
+            daemonKeys,
           ),
-          daemonSession: createDaemonSession(clientResult.sessionKeys),
+          daemonSession: createDaemonSession(clientKeys),
           id: i,
         });
       }
@@ -1014,11 +973,11 @@ describe("SBRP E2EE integration", () => {
 
       // Verify session isolation - try to decrypt with wrong session
       const msg0 = encryptClientToDaemon(
-        sessions[0].daemonSession,
+        sessions[0]!.daemonSession,
         textEncoder.encode("Session 0"),
       );
       expect(() =>
-        decryptClientToDaemon(sessions[1].clientSession, msg0),
+        decryptClientToDaemon(sessions[1]!.clientSession, msg0),
       ).toThrow(SbrpError);
     });
   });

@@ -16,6 +16,7 @@
     { "path": "../rpc/tsconfig.json" },
     { "path": "../runtime/tsconfig.json" },
     { "path": "../transport/tsconfig.json" },
-    { "path": "../transport-ws/tsconfig.json" }
+    { "path": "../transport-ws/tsconfig.json" },
+    { "path": "../secure-relay/tsconfig.json" }
   ]
 }

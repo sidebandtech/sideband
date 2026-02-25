@@ -15,7 +15,7 @@ What lives where, who depends on whom, and where to start.
 │  ├─ rpc/
 │  ├─ peer/
 │  ├─ secure-relay/        # E2EE relay protocol (SBRP)
-│  ├─ testing/             # Test helpers (when added)
+│  ├─ testing/             # Test helpers
 │  ├─ transport-ws/         # WebSocket transport (browser + Node/Bun)
 │  └─ cli/
 ├─ README.md               # Top-level overview
@@ -41,15 +41,16 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 `@sideband/runtime` — Transport-agnostic runtime
 • Manages peers, attaches transports, decodes frames, routes messages, correlates requests/responses, middleware hooks.
 • No concrete transport or UI/framework code.
-• Depends on: protocol, transport. Must not depend on concrete transports/cli.
+• Depends on: protocol, transport, rpc. Must not depend on concrete transports/cli.
 
-`@sideband/rpc` — Typed RPC on top of runtime
-• Maps method names to input/output shapes; client/server helpers; reuses runtime correlation/timeouts.
-• Depends on: protocol, runtime. No transport coupling.
+`@sideband/rpc` — Typed RPC envelope layer
+• Maps method names to input/output shapes; request/response/notification helpers and JSON codec.
+• Depends on: protocol. No transport coupling.
 
 `@sideband/peer` — Peer SDK
 • Friendly API over runtime + injected or default transport; lifecycle utilities; convenience pub/sub/RPC helpers.
-• Depends on: protocol, runtime, transport-\* (as chosen). No protocol definitions or low-level routing.
+• Depends on: protocol, rpc, runtime, transport, transport-\* (as chosen). Optional peer dependency: secure-relay.
+• No protocol definitions or low-level routing.
 
 `@sideband/transport-ws` — WebSocket transport
 • Implements the Transport interface via WebSocket for both browser and Node/Bun.
@@ -66,7 +67,7 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 • Commands for scaffolding, inspection, debugging, admin. Logic should reuse existing packages.  
 • Depends on: any package as needed; does not define protocol/runtime behavior itself.
 
-`@sideband/testing` — Test scaffolding (planned)  
+`@sideband/testing` — Test scaffolding  
 • Central place for fakes, loopback transports, peer fixtures, and shared test helpers.  
 • Keeps test utilities out of runtime packages; avoids circular devDeps.  
 • Depends on: protocol, transport, and runtime packages as needed. Only imported from tests (never production paths).
@@ -76,11 +77,15 @@ Dependency flow (allowed edges only):
 ```mermaid
 graph TD
   protocol --> runtime
+  protocol --> rpc
+  rpc --> runtime
   protocol --> transport
   transport --> runtime
   protocol --> transport_ws
   transport --> transport_ws
-  runtime --> rpc
+  protocol --> peer
+  transport --> peer
+  rpc --> peer
   runtime --> peer
   transport_ws --> peer
   secure_relay --> peer

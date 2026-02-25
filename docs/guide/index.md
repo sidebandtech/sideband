@@ -11,19 +11,26 @@ bun add @sideband/peer
 ## Quick Example
 
 ```typescript
-import { createPeer } from "@sideband/peer";
+import { listen, createPeer } from "@sideband/peer";
 
-const peer = createPeer({
-  peerId: "my-peer",
+// Server: register RPC handlers, push events to clients
+const server = await listen({
+  endpoint: "ws://0.0.0.0:8080",
+  onConnection(peer) {
+    peer.rpc.handle<{ path: string }, { content: string }>(
+      "file.read",
+      async ({ path }) => ({ content: await Bun.file(path).text() }),
+    );
+  },
 });
 
-// Subscribe to messages
-peer.subscribe("chat/*", (msg) => {
-  console.log("Received:", msg.data);
-});
+// Client: call RPCs, subscribe to events
+const peer = createPeer({ endpoint: "ws://localhost:8080" });
+await peer.connect();
 
-// Publish a message
-peer.publish("chat/general", { text: "Hello!" });
+const { content } = await peer.rpc.call<{ content: string }>("file.read", {
+  path: "./README.md",
+});
 ```
 
 ## Packages

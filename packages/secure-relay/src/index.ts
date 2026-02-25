@@ -22,12 +22,12 @@
  * const { message: init, ephemeralKeyPair } = createHandshakeInit();
  *
  * // Daemon side: process init and create accept
- * const { message: accept, result } = processHandshakeInit(init, daemonId, identity);
- * const clientSession = createClientSession(clientId, result.sessionKeys);
+ * const { message: accept, sessionKeys } = processHandshakeInit(init, daemonId, identity);
+ * const clientSession = createClientSession(clientId, sessionKeys);
  *
  * // Client side: process accept (with TOFU-pinned identity)
- * const { sessionKeys } = processHandshakeAccept(accept, daemonId, pinnedKey, ephemeralKeyPair);
- * const daemonSession = createDaemonSession(sessionKeys);
+ * const clientKeys = processHandshakeAccept(accept, daemonId, pinnedKey, ephemeralKeyPair);
+ * const daemonSession = createDaemonSession(clientKeys);
  *
  * // Encrypt/decrypt messages
  * const encrypted = encryptClientToDaemon(daemonSession, plaintext);
@@ -44,7 +44,6 @@ export type {
   HandshakeAccept,
   HandshakeInit,
   IdentityKeyPair,
-  PinnedIdentity,
   SessionId,
   SessionKeys,
 } from "./types.js";
@@ -106,11 +105,6 @@ export {
 } from "./crypto.js";
 
 // Handshake
-export type {
-  ClientHandshakeResult,
-  DaemonHandshakeResult,
-} from "./handshake.js";
-
 export {
   createHandshakeInit,
   processHandshakeAccept,
