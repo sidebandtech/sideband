@@ -33,7 +33,7 @@ import {
   processHandshakeInit,
 } from "@sideband/secure-relay";
 import { generateId } from "../id.js";
-import { createSbrpChannel } from "./channel.js";
+import { createSbrpChannel, createSignalReplayer } from "./channel.js";
 import { classifySbrpError } from "./classify.js";
 import { cancellableTimeout } from "./timeout.js";
 import type { SbrpDaemonOptions } from "./types.js";
@@ -89,16 +89,24 @@ export function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator {
       const acceptFrame = encodeHandshakeAccept(sessionId, acceptMessage);
       await conn.send(acceptFrame);
 
-      // 4. Create encrypted channel
+      // 4. Create encrypted channel with signal forwarding
+      // Signals arriving during the inner SBP handshake (before the caller
+      // invokes subscribeSignals) are buffered and replayed on first subscribe.
+      const signals = createSignalReplayer();
       const clientSession = createClientSession(
         asClientId(generateId()),
         sessionKeys,
       );
-      const channel = createSbrpChannel(conn, sessionId, {
-        encrypt: (p) => encryptDaemonToClient(clientSession, p),
-        decrypt: (m) => decryptClientToDaemon(clientSession, m),
-        clear: () => clearClientSession(clientSession),
-      });
+      const channel = createSbrpChannel(
+        conn,
+        sessionId,
+        {
+          encrypt: (p) => encryptDaemonToClient(clientSession, p),
+          decrypt: (m) => decryptClientToDaemon(clientSession, m),
+          clear: () => clearClientSession(clientSession),
+        },
+        { onSignal: signals.onSignal },
+      );
 
       // 5. Run inner SBP handshake over encrypted channel
       const remainingMs = Math.max(1, timeoutMs - (Date.now() - startTime));
@@ -109,7 +117,7 @@ export function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator {
       });
       const innerResult = await innerNegotiator.negotiate(channel);
 
-      // 6. Return result with identity info
+      // 6. Return result with identity info and signal subscription
       const fingerprint = computeFingerprint(options.identityKeyPair.publicKey);
       return {
         peerId: innerResult.peerId,
@@ -117,6 +125,7 @@ export function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator {
         capabilities: innerResult.capabilities,
         metadata: innerResult.metadata,
         channel,
+        subscribeSignals: signals.subscribeSignals,
       };
     },
 

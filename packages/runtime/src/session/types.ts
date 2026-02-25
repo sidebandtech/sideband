@@ -30,9 +30,23 @@ export interface TransportConnection {
  * session-specific processing. The runtime treats it as opaque I/O and
  * MUST NOT assume transport-layer semantics (e.g., direct socket access).
  *
- * Closing a SessionChannel SHOULD close any underlying resources.
+ * Closing a SessionChannel MUST release session-owned resources (e.g., key
+ * material). It MAY or MAY NOT close the underlying transport — callers are
+ * responsible for closing the transport separately when appropriate.
  */
 export type SessionChannel = TransportConnection;
+
+/**
+ * Signal emitted by the session layer (e.g., SBRP pause/resume).
+ *
+ * Known SBRP control types: "session_paused", "session_resumed",
+ * "session_ended", "session_pending". `type` is `string` to stay
+ * extensible as the relay protocol evolves.
+ */
+export interface SessionSignal {
+  type: string;
+  message?: string;
+}
 
 /** Negotiation result returned after successful handshake */
 export interface NegotiationResult {
@@ -46,6 +60,8 @@ export interface NegotiationResult {
    * Session protocols (e.g., SBRP) return a channel that encrypts/decrypts frames.
    */
   channel?: SessionChannel;
+  /** Subscribe to ongoing session signals (e.g., SBRP pause/resume). Returns an unsubscribe fn. */
+  subscribeSignals?: (handler: (signal: SessionSignal) => void) => () => void;
 }
 
 /**

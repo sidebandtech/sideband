@@ -25,7 +25,8 @@ import {
   FrameKind,
   type MessageFrame,
 } from "@sideband/protocol";
-import { SbpNegotiator } from "@sideband/runtime";
+import { SbpNegotiator, type SessionSignal } from "@sideband/runtime";
+import { SbrpError } from "@sideband/secure-relay";
 import {
   unsafeAsTransportEndpoint,
   type TransportConnection,
@@ -139,13 +140,32 @@ async function handleIncoming(
   const peer = new AcceptedPeerImpl(channel, peerIdStr, opts);
   connections.set(peerIdStr, peer);
 
-  // Remove from map when peer closes. Identity check prevents a later duplicate
-  // (if somehow one slips through) from deleting an active peer's entry.
+  // Register stateChange BEFORE subscribing to signals: if a signal fires
+  // synchronously on subscription and transitions peer to "closed", the map
+  // cleanup must already be in place.
+  let unsubscribeSignals: (() => void) | undefined;
   peer.on("stateChange", ({ state }) => {
-    if (state === "closed" && connections.get(peerIdStr) === peer) {
-      connections.delete(peerIdStr);
+    if (state === "closed") {
+      unsubscribeSignals?.();
+      if (connections.get(peerIdStr) === peer) connections.delete(peerIdStr);
     }
   });
+  try {
+    unsubscribeSignals = result.subscribeSignals?.((signal) => {
+      peer.handleSessionSignal(signal);
+    });
+    // A replayed terminal signal (e.g. session_ended) may have closed the peer
+    // synchronously inside subscribeSignals, before unsubscribeSignals was
+    // assigned. The stateChange listener already ran with undefined — call it
+    // now to ensure the subscription is released.
+    if (peer.state === "closed") {
+      unsubscribeSignals?.();
+    }
+  } catch (err) {
+    connections.delete(peerIdStr);
+    await peer.disconnect();
+    throw err;
+  }
 
   // Notify user. If the callback throws, clean up immediately — the frame loop
   // never starts and the channel would otherwise stay open and orphaned.
@@ -288,6 +308,9 @@ class AcceptedPeerImpl implements AcceptedPeer, RpcHost, EventHost {
     if (this._state === "closed") {
       throw new PeerError(PeerErrorCode.PeerClosed, "Peer is closed");
     }
+    if (this._state === "paused") {
+      throw new PeerError(PeerErrorCode.SessionPaused, "Session is paused");
+    }
     try {
       await this.channel.send(data);
     } catch (err) {
@@ -333,42 +356,70 @@ class AcceptedPeerImpl implements AcceptedPeer, RpcHost, EventHost {
         if (subject === RPC_SUBJECT) {
           this.rpc
             .handleFrame(msg, (data) => this.sendRaw(data))
-            .catch((err) => this.opts.onUnhandledError(err));
+            .catch((err) =>
+              this.opts.onUnhandledError(
+                err instanceof Error ? err : new Error(String(err)),
+              ),
+            );
         } else if (subject === EVENT_SUBJECT) {
           this.events
             .handleFrame(msg)
-            .catch((err) => this.opts.onUnhandledError(err));
+            .catch((err) =>
+              this.opts.onUnhandledError(
+                err instanceof Error ? err : new Error(String(err)),
+              ),
+            );
         }
       }
-    } catch {
-      // Abrupt transport closure (TCP reset, etc.) — not an application error.
-      // The finally block handles cleanup via this.close().
+    } catch (err) {
+      // Surface SBRP errors (decrypt failures, malformed frames) so operators
+      // can observe tampering or protocol bugs. Ignore plain transport closures
+      // (TCP reset, etc.) — those are expected and not actionable.
+      if (err instanceof SbrpError) {
+        this.opts.onUnhandledError(err);
+      }
     } finally {
       this.close();
     }
   }
 
-  // ────────────────── Internal ─────────────────────────────────────────────
+  // ────────────────── Signal handling ─────────────────────────────────────
 
-  private close(): void {
+  handleSessionSignal(signal: SessionSignal): void {
     if (this._state === "closed") return;
-    const prev = this._state;
-    this._state = "closed";
-    // AcceptedPeer is always terminal — call onClosed() directly to reject
-    // all pending/queued work without the intermediate onDisconnect() step.
-    this.rpc.onClosed();
-    this.events.onClosed();
-    this.emitStateChange("closed", prev);
+    if (signal.type === "session_paused") {
+      this.transition("paused");
+    } else if (signal.type === "session_resumed") {
+      this.transition("active");
+      this.rpc.flushQueue();
+      this.events.flushBuffer();
+    } else if (signal.type === "session_ended") {
+      this.disconnect().catch(() => {});
+    }
   }
 
-  private emitStateChange(
-    state: "active" | "paused" | "closed",
-    previous: "active" | "paused" | "closed",
-  ): void {
-    this.emit("stateChange", { state, previous });
-    if (previous === "active" || previous === "paused") {
+  // ────────────────── Internal ─────────────────────────────────────────────
+
+  private transition(next: "active" | "paused" | "closed"): void {
+    const prev = this._state;
+    if (prev === "closed" || prev === next) return;
+    this._state = next;
+    this.emit("stateChange", { state: next, previous: prev });
+    if (next === "paused") this.emit("sessionPaused");
+    if (prev === "paused" && next === "active") this.emit("sessionResumed");
+    if ((prev === "active" || prev === "paused") && next === "closed") {
       this.emit("disconnected");
     }
+  }
+
+  private close(): void {
+    // AcceptedPeer is always terminal — call onClosed() directly to reject
+    // all pending/queued work without the intermediate onDisconnect() step.
+    this.transition("closed");
+    this.rpc.onClosed();
+    this.events.onClosed();
+    // Release listener closures after the terminal emit to break retention cycles.
+    this.eventSubs.clear();
   }
 
   private emit<K extends keyof PeerEvents>(

@@ -46,6 +46,7 @@ describe("sbrp negotiator type contracts", () => {
         identityKeyStore,
         trustPolicy: "prompt",
         onFirstConnection: async () => true,
+        onIdentityMismatch: async () => true,
       });
 
       sbrpClientNegotiator({

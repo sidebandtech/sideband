@@ -64,6 +64,7 @@ export {
   type RetryPolicy,
   type SessionChannel,
   type SessionEvents,
+  type SessionSignal,
   type TransportConnection,
 } from "./session/types.js";
 

@@ -35,6 +35,11 @@
       "bun": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./server": {
+      "types": "./dist/listen.d.ts",
+      "bun": "./src/listen.ts",
+      "default": "./dist/listen.js"
+    },
     "./sbrp": {
       "types": "./dist/sbrp.d.ts",
       "bun": "./src/sbrp.ts",
@@ -61,6 +66,9 @@
     "dist",
     "src"
   ],
+  "scripts": {
+    "check:bundle": "bun run scripts/check-bundle-size.ts"
+  },
   "publishConfig": {
     "access": "public"
   }

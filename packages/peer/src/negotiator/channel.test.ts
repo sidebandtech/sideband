@@ -22,7 +22,7 @@ import {
 } from "@sideband/secure-relay";
 import { describe, expect, it } from "bun:test";
 import type { ChannelCrypto } from "./channel.js";
-import { createSbrpChannel } from "./channel.js";
+import { createSbrpChannel, createSignalReplayer } from "./channel.js";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -208,6 +208,87 @@ describe("SbrpChannel", () => {
 
       expect(received).toEqual(["after rate limit"]);
     });
+
+    it("calls onSignal with the decoded signal type for non-terminal control frames", async () => {
+      const { daemonSession } = createTestSessions();
+
+      const controlFrame = encodeControl(
+        sessionId,
+        WireControlCode.SessionPaused,
+        "paused by relay",
+      );
+
+      const signals: { type: string; message?: string }[] = [];
+      const { conn } = createMockTransport([controlFrame]);
+      const channel = createSbrpChannel(
+        conn,
+        sessionId,
+        clientCrypto(daemonSession),
+        {
+          onSignal: (s) => signals.push(s),
+        },
+      );
+
+      for await (const _ of channel.inbound) {
+        /* exhaust */
+      }
+
+      expect(signals).toHaveLength(1);
+      expect(signals[0]!.type).toBe("session_paused");
+      expect(signals[0]!.message).toBe("paused by relay");
+    });
+  });
+
+  describe("createSignalReplayer", () => {
+    it("delivers signals immediately when listener is already attached", () => {
+      const { onSignal, subscribeSignals } = createSignalReplayer();
+      const received: string[] = [];
+      subscribeSignals((s) => received.push(s.type));
+
+      onSignal({ type: "session_paused" });
+      onSignal({ type: "session_resumed" });
+
+      expect(received).toEqual(["session_paused", "session_resumed"]);
+    });
+
+    it("buffers signals emitted before subscribeSignals and replays them in order", () => {
+      const { onSignal, subscribeSignals } = createSignalReplayer();
+
+      // Signals arrive before any subscriber (e.g. during inner SBP handshake)
+      onSignal({ type: "session_paused" });
+      onSignal({ type: "session_pending" });
+
+      const received: string[] = [];
+      subscribeSignals((s) => received.push(s.type));
+
+      expect(received).toEqual(["session_paused", "session_pending"]);
+
+      // Subsequent signals are delivered live, not buffered
+      onSignal({ type: "session_resumed" });
+      expect(received).toEqual([
+        "session_paused",
+        "session_pending",
+        "session_resumed",
+      ]);
+    });
+
+    it("throws when subscribeSignals is called twice (single-subscriber invariant)", () => {
+      const { subscribeSignals } = createSignalReplayer();
+      subscribeSignals(() => {});
+      expect(() => subscribeSignals(() => {})).toThrow(/already subscribed/);
+    });
+
+    it("stops delivery after unsubscribe", () => {
+      const { onSignal, subscribeSignals } = createSignalReplayer();
+      const received: string[] = [];
+      const unsub = subscribeSignals((s) => received.push(s.type));
+
+      onSignal({ type: "session_paused" });
+      unsub();
+      onSignal({ type: "session_resumed" });
+
+      expect(received).toEqual(["session_paused"]);
+    });
   });
 
   describe("unexpected frame type", () => {
@@ -237,6 +318,66 @@ describe("SbrpChannel", () => {
 
       expect(err).toBeInstanceOf(SbrpError);
       expect((err as SbrpError).code).toBe(SbrpErrorCode.MalformedFrame);
+    });
+  });
+
+  describe("crypto key clearing", () => {
+    it("clears keys when decrypt throws", async () => {
+      const { clientSession } = createTestSessions();
+
+      // A valid data frame so decodeFrame/decodeData succeed — only decrypt throws
+      const plaintext = textEncoder.encode("payload");
+      const encrypted = encryptDaemonToClient(clientSession, plaintext);
+      const dataFrame = encodeData(sessionId, encrypted);
+
+      let clearCalled = false;
+      const mockCrypto: ChannelCrypto = {
+        encrypt: (_) => encrypted,
+        decrypt: (_) => {
+          throw new Error("decrypt failed");
+        },
+        clear: () => {
+          clearCalled = true;
+        },
+      };
+
+      const { conn } = createMockTransport([dataFrame]);
+      const channel = createSbrpChannel(conn, sessionId, mockCrypto);
+
+      await expect(async () => {
+        for await (const _data of channel.inbound) {
+          /* unreachable */
+        }
+      }).toThrow("decrypt failed");
+
+      expect(clearCalled).toBe(true);
+      // Channel must be closed — further sends should throw
+      await expect(channel.send(new Uint8Array(1))).rejects.toThrow(/closed/);
+    });
+
+    it("clears keys when decodeFrame throws (malformed bytes)", async () => {
+      const { daemonSession } = createTestSessions();
+
+      let clearCalled = false;
+      const mockCrypto: ChannelCrypto = {
+        encrypt: clientCrypto(daemonSession).encrypt,
+        decrypt: clientCrypto(daemonSession).decrypt,
+        clear: () => {
+          clearCalled = true;
+        },
+      };
+
+      // Two bytes — too short to be any valid SBRP frame
+      const { conn } = createMockTransport([new Uint8Array([0xff, 0x00])]);
+      const channel = createSbrpChannel(conn, sessionId, mockCrypto);
+
+      await expect(async () => {
+        for await (const _data of channel.inbound) {
+          /* unreachable */
+        }
+      }).toThrow();
+
+      expect(clearCalled).toBe(true);
     });
   });
 

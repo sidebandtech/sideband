@@ -8,6 +8,7 @@ Transport-agnostic Sideband runtime pieces: session lifecycle, message routing, 
 - **Router**: Subject validation, handler registry, RPC dispatch, and error mapping
 - **RpcCorrelationManager**: Pending RPC tracking with timeouts and explicit `cid` correlation
 - **SbpNegotiator**: Built-in SBP handshake negotiator for direct connections
+- **SessionSignal**: Type for out-of-band session protocol signals (e.g., SBRP pause/resume/end)
 
 ## Install
 
@@ -100,8 +101,16 @@ const response = await pending;
 **SessionManager**
 
 - `connect()` establishes a session with a negotiator and emits lifecycle events.
+- `terminate(options?)` closes the session and cancels any pending retry.
 - `on(event, handler)` subscribes to `connecting`, `negotiating`, `active`, `retrying`, `closed`, and identity events.
 - Retry is opt-in via `retryPolicy` and uses exponential backoff with jitter.
+- `onDecodeError` hook controls whether malformed frames are ignored (default) or treated as fatal.
+
+**Session**
+
+- `sendFrame(frame)` — preferred API; type-safe, enforces SBP frame structure.
+- `sendRaw(data)` — expert escape hatch; caller must supply a complete, valid SBP frame.
+- `channel` may be a session wrapper (not always raw transport). Closing the session channel may not close the underlying transport.
 
 **Router**
 
@@ -119,7 +128,9 @@ const response = await pending;
 **Negotiators**
 
 - `SbpNegotiator` implements the SBP handshake (direct peer-to-peer).
-- SBRP is not built in. Integrate `@sideband/secure-relay` by implementing a custom `Negotiator` that returns a wrapped `SessionChannel`.
+- Custom negotiators MAY return `subscribeSignals` in `NegotiationResult` (e.g., SBRP `session_paused`, `session_resumed`, `session_ended`) for higher layers that use it.
+- `SessionManager` does not emit `SessionSignal` directly; runtime exposes the type/contract so wrappers can forward these signals.
+- SBRP is not built in. Integrate `@sideband/secure-relay` by implementing a custom `Negotiator` that returns a wrapped `SessionChannel` and, optionally, a `subscribeSignals` function.
 
 ## References
 

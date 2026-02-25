@@ -329,7 +329,8 @@ export class RpcImpl implements RpcInterface {
     if (
       err instanceof PeerError &&
       (err.code === PeerErrorCode.NotConnected ||
-        err.code === PeerErrorCode.PeerClosed)
+        err.code === PeerErrorCode.PeerClosed ||
+        err.code === PeerErrorCode.SessionPaused)
     ) {
       return;
     }

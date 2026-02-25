@@ -34,7 +34,7 @@ import {
   zeroize,
 } from "@sideband/secure-relay";
 import { generateId } from "../id.js";
-import { createSbrpChannel } from "./channel.js";
+import { createSbrpChannel, createSignalReplayer } from "./channel.js";
 import { classifySbrpError } from "./classify.js";
 import { cancellableTimeout } from "./timeout.js";
 import type { SbrpClientOptions } from "./types.js";
@@ -50,10 +50,15 @@ const DEFAULT_HANDSHAKE_TIMEOUT_MS = 30_000;
 export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
   const trustPolicy = options.trustPolicy ?? "prompt";
 
-  // Fail-fast: "prompt" without callback is a programming error
+  // Fail-fast: "prompt" without callbacks is a programming error
   if (trustPolicy === "prompt" && !options.onFirstConnection) {
     throw new Error(
       'sbrpClientNegotiator: trustPolicy "prompt" requires onFirstConnection callback',
+    );
+  }
+  if (trustPolicy === "prompt" && !options.onIdentityMismatch) {
+    throw new Error(
+      'sbrpClientNegotiator: trustPolicy "prompt" requires onIdentityMismatch callback',
     );
   }
 
@@ -107,28 +112,29 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
           // Key exists — verify it matches
           if (!uint8Equal(pinnedKey, wireIdentityKey)) {
             const pinnedFingerprint = computeFingerprint(pinnedKey);
+            const mismatchMsg = `Daemon identity key changed (pinned: ${pinnedFingerprint}, received: ${wireFingerprint})`;
 
             if (trustPolicy === "strict") {
               throw new SbrpError(
                 SbrpErrorCode.IdentityKeyChanged,
-                `Daemon identity key changed (pinned: ${pinnedFingerprint}, received: ${wireFingerprint})`,
+                mismatchMsg,
               );
             }
 
-            // Ask user via callback (if no callback, reject by default)
-            const accepted = await options.onIdentityMismatch?.({
-              expectedFingerprint: pinnedFingerprint,
-              receivedFingerprint: wireFingerprint,
-            });
-
-            if (!accepted) {
-              throw new SbrpError(
-                SbrpErrorCode.IdentityKeyChanged,
-                `Daemon identity key changed (pinned: ${pinnedFingerprint}, received: ${wireFingerprint})`,
-              );
+            if (trustPolicy === "prompt") {
+              const accepted = await options.onIdentityMismatch?.({
+                expectedFingerprint: pinnedFingerprint,
+                receivedFingerprint: wireFingerprint,
+              });
+              if (!accepted) {
+                throw new SbrpError(
+                  SbrpErrorCode.IdentityKeyChanged,
+                  mismatchMsg,
+                );
+              }
             }
 
-            // User accepted the new key — update pin
+            // "auto" falls through: silently accept + re-pin (standard TOFU rotation)
             await options.identityKeyStore.set(
               options.daemonId,
               wireIdentityKey,
@@ -155,7 +161,7 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
             }
           }
 
-          // Pin the identity key ("auto" accepts without callback)
+          // "auto" falls through: pin the identity key without prompting
           await options.identityKeyStore.set(options.daemonId, wireIdentityKey);
         }
 
@@ -168,13 +174,21 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
           ephemeralKeyPair,
         );
 
-        // 6. Create encrypted channel
+        // 6. Create encrypted channel with signal forwarding
+        // Signals arriving during the inner SBP handshake (before the caller
+        // invokes subscribeSignals) are buffered and replayed on first subscribe.
+        const signals = createSignalReplayer();
         const daemonSession = createDaemonSession(sessionKeys);
-        const channel = createSbrpChannel(conn, sessionId, {
-          encrypt: (p) => encryptClientToDaemon(daemonSession, p),
-          decrypt: (m) => decryptDaemonToClient(daemonSession, m),
-          clear: () => clearDaemonSession(daemonSession),
-        });
+        const channel = createSbrpChannel(
+          conn,
+          sessionId,
+          {
+            encrypt: (p) => encryptClientToDaemon(daemonSession, p),
+            decrypt: (m) => decryptDaemonToClient(daemonSession, m),
+            clear: () => clearDaemonSession(daemonSession),
+          },
+          { onSignal: signals.onSignal },
+        );
 
         // 7. Run inner SBP handshake over encrypted channel for PeerId exchange
         const remainingMs = Math.max(1, timeoutMs - (Date.now() - startTime));
@@ -185,13 +199,14 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
         });
         const innerResult = await innerNegotiator.negotiate(channel);
 
-        // 8. Return result with identity info
+        // 8. Return result with identity info and signal subscription
         return {
           peerId: innerResult.peerId,
           identity: { type: "ed25519", fingerprint: wireFingerprint },
           capabilities: innerResult.capabilities,
           metadata: innerResult.metadata,
           channel,
+          subscribeSignals: signals.subscribeSignals,
         };
       } finally {
         // Zeroize ephemeral private key if not already cleared by processHandshakeAccept

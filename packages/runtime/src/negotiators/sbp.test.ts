@@ -78,7 +78,7 @@ describe("SbpNegotiator", () => {
     it("times out if no response", async () => {
       const negotiator = new SbpNegotiator({
         peerId: localPeerId,
-        handshakeTimeoutMs: 50, // Short timeout for test
+        handshakeTimeoutMs: 100, // Short timeout for test, but enough for CI
       });
       // Create a connection that never yields any data (simulates network stall)
       const conn: TransportConnection = {
@@ -89,7 +89,8 @@ describe("SbpNegotiator", () => {
         inbound: {
           async *[Symbol.asyncIterator]() {
             // Never yield, never return - simulates pending read
-            await new Promise(() => {});
+            // We use a promise that won't resolve during the test duration
+            await new Promise((resolve) => setTimeout(resolve, 1000));
           },
         },
       };

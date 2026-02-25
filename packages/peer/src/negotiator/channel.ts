@@ -7,7 +7,7 @@
  * keeping this module agnostic to client vs. daemon role.
  */
 
-import type { TransportConnection } from "@sideband/runtime";
+import type { SessionSignal, TransportConnection } from "@sideband/runtime";
 import type { EncryptedMessage, SessionId } from "@sideband/secure-relay";
 import {
   decodeControl,
@@ -21,12 +21,53 @@ import {
   SbrpErrorCode,
 } from "@sideband/secure-relay";
 
+/**
+ * Creates a signal replayer for use in `NegotiationResult.subscribeSignals`.
+ *
+ * Buffers signals that arrive before the first subscription (e.g. during the
+ * inner SBP handshake) and replays them in order when subscribeSignals is called.
+ * Enforces the single-subscriber invariant required by NegotiationResult.
+ */
+export function createSignalReplayer(): {
+  onSignal: (signal: SessionSignal) => void;
+  subscribeSignals: (handler: (signal: SessionSignal) => void) => () => void;
+} {
+  let listener: ((signal: SessionSignal) => void) | undefined;
+  const buffer: SessionSignal[] = [];
+  return {
+    onSignal(signal) {
+      if (listener) {
+        listener(signal);
+      } else {
+        buffer.push(signal);
+      }
+    },
+    subscribeSignals(handler) {
+      if (listener) {
+        throw new Error("SBRP channel: signals already subscribed");
+      }
+      listener = handler;
+      for (const s of buffer) handler(s);
+      buffer.length = 0;
+      return () => {
+        listener = undefined;
+      };
+    },
+  };
+}
+
 /** Injected crypto operations for the encrypted channel. */
 export interface ChannelCrypto {
   encrypt(plaintext: Uint8Array): EncryptedMessage;
   decrypt(message: EncryptedMessage): Uint8Array;
   /** Zeroize session keys. */
   clear(): void;
+}
+
+/** Options for the encrypted SBRP channel. */
+export interface SbrpChannelOptions {
+  /** Called for non-terminal control frames (e.g., session_paused, session_resumed). */
+  onSignal?: (signal: SessionSignal) => void;
 }
 
 /**
@@ -40,8 +81,18 @@ export function createSbrpChannel(
   conn: TransportConnection,
   sessionId: SessionId,
   crypto: ChannelCrypto,
+  options?: SbrpChannelOptions,
 ): TransportConnection {
   let closed = false;
+
+  // Single teardown path: mark closed + zeroize keys. Idempotent.
+  // Called from close(), terminal control frames, and malformed frame paths
+  // so new error paths cannot accidentally skip key zeroization.
+  const teardown = (): void => {
+    if (closed) return;
+    closed = true;
+    crypto.clear();
+  };
 
   return {
     id: conn.id,
@@ -57,42 +108,60 @@ export function createSbrpChannel(
     },
 
     async close(): Promise<void> {
-      if (closed) return;
-      closed = true;
-      crypto.clear();
+      teardown();
     },
 
     inbound: {
       async *[Symbol.asyncIterator]() {
-        for await (const bytes of conn.inbound) {
-          if (closed) return;
+        // Teardown strategy: natural close runs teardown() after the loop;
+        // exceptions (terminal frames, decrypt errors) go through catch.
+        // Consumer break (generator .return()) skips both — teardown is deferred
+        // to explicit close() so session keys stay live through the data phase.
+        // `finally` cannot be used: it fires on break too, premature-zeroizing keys.
+        try {
+          for await (const bytes of conn.inbound) {
+            if (closed) return;
 
-          const frame = decodeFrame(bytes);
+            const frame = decodeFrame(bytes);
 
-          if (frame.type === FrameType.Data) {
-            const message = decodeData(frame);
-            yield crypto.decrypt(message);
-          } else if (frame.type === FrameType.Control) {
-            const control = decodeControl(frame);
-            if (isTerminalCode(control.code)) {
-              const errorCode = fromWireControlCode(control.code);
+            if (frame.type === FrameType.Data) {
+              const message = decodeData(frame);
+              yield crypto.decrypt(message);
+            } else if (frame.type === FrameType.Control) {
+              const control = decodeControl(frame);
+              if (isTerminalCode(control.code)) {
+                const errorCode = fromWireControlCode(control.code);
+                throw new SbrpError(
+                  errorCode,
+                  control.message || `Terminal control: ${errorCode}`,
+                );
+              }
+              // Surface non-terminal control frames (session_paused, session_resumed, etc.).
+              // Catch consumer throws so a buggy signal handler cannot tear down the channel.
+              try {
+                options?.onSignal?.({
+                  type: fromWireControlCode(control.code),
+                  message: control.message,
+                });
+              } catch {
+                // Signal delivery is best-effort; channel stability takes priority.
+              }
+            } else if (
+              frame.type === FrameType.Ping ||
+              frame.type === FrameType.Pong
+            ) {
+              // Keepalive frames handled at transport level, skip
+            } else {
               throw new SbrpError(
-                errorCode,
-                control.message || `Terminal control: ${errorCode}`,
+                SbrpErrorCode.MalformedFrame,
+                `Unexpected frame type 0x${frame.type.toString(16).padStart(2, "0")} on encrypted channel`,
               );
             }
-            // Non-terminal control frames (rate_limited, session_paused, etc.) are skipped
-          } else if (
-            frame.type === FrameType.Ping ||
-            frame.type === FrameType.Pong
-          ) {
-            // Keepalive frames handled at transport level, skip
-          } else {
-            throw new SbrpError(
-              SbrpErrorCode.MalformedFrame,
-              `Unexpected frame type 0x${frame.type.toString(16).padStart(2, "0")} on encrypted channel`,
-            );
           }
+          teardown(); // transport closed gracefully
+        } catch (err) {
+          teardown();
+          throw err;
         }
       },
     },

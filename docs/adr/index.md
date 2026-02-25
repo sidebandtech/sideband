@@ -19,6 +19,7 @@ This section documents significant architectural decisions for the Sideband proj
 | [011](./011-runtime-message-routing.md)               | Runtime Message Routing               | Accepted |
 | [012](./012-websocket-transport-design.md)            | WebSocket Transport Design Decisions  | Accepted |
 | [013](./013-peer-sdk-design.md)                       | Peer SDK Core Design Decisions        | Accepted |
+| [014](./014-peer-session-signals.md)                  | Peer SDK Session Signal Handling      | Accepted |
 
 ## Creating a new ADR
 
