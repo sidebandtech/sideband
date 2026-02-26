@@ -1,5 +1,20 @@
 # @sideband/peer
 
+## 0.3.0
+
+### Minor Changes
+
+- [#30](https://github.com/sidebandtech/sideband/pull/30) [`c9404ba`](https://github.com/sidebandtech/sideband/commit/c9404ba9305045b017f1c9871f421d278f157625) Thanks [@koistya](https://github.com/koistya)! - Exhaustive `classifySbrpError` switch and `ChannelCrypto` rename.
+
+  **Breaking:** `ChannelCrypto.clear()` renamed to `ChannelCrypto.zeroize()` — update any custom `createSbrpChannel` callers.
+  - `classifySbrpError` rewritten as an exhaustive switch over `SbrpErrorCode`; adding a new code without a case is now a compile-time error.
+  - `Backpressure`, `InternalError`, `DaemonOffline`, `RateLimited`, and session-state transitions (`SessionPaused`, `SessionResumed`, `SessionEnded`, `SessionPending`) are now explicitly classified as retryable.
+
+### Patch Changes
+
+- Updated dependencies [[`c9404ba`](https://github.com/sidebandtech/sideband/commit/c9404ba9305045b017f1c9871f421d278f157625)]:
+  - @sideband/secure-relay@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes

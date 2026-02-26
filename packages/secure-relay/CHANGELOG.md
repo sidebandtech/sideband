@@ -1,5 +1,15 @@
 # @sideband/secure-relay
 
+## 0.3.0
+
+### Minor Changes
+
+- [#30](https://github.com/sidebandtech/sideband/pull/30) [`c9404ba`](https://github.com/sidebandtech/sideband/commit/c9404ba9305045b017f1c9871f421d278f157625) Thanks [@koistya](https://github.com/koistya)! - Add `Backpressure` error code (0x0902) for relay-terminated slow consumers.
+  - `SbrpErrorCode.Backpressure` / `WireControlCode.Backpressure` added with full wire ↔ SBRP round-trip mapping.
+  - `DaemonOffline` reclassified as terminal: relay closes the WebSocket when a daemon is unreachable, so reconnecting is the caller's responsibility.
+  - `isTerminalCode` now uses a fail-safe pattern — only non-terminal exceptions are listed; any unknown/future code defaults to terminal.
+  - `fromWireControlCode` error message now zero-pads the hex code for consistent readability.
+
 ## 0.2.3
 
 ### Patch Changes
