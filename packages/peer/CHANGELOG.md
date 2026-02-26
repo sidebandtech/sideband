@@ -1,5 +1,23 @@
 # @sideband/peer
 
+## 0.2.2
+
+### Patch Changes
+
+- [#28](https://github.com/sidebandtech/sideband/pull/28) [`d232d0d`](https://github.com/sidebandtech/sideband/commit/d232d0de059dfd8d5b3c44f1d21d245d61f85a2e) Thanks [@koistya](https://github.com/koistya)! - Fix iterator lock not released on early `for await` exit
+
+  Adds `iterator.return()` to `WsConnection.inbound` so that breaking out of a
+  `for await...of` loop (e.g. after reading the negotiation frame) clears
+  `_iteratorActive`, allowing a second consumer to be created without throwing
+  "iterator already consumed". Also sets the flag in the fast-path close handler.
+
+  Removes the `"node"` condition from the root `.` export so the subpath
+  `@sideband/transport-ws/node` is the canonical Node.js entry point; updates
+  `@sideband/peer` to import from that subpath accordingly.
+
+- Updated dependencies [[`d232d0d`](https://github.com/sidebandtech/sideband/commit/d232d0de059dfd8d5b3c44f1d21d245d61f85a2e)]:
+  - @sideband/transport-ws@0.0.4
+
 ## 0.2.1
 
 ### Patch Changes

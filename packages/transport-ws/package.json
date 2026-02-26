@@ -1,6 +1,6 @@
 {
   "name": "@sideband/transport-ws",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "WebSocket transport for Sideband with browser and Node.js/Bun support.",
   "license": "Apache-2.0",
   "repository": {
