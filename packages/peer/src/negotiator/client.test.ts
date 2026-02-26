@@ -493,7 +493,7 @@ describe("sbrpClientNegotiator", () => {
       ).toBe("fatal");
     });
 
-    it("classifies relay non-terminal codes as retryable", () => {
+    it("classifies transient relay codes as retryable", () => {
       const negotiator = sbrpClientNegotiator({
         daemonId,
         sessionId,

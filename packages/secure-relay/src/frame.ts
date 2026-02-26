@@ -71,10 +71,10 @@ export type FrameType = (typeof FrameType)[keyof typeof FrameType];
  *
  * Codes use ranges for categorization:
  * - 0x01xx: Authentication (terminal)
- * - 0x02xx: Routing (varies)
+ * - 0x02xx: Routing (terminal)
  * - 0x03xx: Session (terminal)
  * - 0x04xx: Wire format (terminal)
- * - 0x09xx: Rate limiting (non-terminal)
+ * - 0x09xx: Throttling (varies: rate_limited=N, backpressure=T)
  * - 0x10xx: Session state (non-terminal)
  */
 export const WireControlCode = {
@@ -82,9 +82,9 @@ export const WireControlCode = {
   Unauthorized: 0x0101,
   Forbidden: 0x0102,
 
-  // Routing (0x02xx) - Varies
+  // Routing (0x02xx) - Terminal
   DaemonNotFound: 0x0201,
-  DaemonOffline: 0x0202, // Non-terminal
+  DaemonOffline: 0x0202, // Terminal
 
   // Session (0x03xx) - Terminal
   SessionNotFound: 0x0301,
@@ -100,8 +100,9 @@ export const WireControlCode = {
   // Internal (0x06xx) - Terminal
   InternalError: 0x0601,
 
-  // Rate Limiting (0x09xx) - Non-terminal
+  // Throttling (0x09xx) - Varies (RateLimited=N, Backpressure=T)
   RateLimited: 0x0901,
+  Backpressure: 0x0902,
 
   // Session State (0x10xx) - Non-terminal
   SessionPaused: 0x1001,
@@ -113,10 +114,14 @@ export const WireControlCode = {
 export type WireControlCode =
   (typeof WireControlCode)[keyof typeof WireControlCode];
 
-/** Check if a control code is terminal (closes connection) */
+/**
+ * Check if a control code is terminal (relay closes WebSocket after sending).
+ *
+ * Fail-safe pattern: only enumerate non-terminal exceptions; unknown/new codes
+ * default to terminal so they never silently keep a session alive.
+ */
 export function isTerminalCode(code: WireControlCode): boolean {
   switch (code) {
-    case WireControlCode.DaemonOffline:
     case WireControlCode.RateLimited:
     case WireControlCode.SessionPaused:
     case WireControlCode.SessionResumed:
@@ -179,8 +184,9 @@ const sbrpToWire: Record<string, WireControlCode> = {
   // Internal
   [SbrpErrorCode.InternalError]: WireControlCode.InternalError,
 
-  // Rate Limiting
+  // Rate Limiting / Backpressure
   [SbrpErrorCode.RateLimited]: WireControlCode.RateLimited,
+  [SbrpErrorCode.Backpressure]: WireControlCode.Backpressure,
 
   // Session State
   [SbrpErrorCode.SessionPaused]: WireControlCode.SessionPaused,
@@ -212,8 +218,9 @@ const wireToSbrp: Record<number, SbrpErrorCode> = {
   // Internal
   [WireControlCode.InternalError]: SbrpErrorCode.InternalError,
 
-  // Rate Limiting
+  // Rate Limiting / Backpressure
   [WireControlCode.RateLimited]: SbrpErrorCode.RateLimited,
+  [WireControlCode.Backpressure]: SbrpErrorCode.Backpressure,
 
   // Session State
   [WireControlCode.SessionPaused]: SbrpErrorCode.SessionPaused,
@@ -235,7 +242,9 @@ export function toWireControlCode(code: SbrpErrorCode): WireControlCode {
 export function fromWireControlCode(code: WireControlCode): SbrpErrorCode {
   const sbrp = wireToSbrp[code];
   if (sbrp === undefined) {
-    throw new Error(`Unknown WireControlCode: 0x${code.toString(16)}`);
+    throw new Error(
+      `Unknown WireControlCode: 0x${code.toString(16).padStart(4, "0")}`,
+    );
   }
   return sbrp;
 }

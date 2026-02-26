@@ -556,6 +556,17 @@ describe("frame codec", () => {
       expect(control.code).toBe(WireControlCode.SessionPaused);
     });
 
+    it("encodes and decodes backpressure (0x0902, terminal, SID=0)", () => {
+      const encoded = encodeControl(0n, WireControlCode.Backpressure);
+      const frame = decodeFrame(encoded);
+      expect(frame.sessionId).toBe(0n);
+
+      const control = decodeControl(frame);
+      expect(control.code).toBe(WireControlCode.Backpressure);
+      expect(control.code).toBe(0x0902);
+      expect(isTerminalCode(control.code)).toBe(true);
+    });
+
     it("handles invalid UTF-8 by replacing", () => {
       // Create control frame with invalid UTF-8 in message
       const payload = new Uint8Array([0x01, 0x01, 0xff, 0xfe]); // code 0x0101 + invalid UTF-8
@@ -584,26 +595,37 @@ describe("frame codec", () => {
 
   describe("isTerminalCode", () => {
     it("returns true for terminal codes", () => {
-      expect(isTerminalCode(WireControlCode.Unauthorized)).toBe(true);
-      expect(isTerminalCode(WireControlCode.Forbidden)).toBe(true);
-      expect(isTerminalCode(WireControlCode.DaemonNotFound)).toBe(true);
-      expect(isTerminalCode(WireControlCode.SessionNotFound)).toBe(true);
-      expect(isTerminalCode(WireControlCode.SessionExpired)).toBe(true);
-      expect(isTerminalCode(WireControlCode.MalformedFrame)).toBe(true);
-      expect(isTerminalCode(WireControlCode.PayloadTooLarge)).toBe(true);
-      expect(isTerminalCode(WireControlCode.InvalidFrameType)).toBe(true);
-      expect(isTerminalCode(WireControlCode.InvalidSessionId)).toBe(true);
-      expect(isTerminalCode(WireControlCode.DisallowedSender)).toBe(true);
-      expect(isTerminalCode(WireControlCode.InternalError)).toBe(true);
+      const terminalCodes: WireControlCode[] = [
+        WireControlCode.Unauthorized,
+        WireControlCode.Forbidden,
+        WireControlCode.DaemonNotFound,
+        WireControlCode.DaemonOffline,
+        WireControlCode.SessionNotFound,
+        WireControlCode.SessionExpired,
+        WireControlCode.MalformedFrame,
+        WireControlCode.PayloadTooLarge,
+        WireControlCode.InvalidFrameType,
+        WireControlCode.InvalidSessionId,
+        WireControlCode.DisallowedSender,
+        WireControlCode.InternalError,
+        WireControlCode.Backpressure,
+      ];
+      for (const code of terminalCodes) {
+        expect(isTerminalCode(code)).toBe(true);
+      }
     });
 
     it("returns false for non-terminal codes", () => {
-      expect(isTerminalCode(WireControlCode.DaemonOffline)).toBe(false);
-      expect(isTerminalCode(WireControlCode.RateLimited)).toBe(false);
-      expect(isTerminalCode(WireControlCode.SessionPaused)).toBe(false);
-      expect(isTerminalCode(WireControlCode.SessionResumed)).toBe(false);
-      expect(isTerminalCode(WireControlCode.SessionEnded)).toBe(false);
-      expect(isTerminalCode(WireControlCode.SessionPending)).toBe(false);
+      const nonTerminalCodes: WireControlCode[] = [
+        WireControlCode.RateLimited,
+        WireControlCode.SessionPaused,
+        WireControlCode.SessionResumed,
+        WireControlCode.SessionEnded,
+        WireControlCode.SessionPending,
+      ];
+      for (const code of nonTerminalCodes) {
+        expect(isTerminalCode(code)).toBe(false);
+      }
     });
   });
 
@@ -631,8 +653,9 @@ describe("frame codec", () => {
       // Internal (0x06xx)
       expect(WireControlCode.InternalError).toBe(0x0601);
 
-      // Rate Limiting (0x09xx)
+      // Rate Limiting / Backpressure (0x09xx)
       expect(WireControlCode.RateLimited).toBe(0x0901);
+      expect(WireControlCode.Backpressure).toBe(0x0902);
 
       // Session State (0x10xx)
       expect(WireControlCode.SessionPaused).toBe(0x1001);
@@ -754,24 +777,6 @@ describe("frame codec", () => {
       );
     });
 
-    it("converts all WireControlCode to SbrpErrorCode", () => {
-      expect(fromWireControlCode(WireControlCode.Unauthorized)).toBe(
-        SbrpErrorCode.Unauthorized,
-      );
-      expect(fromWireControlCode(WireControlCode.MalformedFrame)).toBe(
-        SbrpErrorCode.MalformedFrame,
-      );
-      expect(fromWireControlCode(WireControlCode.InvalidSessionId)).toBe(
-        SbrpErrorCode.InvalidSessionId,
-      );
-      expect(fromWireControlCode(WireControlCode.InternalError)).toBe(
-        SbrpErrorCode.InternalError,
-      );
-      expect(fromWireControlCode(WireControlCode.SessionPaused)).toBe(
-        SbrpErrorCode.SessionPaused,
-      );
-    });
-
     it("throws on endpoint-only codes (never transmitted on wire)", () => {
       expect(() =>
         toWireControlCode(SbrpErrorCode.IdentityKeyChanged),
@@ -782,8 +787,20 @@ describe("frame codec", () => {
       expect(() => toWireControlCode(SbrpErrorCode.SequenceError)).toThrow();
     });
 
+    it("covers all WireControlCode entries bidirectionally", () => {
+      // Exhaustive check: every wire code must round-trip through both mappings.
+      // This catches missing entries (e.g., 0x0902 backpressure) that a spot-check would miss.
+      const allCodes = Object.values(WireControlCode) as WireControlCode[];
+      for (const wireCode of allCodes) {
+        const sbrpCode = fromWireControlCode(wireCode);
+        expect(toWireControlCode(sbrpCode)).toBe(wireCode);
+      }
+    });
+
     it("throws on unknown wire codes", () => {
-      expect(() => fromWireControlCode(0x9999 as WireControlCode)).toThrow();
+      expect(() => fromWireControlCode(0x9999 as WireControlCode)).toThrow(
+        /0x9999/,
+      );
     });
   });
 

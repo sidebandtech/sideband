@@ -185,7 +185,7 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
           {
             encrypt: (p) => encryptClientToDaemon(daemonSession, p),
             decrypt: (m) => decryptDaemonToClient(daemonSession, m),
-            clear: () => clearDaemonSession(daemonSession),
+            zeroize: () => clearDaemonSession(daemonSession),
           },
           { onSignal: signals.onSignal },
         );
