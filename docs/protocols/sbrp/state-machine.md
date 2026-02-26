@@ -21,7 +21,7 @@ Concise state models for Client, Daemon, and Relay sessions. Intended to complem
 | 0x0101 | unauthorized       | T   | 0   | Invalid/expired token  |
 | 0x0102 | forbidden          | T   | 0   | Access denied          |
 | 0x0201 | daemon_not_found   | T   | S   | Unknown daemon ID      |
-| 0x0202 | daemon_offline     | N   | S   | Daemon not connected   |
+| 0x0202 | daemon_offline     | T   | S   | Daemon not connected   |
 | 0x0301 | session_not_found  | T   | S   | Unknown session ID     |
 | 0x0302 | session_expired    | T   | S   | Session terminated     |
 | 0x0401 | malformed_frame    | T   | 0   | Invalid header         |
@@ -31,6 +31,7 @@ Concise state models for Client, Daemon, and Relay sessions. Intended to complem
 | 0x0405 | disallowed_sender  | T   | S   | Wrong direction        |
 | 0x0601 | internal_error     | T   | 0   | Relay internal failure |
 | 0x0901 | rate_limited       | N   | 0   | Too many requests      |
+| 0x0902 | backpressure       | T   | 0   | Send buffer full       |
 | 0x1001 | session_paused     | N   | S   | Daemon disconnected    |
 | 0x1002 | session_resumed    | N   | S   | Daemon ready           |
 | 0x1003 | session_ended      | N   | S   | Client disconnected    |
@@ -46,6 +47,7 @@ States focus on a single daemon connection.
 | `Connecting`   | `ws_open`                  | `Handshaking`  | Send `HandshakeInit` with client ephemeral key.                          |
 | `Connecting`   | `ws_error`                 | `Closed`       | Surface transport error.                                                 |
 | `Handshaking`  | `HandshakeAccept`          | `Active`       | Verify Ed25519 signature using pinned identity key; derive session keys. |
+| `Handshaking`  | `Control(daemon_offline)`  | `Reconnecting` | Relay rejected before handshake; daemon was offline at connection time.  |
 | `Handshaking`  | `identity_key_changed`     | `Closed`       | MUST abort; require explicit user confirmation to accept new key.        |
 | `Handshaking`  | `handshake_failed`         | `Closed`       | Abort; discard ephemeral key material.                                   |
 | `Active`       | `Control(session_paused)`  | `Paused`       | Keep WebSocket open; suspend encrypted sends.                            |
@@ -83,9 +85,9 @@ A relay tracks the pairing between one client connection and one daemon connecti
 
 | State        | Event                         | Next         | Notes                                                                                  |
 | ------------ | ----------------------------- | ------------ | -------------------------------------------------------------------------------------- |
-| `None`       | `client_ws_open`              | `ClientOnly` | Validate session token; await pairing.                                                 |
+| `None`       | `client_ws_open` (daemon on)  | `Paired`     | Validate session token; bind client to daemon; forward handshake.                      |
+| `None`       | `client_ws_open` (daemon off) | `Closed`     | Send `Control(daemon_offline)` (T); close client. No relay pairing created.            |
 | `None`       | `daemon_ws_open`              | `DaemonOnly` | Validate presence token; mark daemon online.                                           |
-| `ClientOnly` | `daemon_ws_open`              | `Paired`     | Bind client to daemon; forward handshake messages.                                     |
 | `DaemonOnly` | `client_ws_open`              | `Paired`     | Bind client to daemon; forward handshake messages.                                     |
 | `Paired`     | `daemon_ws_close`             | `Paused`     | Send `Control(session_paused)` to client; pause routing.                               |
 | `Paired`     | `Signal(close)`               | `Closed`     | Daemon lost state; send `Control(session_expired)` to client; close pairing.           |

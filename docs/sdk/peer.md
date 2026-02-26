@@ -670,11 +670,11 @@ In relay mode, when the daemon disconnects from the relay, the peer transitions 
 
 **Buffering ownership:**
 
-| Layer      | Responsibility                                             |
-| ---------- | ---------------------------------------------------------- |
-| **SDK**    | Client-side buffer (authoritative); enforces all limits    |
-| **Relay**  | Best-effort forwarding; may drop if overwhelmed            |
-| **Daemon** | Server-side buffer for paused clients (SBRP daemon config) |
+| Layer      | Responsibility                                              |
+| ---------- | ----------------------------------------------------------- |
+| **SDK**    | Client-side buffer (authoritative); enforces all limits     |
+| **Relay**  | Opaque forwarding; closes slow consumers via `backpressure` |
+| **Daemon** | Server-side buffer for paused clients (SBRP daemon config)  |
 
 **Pause lifecycle:**
 

@@ -61,7 +61,7 @@ function clientCrypto(
   return {
     encrypt: (p) => encryptClientToDaemon(daemonSession, p),
     decrypt: (m) => decryptDaemonToClient(daemonSession, m),
-    clear: () => clearDaemonSession(daemonSession),
+    zeroize: () => clearDaemonSession(daemonSession),
   };
 }
 
@@ -322,7 +322,7 @@ describe("SbrpChannel", () => {
   });
 
   describe("crypto key clearing", () => {
-    it("clears keys when decrypt throws", async () => {
+    it("zeroizes keys when decrypt throws", async () => {
       const { clientSession } = createTestSessions();
 
       // A valid data frame so decodeFrame/decodeData succeed — only decrypt throws
@@ -330,14 +330,14 @@ describe("SbrpChannel", () => {
       const encrypted = encryptDaemonToClient(clientSession, plaintext);
       const dataFrame = encodeData(sessionId, encrypted);
 
-      let clearCalled = false;
+      let zeroized = false;
       const mockCrypto: ChannelCrypto = {
         encrypt: (_) => encrypted,
         decrypt: (_) => {
           throw new Error("decrypt failed");
         },
-        clear: () => {
-          clearCalled = true;
+        zeroize: () => {
+          zeroized = true;
         },
       };
 
@@ -350,20 +350,20 @@ describe("SbrpChannel", () => {
         }
       }).toThrow("decrypt failed");
 
-      expect(clearCalled).toBe(true);
+      expect(zeroized).toBe(true);
       // Channel must be closed — further sends should throw
       await expect(channel.send(new Uint8Array(1))).rejects.toThrow(/closed/);
     });
 
-    it("clears keys when decodeFrame throws (malformed bytes)", async () => {
+    it("zeroizes keys when decodeFrame throws (malformed bytes)", async () => {
       const { daemonSession } = createTestSessions();
 
-      let clearCalled = false;
+      let zeroized = false;
       const mockCrypto: ChannelCrypto = {
         encrypt: clientCrypto(daemonSession).encrypt,
         decrypt: clientCrypto(daemonSession).decrypt,
-        clear: () => {
-          clearCalled = true;
+        zeroize: () => {
+          zeroized = true;
         },
       };
 
@@ -377,7 +377,7 @@ describe("SbrpChannel", () => {
         }
       }).toThrow();
 
-      expect(clearCalled).toBe(true);
+      expect(zeroized).toBe(true);
     });
   });
 

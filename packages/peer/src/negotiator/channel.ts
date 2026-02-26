@@ -3,7 +3,7 @@
 /**
  * Encrypted session channel wrapping a transport connection with SBRP encryption.
  *
- * Crypto operations (encrypt/decrypt/clear) are injected by the caller,
+ * Crypto operations (encrypt/decrypt/zeroize) are injected by the caller,
  * keeping this module agnostic to client vs. daemon role.
  */
 
@@ -60,7 +60,7 @@ export interface ChannelCrypto {
   encrypt(plaintext: Uint8Array): EncryptedMessage;
   decrypt(message: EncryptedMessage): Uint8Array;
   /** Zeroize session keys. */
-  clear(): void;
+  zeroize(): void;
 }
 
 /** Options for the encrypted SBRP channel. */
@@ -90,7 +90,7 @@ export function createSbrpChannel(
   const teardown = (): void => {
     if (closed) return;
     closed = true;
-    crypto.clear();
+    crypto.zeroize();
   };
 
   return {

@@ -103,7 +103,7 @@ export function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator {
         {
           encrypt: (p) => encryptDaemonToClient(clientSession, p),
           decrypt: (m) => decryptClientToDaemon(clientSession, m),
-          clear: () => clearClientSession(clientSession),
+          zeroize: () => clearClientSession(clientSession),
         },
         { onSignal: signals.onSignal },
       );

@@ -77,7 +77,7 @@ export const SbrpErrorCode = {
   Unauthorized: "unauthorized",
   Forbidden: "forbidden",
 
-  // Routing (0x02xx) - Varies
+  // Routing (0x02xx) - Terminal
   DaemonNotFound: "daemon_not_found",
   DaemonOffline: "daemon_offline",
 
@@ -95,8 +95,9 @@ export const SbrpErrorCode = {
   // Internal (0x06xx) - Terminal
   InternalError: "internal_error",
 
-  // Rate Limiting (0x09xx) - Non-terminal
+  // Throttling (0x09xx) - Varies (rate_limited=N, backpressure=T)
   RateLimited: "rate_limited",
+  Backpressure: "backpressure",
 
   // Session State (0x10xx) - Non-terminal
   SessionPaused: "session_paused",
