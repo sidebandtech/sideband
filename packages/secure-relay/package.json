@@ -1,6 +1,6 @@
 {
   "name": "@sideband/secure-relay",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Secure Relay Protocol (SBRP): E2EE handshake, session encryption, and TOFU identity pinning for relay-mediated communication.",
   "license": "Apache-2.0",
   "repository": {
