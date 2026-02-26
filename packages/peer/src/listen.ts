@@ -30,7 +30,7 @@ import {
   unsafeAsTransportEndpoint,
   type TransportConnection,
 } from "@sideband/transport";
-import { nodeWsTransport } from "@sideband/transport-ws";
+import { nodeWsTransport } from "@sideband/transport-ws/node";
 import { PeerError, PeerErrorCode } from "./errors.js";
 import { EVENT_SUBJECT, EventsImpl, type EventHost } from "./events.js";
 import { generateId } from "./id.js";

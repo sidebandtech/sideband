@@ -243,10 +243,11 @@ export class WsConnection implements TransportConnection {
         : undefined,
     };
 
-    // Complete pending iterator
+    // Complete pending iterator and release lock
     if (this._inboundResolve) {
       const resolve = this._inboundResolve;
       this._inboundResolve = null;
+      this._iteratorActive = false;
       resolve({ value: undefined, done: true });
     }
 
@@ -272,8 +273,9 @@ export class WsConnection implements TransportConnection {
           return { value: data, done: false };
         }
 
-        // If closed, return done
+        // If closed, release lock and return done
         if (this._inboundClosed) {
+          this._iteratorActive = false;
           return { value: undefined, done: true };
         }
 
@@ -281,6 +283,19 @@ export class WsConnection implements TransportConnection {
         return new Promise((resolve) => {
           this._inboundResolve = resolve;
         });
+      },
+      // Required by the ES async iterator protocol. Without this, early exits
+      // from `for await...of` (e.g. after reading one frame during negotiation)
+      // leave _iteratorActive = true, causing "iterator already consumed" when
+      // startFrameLoop() tries to create the second iterator.
+      return: async (): Promise<IteratorResult<Uint8Array>> => {
+        this._iteratorActive = false;
+        if (this._inboundResolve) {
+          const resolve = this._inboundResolve;
+          this._inboundResolve = null;
+          resolve({ value: undefined, done: true });
+        }
+        return { value: undefined, done: true };
       },
     };
   }

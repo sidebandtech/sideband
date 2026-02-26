@@ -33,11 +33,24 @@ for await (const msg of conn.inbound) {
 
 `wsTransport()` auto-detects the platform. Override with `{ platform: "browser" | "node" | "bun" }`.
 
+For explicit, tree-shakeable imports:
+
+- `@sideband/transport-ws/node` — Node.js/Bun (client + server `listen`)
+- `@sideband/transport-ws/browser` — browser only (client)
+
 ## API
 
 ### `wsTransport(options?)`
 
 Create a WebSocket transport. Auto-detects the platform.
+
+### `nodeWsTransport()` (from `@sideband/transport-ws/node`)
+
+Node.js/Bun transport with server-side `listen()` support. Use this for explicit server-side code.
+
+### `browserWsTransport()` (from `@sideband/transport-ws/browser`)
+
+Browser-only transport. No `listen()`.
 
 ### `wsEndpoint(url)`
 
@@ -51,7 +64,7 @@ Convert an HTTP(S) URL to a `ws://`/`wss://` endpoint.
 
 Key options for `transport.connect(endpoint, options)`:
 
-- **`auth`** — `{ token, mode?: "header" | "query" }`. Browsers must use `"query"` (WebSocket API doesn't allow custom headers).
+- **`auth`** — `{ token, mode?: "header" | "query" }`. Node/Bun default to `"header"`; browsers require `mode: "query"` (cannot set WebSocket headers).
 - **`subprotocols`** — `{ offer?, requireSelection? }`. Set `requireSelection: true` for protocol enforcement.
 - **`limits`** — `{ maxMessageSize?, maxSendBufferBytes?, maxInboundBufferBytes? }`. Defaults: 1 MiB / 16 MiB / 16 MiB.
 - **`timeoutMs`** / **`signal`** — connect deadline and abort signal.
@@ -61,7 +74,7 @@ Key options for `transport.connect(endpoint, options)`:
 
 Key options for `transport.listen(endpoint, handler, options)`:
 
-- **`originPolicy`** — `"any" | "localhost" | { allow: string[] } | function`. Protects against DNS rebinding; not an auth mechanism.
+- **`originPolicy`** — `"any" | "localhost" | { allow: string[] } | function`. Default: `"localhost"` for localhost endpoints, `"any"` otherwise. Absent `Origin` (non-browser clients) is always allowed. Protects against DNS rebinding; not an auth mechanism.
 - **`subprotocols`** / **`limits`** — same shape as connect options.
 
 ## Use cases
@@ -86,7 +99,9 @@ const conn = await wsTransport().connect(wsEndpoint("ws://localhost:9000"));
 ### Daemon server
 
 ```ts
-await wsTransport().listen(
+import { nodeWsTransport, wsEndpoint } from "@sideband/transport-ws";
+
+await nodeWsTransport().listen(
   wsEndpoint("ws://localhost:9000"),
   (conn) => {
     /* handle connection */

@@ -296,6 +296,59 @@ describe("transport-ws", () => {
       }
     });
 
+    test("iterator: early break allows subsequent consumption (ISSUE-10)", async () => {
+      const endpoint = wsEndpoint(`ws://localhost:${echoServer.port}`);
+      const conn = await transport.connect(endpoint);
+
+      try {
+        // Send a message and break after the first yield
+        await conn.send(new Uint8Array([1]));
+        for await (const _msg of conn.inbound) {
+          break;
+        }
+
+        // Call next() before sending so iter2 is waiting via _inboundResolve
+        // rather than draining a queue — tests the hot-path used by startFrameLoop.
+        const iter2 = conn.inbound[Symbol.asyncIterator]();
+        const nextP = iter2.next();
+        await conn.send(new Uint8Array([2]));
+        const result = await nextP;
+        expect(result.done).toBe(false);
+        expect(result.value).toEqual(new Uint8Array([2]));
+      } finally {
+        await conn.close();
+      }
+    });
+
+    test("iterator: natural completion (fast-path) releases lock", async () => {
+      // Exercises next() seeing _inboundClosed === true directly.
+      const endpoint = wsEndpoint(`ws://localhost:${echoServer.port}`);
+      const conn = await transport.connect(endpoint);
+      const iter = conn.inbound[Symbol.asyncIterator]();
+
+      await conn.close(); // close before next() so fast-path fires
+      expect((await iter.next()).done).toBe(true);
+
+      // Lock released — second consumer must not throw
+      const iter2 = conn.inbound[Symbol.asyncIterator]();
+      expect((await iter2.next()).done).toBe(true);
+    });
+
+    test("iterator: natural completion (pending next) releases lock", async () => {
+      // Exercises _handleClose resolving a waiting _inboundResolve with done: true.
+      const endpoint = wsEndpoint(`ws://localhost:${echoServer.port}`);
+      const conn = await transport.connect(endpoint);
+      const iter = conn.inbound[Symbol.asyncIterator]();
+
+      const nextP = iter.next(); // iter is now waiting via _inboundResolve
+      await conn.close(); // _handleClose fires, resolves nextP with done: true
+      expect((await nextP).done).toBe(true);
+
+      // Lock released — second consumer must not throw
+      const iter2 = conn.inbound[Symbol.asyncIterator]();
+      expect((await iter2.next()).done).toBe(true);
+    });
+
     test("close idempotency: multiple close() calls safe", async () => {
       const endpoint = wsEndpoint(`ws://localhost:${echoServer.port}`);
       const conn = await transport.connect(endpoint);

@@ -66,7 +66,7 @@ peer.on("reconnecting", () => console.log("lost, retrying…"));
 await peer.whenReady(); // resolves when state reaches "active"
 ```
 
-States: `idle → connecting → negotiating → active ↔ paused` (SBRP relay pause/resume). Reconnection: `active | paused → reconnecting → connecting → …`. Terminal: any state → `closed`.
+States: `idle → connecting → negotiating → active ↔ paused` (SBRP relay pause/resume). Reconnection: `active | paused | connecting | negotiating → reconnecting → connecting → …`. Terminal: any state → `closed`.
 
 `connectionPolicy.onDisconnect`:
 
