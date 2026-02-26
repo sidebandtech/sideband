@@ -127,6 +127,8 @@ interface TransportConnection {
 
 7. **Backpressure**: The iterator MAY apply backpressure by delaying `next()` resolution if the consumer is slow. Implementation-defined behavior.
 
+8. **Iterator protocol compliance**: Implementations MUST implement `return()` on the iterator object returned by `[Symbol.asyncIterator]()`. The `return()` method MUST mark the iterator inactive (releasing the single-consumer lock) and resolve any pending `next()` promise with `{ value: undefined, done: true }`. Without this, an early exit from `for await...of` (via `break`, `return`, or a thrown exception in the consumer) does not call `return()`, leaving the lock held and causing the next `[Symbol.asyncIterator]()` call to throw.
+
 ### 2.2 Example
 
 ```typescript
@@ -338,16 +340,16 @@ await listener.close();
 
 ## 8. Summary of Guarantees
 
-| Property            | Guarantee                                      |
-| ------------------- | ---------------------------------------------- |
-| Message framing     | One `send()` = one `inbound` yield             |
-| Send ordering       | Call order preserved                           |
-| Concurrent sends    | Safe; internally serialized                    |
-| Iterator consumers  | Single-consumer only                           |
-| Early break         | Does not close connection                      |
-| Close idempotency   | Safe to call multiple times                    |
-| Handler isolation   | One connection's error doesn't affect others   |
-| State observability | `state` property always reflects current state |
-| Close notification  | `closed` promise resolves for all close types  |
-| Outbound overflow   | Reject with `buffer_overflow` (or close)       |
-| Inbound overflow    | Close with `buffer_overflow` (prevents OOM)    |
+| Property            | Guarantee                                         |
+| ------------------- | ------------------------------------------------- |
+| Message framing     | One `send()` = one `inbound` yield                |
+| Send ordering       | Call order preserved                              |
+| Concurrent sends    | Safe; internally serialized                       |
+| Iterator consumers  | Single-consumer only                              |
+| Early break         | Does not close connection; releases iterator lock |
+| Close idempotency   | Safe to call multiple times                       |
+| Handler isolation   | One connection's error doesn't affect others      |
+| State observability | `state` property always reflects current state    |
+| Close notification  | `closed` promise resolves for all close types     |
+| Outbound overflow   | Reject with `buffer_overflow` (or close)          |
+| Inbound overflow    | Close with `buffer_overflow` (prevents OOM)       |
