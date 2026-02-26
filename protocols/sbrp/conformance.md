@@ -86,7 +86,8 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 * \[ ] MUST reject `Signal` (`0x04`) received from clients as `disallowed_sender` if header is parseable.
 * \[ ] MUST reject `Control` (`0x20`) received from peers as `disallowed_sender` if header is parseable.
 * \[ ] MUST close WebSocket with `Control(malformed_frame, SessionID=0)` if frame header is malformed or truncated.
-* \[ ] MUST rate-limit connections and message throughput; when throttling, MUST use `Control(rate_limited)` with SID=0 (connection-level).
+* \[ ] MUST rate-limit connections and message throughput; when throttling, MUST use `Control(rate_limited)` with SID=0 (connection-level, non-terminal).
+* \[ ] MUST close slow consumers with `Control(backpressure)` with SID=0 (terminal) when send buffer exceeds threshold; MUST NOT silently drop forwarded frames.
 * \[ ] MUST send `Control(session_paused)` to client when daemon disconnects.
 * \[ ] MUST send `Control(session_pending)` to client when resumable daemon reconnects within grace period.
 * \[ ] MUST NOT send `Control(session_resumed)` until receiving `Signal(ready)` from daemon (resumable daemons only).

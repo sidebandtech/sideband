@@ -72,8 +72,9 @@ Control frames (`0x20`) are relay-originated only. Ranges enable category discri
 | Code   | Name           | T/N | SID | Meaning           | When Emitted          |
 | ------ | -------------- | --- | --- | ----------------- | --------------------- |
 | 0x0901 | `rate_limited` | N   | 0   | Too many requests | Message rate exceeded |
+| 0x0902 | `backpressure` | T   | 0   | Send buffer full  | Receiver too slow    |
 
-Rate limiting is connection-level, so SID=0 regardless of which session triggered the limit.
+Rate limiting (`rate_limited`) is non-terminal and connection-level — the connection stays open and the sender should back off. Backpressure (`backpressure`) is terminal — the slow consumer is closed because silently dropping forwarded frames would corrupt the E2EE sequence stream.
 
 ### Session State (0x10xx)
 
