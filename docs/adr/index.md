@@ -22,6 +22,7 @@ This section documents significant architectural decisions for the Sideband proj
 | [014](./014-peer-session-signals.md)                  | Peer SDK Session Signal Handling      | Accepted |
 | [015](./015-p2p-direct-protocol.md)                   | P2P Direct Protocol (SBDP)            | Accepted |
 | [016](./016-relay-server-design.md)                   | Relay Server Design                   | Accepted |
+| [017](./017-cloud-sdk-design.md)                      | Cloud SDK Design                      | Accepted |
 
 ## Creating a new ADR
 
