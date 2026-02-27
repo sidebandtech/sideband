@@ -1,5 +1,11 @@
 # @sideband/secure-relay
 
+## 0.4.0
+
+### Minor Changes
+
+- [#32](https://github.com/sidebandtech/sideband/pull/32) [`081a216`](https://github.com/sidebandtech/sideband/commit/081a2163cad5d446dbefb450c2945a6a2ca54884) Thanks [@koistya](https://github.com/koistya)! - Add `@sideband/cloud` package for relay.sideband.cloud integration with `connect()` and `listen()` APIs; extend SBRP negotiator with session token support and dynamic connection params; update transport and runtime types accordingly
+
 ## 0.3.0
 
 ### Minor Changes

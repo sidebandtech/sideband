@@ -1,6 +1,6 @@
 {
   "name": "@sideband/rpc",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Typed RPC envelope layer over Sideband message frames: request/response/notification shapes, reserved subject helpers, JSON codec, and guards.",
   "license": "Apache-2.0",
   "repository": {
