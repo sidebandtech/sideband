@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+export { classifySbrpError } from "./classify.js";
 export { createSbrpChannel } from "./channel.js";
 export type { ChannelCrypto } from "./channel.js";
 export { sbrpClientNegotiator } from "./client.js";

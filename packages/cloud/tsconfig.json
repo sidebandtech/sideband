@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    { "path": "../peer/tsconfig.json" },
+    { "path": "../secure-relay/tsconfig.json" },
+    { "path": "../transport/tsconfig.json" },
+    { "path": "../transport-ws/tsconfig.json" }
+  ]
+}

@@ -80,6 +80,14 @@ export interface ConnectOptions {
   signal?: AbortSignal;
 
   /**
+   * Extra headers for the WebSocket upgrade request.
+   * Supported on Node.js (ws library). Silently ignored by Bun and browsers
+   * which do not allow custom WebSocket upgrade headers — use `?token=<jwt>`
+   * in the endpoint URL for universal token delivery instead.
+   */
+  headers?: Record<string, string>;
+
+  /**
    * Additional transport-specific options.
    */
   [key: string]: unknown;

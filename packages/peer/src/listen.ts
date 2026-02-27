@@ -73,7 +73,7 @@ export async function listen(options: ListenOptions): Promise<PeerServer> {
   }
 
   const listener = await transport.listen(
-    unsafeAsTransportEndpoint(options.endpoint),
+    unsafeAsTransportEndpoint(options.endpoint ?? ""),
     async (conn) => {
       handleIncoming(conn, resolved, connections, options).catch((err) => {
         resolved.onUnhandledError(

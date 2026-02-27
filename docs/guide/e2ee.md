@@ -21,14 +21,17 @@ See `docs/protocols/sbrp/` for the full protocol specification.
 
 ---
 
-## Daemon Setup
+## Cloud Relay (relay.sideband.cloud)
+
+`@sideband/cloud` handles token management automatically — presence token renewal,
+relay session fetching, and reconnect logic.
+
+### Daemon
 
 The daemon has a persistent identity keypair. Generate it once on first run and persist it.
 
 ```typescript
-import { listen } from "@sideband/peer/server";
-import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
-import { generateIdentityKeyPair } from "@sideband/secure-relay";
+import { listen, generateIdentityKeyPair } from "@sideband/cloud";
 import * as fs from "node:fs/promises";
 
 const identityPath = ".sideband/identity.json";
@@ -44,14 +47,61 @@ async function loadOrCreateIdentity() {
   }
 }
 
-const identity = await loadOrCreateIdentity();
+const server = await listen({
+  daemonId: process.env.SIDEBAND_DAEMON_ID,
+  apiKey: process.env.SIDEBAND_API_KEY, // dak_... from the dashboard
+  identityKeyPair: await loadOrCreateIdentity(),
+  onConnection(peer) {
+    peer.rpc.handle("ping", () => "pong");
+  },
+});
+// Presence token renewed automatically on each relay reconnect.
+```
+
+### Client
+
+The client connects to the relay using the daemon's ID. On first connection, the client sees
+the daemon's identity fingerprint and must decide whether to trust it.
+
+```typescript
+import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+
+const peer = connect({
+  daemonId: "d_abc123",
+  getAccessToken: () => auth.getSessionToken(), // called on every connect attempt
+  identityKeyStore: createMemoryIdentityKeyStore(),
+  // trustPolicy defaults to "auto" — appropriate for cloud (control plane
+  // already authenticated the daemon via API key at registration)
+  onIdentityMismatch: async ({ expectedFingerprint, receivedFingerprint }) => {
+    return confirm(
+      `Daemon identity changed (${expectedFingerprint} → ${receivedFingerprint}). Trust new key?`,
+    );
+  },
+});
+
+peer.rpc.handle("push", handlePush); // register before connection completes
+await peer.whenReady();
+const result = await peer.rpc.call("ping");
+```
+
+---
+
+## Self-Hosted Relay
+
+For self-hosted relay servers, use `@sideband/peer` directly:
+
+### Daemon
+
+```typescript
+import { listen } from "@sideband/peer/server";
+import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
+import { generateIdentityKeyPair } from "@sideband/secure-relay";
 
 const server = await listen({
-  endpoint: "wss://eu-1.relay.sideband.cloud",
+  endpoint: "wss://relay.example.com",
   negotiator: sbrpDaemonNegotiator({
-    daemonId: "my-daemon-id",
+    daemonId: asDaemonId("my-daemon"),
     identityKeyPair: identity,
-    presenceToken, // long-lived JWT from daemon registration
   }),
   onConnection(peer) {
     peer.rpc.handle("ping", () => "pong");
@@ -59,29 +109,24 @@ const server = await listen({
 });
 ```
 
----
-
-## Client Setup
-
-The client connects to the relay using the daemon's ID. On first connection, the client sees
-the daemon's identity fingerprint and must decide whether to trust it.
+### Client
 
 ```typescript
 import { createPeer } from "@sideband/peer";
 import { sbrpClientNegotiator } from "@sideband/peer/sbrp";
 
-// relayUrl and sessionToken from POST /api/sessions
+// sessionToken from your relay API — contains the sid claim
 const { relayUrl, token: sessionToken } = await api.createSession({
-  daemonId: "my-daemon-id",
+  daemonId: "my-daemon",
 });
 
 const peer = createPeer({
-  endpoint: relayUrl,
+  endpoint: `${relayUrl}?token=${sessionToken}`,
   negotiator: sbrpClientNegotiator({
-    daemonId: "my-daemon-id",
-    sessionToken,
-    identityKeyStore, // see Key Management below
-    trustPolicy: "prompt", // default: ask on first connection
+    daemonId: asDaemonId("my-daemon"),
+    sessionToken, // sessionId extracted from JWT sid claim automatically
+    identityKeyStore,
+    trustPolicy: "prompt",
     onFirstConnection: async ({ fingerprint }) => {
       return confirm(`Trust daemon with fingerprint ${fingerprint}?`);
     },

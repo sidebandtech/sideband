@@ -23,6 +23,7 @@
  */
 
 export {
+  classifySbrpError,
   createMemoryIdentityKeyStore,
   createSbrpChannel,
   sbrpClientNegotiator,

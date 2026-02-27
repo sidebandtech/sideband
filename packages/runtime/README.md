@@ -8,7 +8,8 @@ Transport-agnostic Sideband runtime pieces: session lifecycle, message routing, 
 - **Router**: Subject validation, handler registry, RPC dispatch, and error mapping
 - **RpcCorrelationManager**: Pending RPC tracking with timeouts and explicit `cid` correlation
 - **SbpNegotiator**: Built-in SBP handshake negotiator for direct connections
-- **SessionSignal**: Type for out-of-band session protocol signals (e.g., SBRP pause/resume/end)
+- **NegotiatorConnectionParams**: Dynamic endpoint/header resolution per connect attempt (rotate time-limited tokens on every reconnect)
+- **SessionSignal**: Type for out-of-band session protocol signals (e.g., SBRP pause/resume/end/pending)
 
 ## Install
 
@@ -128,7 +129,8 @@ const response = await pending;
 **Negotiators**
 
 - `SbpNegotiator` implements the SBP handshake (direct peer-to-peer).
-- Custom negotiators MAY return `subscribeSignals` in `NegotiationResult` (e.g., SBRP `session_paused`, `session_resumed`, `session_ended`) for higher layers that use it.
+- `getConnectionParams?()` is called before each connect attempt (initial and every reconnect) to resolve a fresh endpoint URL and optional upgrade headers. Implement this to rotate time-limited tokens (e.g., embed a new JWT in the URL on each attempt). If neither this nor `SessionConfig.endpoint` provides a non-empty endpoint, the runtime throws.
+- Custom negotiators MAY return `subscribeSignals` in `NegotiationResult` (e.g., SBRP `session_paused`, `session_resumed`, `session_ended`, `session_pending`) for higher layers that use it.
 - `SessionManager` does not emit `SessionSignal` directly; runtime exposes the type/contract so wrappers can forward these signals.
 - SBRP is not built in. Integrate `@sideband/secure-relay` by implementing a custom `Negotiator` that returns a wrapped `SessionChannel` and, optionally, a `subscribeSignals` function.
 

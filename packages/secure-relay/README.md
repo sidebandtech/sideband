@@ -2,7 +2,7 @@
 
 Low-level E2EE primitives for the Sideband Relay Protocol (SBRP).
 
-Implements authenticated handshake, key derivation, and message encryption for secure browser ↔ daemon communication via untrusted relay servers. Most applications should use `@sideband/peer` instead of this package directly.
+Implements authenticated handshake, key derivation, message encryption, and binary wire framing for secure browser ↔ daemon communication via untrusted relay servers. Most applications should use `@sideband/peer` instead of this package directly.
 
 ## Features
 
@@ -11,6 +11,7 @@ Implements authenticated handshake, key derivation, and message encryption for s
 - **ChaCha20-Poly1305** — Authenticated encryption for all messages
 - **TOFU identity pinning** — Trust-on-first-use with key change detection
 - **Replay protection** — Bitmap-based sequence window
+- **Binary wire framing** — Encode/decode SBRP frames; streaming `FrameDecoder`
 
 ## Non-goals
 
@@ -56,8 +57,8 @@ import {
   createDaemonSession,
   encryptClientToDaemon,
   decryptClientToDaemon,
-  encryptDaemonToClient,
-  decryptDaemonToClient,
+  clearClientSession,
+  clearDaemonSession,
   asDaemonId,
   asClientId,
 } from "@sideband/secure-relay";
@@ -76,6 +77,7 @@ const { message: accept, sessionKeys } = processHandshakeInit(
   daemonId,
   identity,
 );
+// clientSession holds daemon-side crypto state for this client
 const clientSession = createClientSession(
   asClientId("client-123"),
   sessionKeys,
@@ -88,11 +90,16 @@ const clientKeys = processHandshakeAccept(
   pinnedIdentityKey, // from local storage
   ephemeralKeyPair,
 );
+// daemonSession holds client-side crypto state for communicating with daemon
 const daemonSession = createDaemonSession(clientKeys);
 
 // Encrypt/decrypt messages (sessions are stateful — do not clone)
 const encrypted = encryptClientToDaemon(daemonSession, plaintext);
 const decrypted = decryptClientToDaemon(clientSession, encrypted);
+
+// Zeroize keys when done
+clearDaemonSession(daemonSession);
+clearClientSession(clientSession);
 ```
 
 ## TOFU security
@@ -143,7 +150,9 @@ if (!pinnedKey) {
 
 ## Error handling
 
-All errors throw `SbrpError` with a specific `code`:
+All errors throw `SbrpError` with a specific `code`. Codes fall into two categories:
+
+**Endpoint-only** (never on wire — thrown locally):
 
 | Code                   | Meaning                                   | Recovery                  |
 | ---------------------- | ----------------------------------------- | ------------------------- |
@@ -153,7 +162,30 @@ All errors throw `SbrpError` with a specific `code`:
 | `decrypt_failed`       | Message authentication failed             | Close session             |
 | `sequence_error`       | Replay detected or sequence out of window | Close session             |
 
-All errors are fatal — close the session and re-handshake.
+**Wire codes** (received in Control frames from relay):
+
+| Code                 | Terminal | Meaning                          |
+| -------------------- | -------- | -------------------------------- |
+| `unauthorized`       | yes      | Missing or invalid auth token    |
+| `forbidden`          | yes      | Token valid but access denied    |
+| `daemon_not_found`   | yes      | No daemon registered for this ID |
+| `daemon_offline`     | yes      | Daemon disconnected              |
+| `session_not_found`  | yes      | Session ID unknown to relay      |
+| `session_expired`    | yes      | Session token expired            |
+| `malformed_frame`    | yes      | Wire format violation            |
+| `payload_too_large`  | yes      | Frame payload exceeds limit      |
+| `invalid_frame_type` | yes      | Unknown frame type byte          |
+| `invalid_session_id` | yes      | SessionId zero for session frame |
+| `disallowed_sender`  | yes      | Frame sent by wrong party        |
+| `internal_error`     | yes      | Relay internal error             |
+| `rate_limited`       | no       | Request rate exceeded, back off  |
+| `backpressure`       | yes      | Relay buffer full, reconnect     |
+| `session_paused`     | no       | Session flow control paused      |
+| `session_resumed`    | no       | Session flow control resumed     |
+| `session_ended`      | no       | Daemon ended this session        |
+| `session_pending`    | no       | Daemon not yet ready             |
+
+Terminal codes mean the relay closes the WebSocket after sending. Non-terminal codes are informational — the connection stays open.
 
 ## Specification
 

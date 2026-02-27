@@ -83,23 +83,23 @@ States focus on a single client session; daemons may have many in parallel.
 
 A relay tracks the pairing between one client connection and one daemon connection.
 
-| State        | Event                         | Next         | Notes                                                                                  |
-| ------------ | ----------------------------- | ------------ | -------------------------------------------------------------------------------------- |
-| `None`       | `client_ws_open` (daemon on)  | `Paired`     | Validate session token; bind client to daemon; forward handshake.                      |
-| `None`       | `client_ws_open` (daemon off) | `Closed`     | Send `Control(daemon_offline)` (T); close client. No relay pairing created.            |
-| `None`       | `daemon_ws_open`              | `DaemonOnly` | Validate presence token; mark daemon online.                                           |
-| `DaemonOnly` | `client_ws_open`              | `Paired`     | Bind client to daemon; forward handshake messages.                                     |
-| `Paired`     | `daemon_ws_close`             | `Paused`     | Send `Control(session_paused)` to client; pause routing.                               |
-| `Paired`     | `Signal(close)`               | `Closed`     | Daemon lost state; send `Control(session_expired)` to client; close pairing.           |
-| `Paused`     | `daemon_ws_open(res=false)`   | `Closed`     | Non-resumable daemon; send `Control(session_expired)` to client immediately.           |
-| `Paused`     | `daemon_ws_open_within_grace` | `Pending`    | Resumable daemon reconnected; send `Control(session_pending)` to client; await Signal. |
-| `Paused`     | `client_ws_close`             | `Closed`     | Client disconnected while paused; tear down pairing (no notification).                 |
-| `Paused`     | `grace_expired`               | `Closed`     | Send `Control(session_expired)` to client; close WebSocket.                            |
-| `Pending`    | `Signal(ready)`               | `Paired`     | Send `Control(session_resumed)` to client; resume routing.                             |
-| `Pending`    | `Signal(close)`               | `Closed`     | Daemon lost state; send `Control(session_expired)` to client; close pairing.           |
-| `Pending`    | `client_ws_close`             | `Closed`     | Client disconnected; send `Control(session_ended)` to daemon.                          |
-| `Pending`    | `grace_expired`               | `Closed`     | Timeout waiting for daemon signal; send `Control(session_expired)`.                    |
-| `Paired`     | `client_ws_close`             | `Closed`     | Send `Control(session_ended)` to daemon; tear down pairing.                            |
+| State        | Event                                  | Next         | Notes                                                                                  |
+| ------------ | -------------------------------------- | ------------ | -------------------------------------------------------------------------------------- |
+| `None`       | `client_ws_open` (daemon on)           | `Paired`     | Validate session token; bind client to daemon; forward handshake.                      |
+| `None`       | `client_ws_open` (daemon off)          | `Closed`     | Send `Control(daemon_offline)` (T); close client. No relay pairing created.            |
+| `None`       | `daemon_ws_open`                       | `DaemonOnly` | Validate presence token; mark daemon online.                                           |
+| `DaemonOnly` | `client_ws_open`                       | `Paired`     | Bind client to daemon; forward handshake messages.                                     |
+| `Paired`     | `daemon_ws_close`                      | `Paused`     | Send `Control(session_paused)` to client; pause routing.                               |
+| `Paired`     | `Signal(close)`                        | `Closed`     | Daemon lost state; send `Control(session_expired)` to client; close pairing.           |
+| `Paused`     | `daemon_ws_open` (no `session:resume`) | `Closed`     | Non-resumable daemon; send `Control(session_expired)` to client immediately.           |
+| `Paused`     | `daemon_ws_open_within_grace`          | `Pending`    | Resumable daemon reconnected; send `Control(session_pending)` to client; await Signal. |
+| `Paused`     | `client_ws_close`                      | `Closed`     | Client disconnected while paused; tear down pairing (no notification).                 |
+| `Paused`     | `grace_expired`                        | `Closed`     | Send `Control(session_expired)` to client; close WebSocket.                            |
+| `Pending`    | `Signal(ready)`                        | `Paired`     | Send `Control(session_resumed)` to client; resume routing.                             |
+| `Pending`    | `Signal(close)`                        | `Closed`     | Daemon lost state; send `Control(session_expired)` to client; close pairing.           |
+| `Pending`    | `client_ws_close`                      | `Closed`     | Client disconnected; send `Control(session_ended)` to daemon.                          |
+| `Pending`    | `grace_expired`                        | `Closed`     | Timeout waiting for daemon signal; send `Control(session_expired)`.                    |
+| `Paired`     | `client_ws_close`                      | `Closed`     | Send `Control(session_ended)` to daemon; tear down pairing.                            |
 
 ## Required Invariants
 
@@ -109,7 +109,7 @@ A relay tracks the pairing between one client connection and one daemon connecti
 - Ping/Pong frames are connection-scoped (SessionID = 0) and never forwarded.
 - Relay MUST respond to Ping with Pong, copying payload.
 
-### Resumable Daemons (default, `res` claim absent or `true`)
+### Resumable Daemons (`"session:resume"` in `scp`)
 
 - A resumed session MUST reuse the same session keys and sequence state.
 - After reconnect, daemon MUST send `Signal(ready)` for sessions with retained state, `Signal(close, reason=state_lost)` for sessions with lost state.
@@ -152,7 +152,7 @@ Merely confirming field presence is necessary but not sufficient. Daemons that d
 For daemons that persist state to durable storage, implementations SHOULD add an integrity check (e.g., HMAC or authenticated encryption) to detect corruption or tampering during storage.
 :::
 
-### Non-Resumable Daemons (`res: false`)
+### Non-Resumable Daemons (`"session:resume"` absent from `scp`)
 
 - Relay MUST send `Control(session_expired)` to all paired clients immediately upon daemon reconnect.
 - Daemon need not track session IDs or send Signal frames.

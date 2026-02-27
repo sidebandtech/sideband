@@ -53,13 +53,14 @@ const msgBytes = encodeFrame(msg);
 
 ## What it provides
 
-- **Branded types**: `PeerId`, `FrameId`, `Subject`, `ConnectionId`, `CorrelationId`, `StreamId` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`, etc.) for wire-safe validation
+- **Branded types**: `PeerId`, `FrameId`, `Subject`, `ConnectionId`, `CorrelationId`, `StreamId` with smart constructors (`asPeerId`, `asFrameId`, `asSubject`, `asConnectionId`, `asCorrelationId`, `asStreamId`) and `MAX_SUBJECT_BYTES` for wire-safe validation
 - **Frame codec**: `encodeFrame` / `decodeFrame` with invariant enforcement (validates subject compliance with reserved namespaces per ADR-008)
-- **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createPingFrame`, `createPongFrame`, `createCloseFrame`
+- **Frame builders**: `createHandshakeFrame`, `createMessageFrame`, `createPingFrame`, `createPongFrame`, `createCloseFrame`, `createErrorFrame`
 - **FrameId helpers**: `generateFrameId`, `frameIdToHex`, `frameIdFromHex` for correlation and logging
 - **Handshake encode/decode**: `encodeHandshake` / `decodeHandshake` with validation
 - **Protocol constants**: `PROTOCOL_NAME`, `PROTOCOL_ID`, `PROTOCOL_VERSION`, `FrameKind` enum, `ControlOp` enum, `ErrorCode` enum
-- **Type guards**: `isControlFrame`, `isMessageFrame`, `isAckFrame`, `isErrorFrame`, `isValidFrameId`, etc.
+- **Type guards**: `isControlFrame`, `isHandshakeFrame`, `isPingFrame`, `isPongFrame`, `isCloseFrame`, `isMessageFrame`, `isAckFrame`, `isErrorFrame`, `isValidFrameId`
+- **Protocol error**: `ProtocolError` — typed error with `code` (numeric) and optional `details`
 
 For transport implementations, see [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport) (defines the Transport interface). For request correlation and RPC semantics, see [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc). Keep state machines, retries, and routing in [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)—this package only defines the wire contract.
 

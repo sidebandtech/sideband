@@ -58,7 +58,7 @@ Items tagged MUST/SHOULD mirror normative requirements.
 
 ### Session Resumption (resumable daemons only)
 
-Daemons with `res: false` in their presence token skip this section—the relay handles session cleanup automatically on reconnect.
+Daemons without `"session:resume"` in `scp` skip this section—the relay handles session cleanup automatically on reconnect.
 
 - [ ] MUST resume with the same keys and sequence state if relay session is resumed.
 - [ ] MUST send `Signal(ready)` for sessions with retained state after reconnect.
@@ -94,7 +94,7 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 - [ ] MUST verify `sid` in token (base64url-decoded to uint64) matches frame header SessionID for client connections.
 - [ ] MUST NOT generate Control frames that leak information derived from encrypted payloads.
 - [ ] MUST NOT include identifiers (daemonId, clientId, sessionId, tokens) in Control message text.
-- [ ] MUST send `Control(session_expired)` to all paired clients immediately when non-resumable daemon (`res: false`) reconnects.
+- [ ] MUST send `Control(session_expired)` to all paired clients immediately when non-resumable daemon (no `"session:resume"` in `scp`) reconnects.
 - [ ] SHOULD send `Control(internal_error, SessionID=0)` and close WebSocket on unrecoverable internal failures.
 
 ### Frame Validation Order

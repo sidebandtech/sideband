@@ -68,7 +68,10 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
       `sbrpClientNegotiator: handshakeTimeoutMs must be a finite positive number (got ${timeoutMs})`,
     );
   }
-  const sessionId: SessionId = options.sessionId;
+  const sessionId: SessionId =
+    "sessionToken" in options && options.sessionToken !== undefined
+      ? extractSessionId(options.sessionToken)
+      : (options.sessionId as bigint);
 
   return {
     async negotiate(conn: TransportConnection): Promise<NegotiationResult> {
@@ -264,4 +267,79 @@ function uint8Equal(a: Uint8Array, b: Uint8Array): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+/**
+ * Extract and validate the `sessionId` (uint64) from a relay session JWT.
+ *
+ * The relay encodes `sid` as base64url(uint64 ≠ 0) in the JWT payload.
+ * We decode without signature verification — the relay validates the full JWT
+ * at WebSocket upgrade time.
+ *
+ * Validation (§4.2 of cloud-relay spec):
+ * 1. Split on `.`, take segment [1] (payload), base64url-decode to bytes
+ * 2. Parse JSON, extract `sid` string
+ * 3. Base64url-decode `sid` to bytes — must be exactly 8 bytes
+ * 4. `DataView.getBigUint64(0, false)` — must not be 0n
+ *    (DataView avoids Number precision loss for large uint64 values)
+ */
+function extractSessionId(sessionToken: string): SessionId {
+  const fail = (msg: string): never => {
+    throw new SbrpError(
+      SbrpErrorCode.HandshakeFailed,
+      `Invalid session token: ${msg}`,
+    );
+  };
+
+  const parts = sessionToken.split(".");
+  if (parts.length !== 3) fail("not a JWT (expected 3 segments)");
+
+  let payload: Record<string, unknown>;
+  try {
+    const payloadBytes = base64urlDecode(parts[1]!);
+    payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    fail("payload is not valid base64url JSON");
+  }
+
+  const sid = payload!["sid"];
+  if (typeof sid !== "string" || sid === "") fail("missing or empty sid claim");
+
+  let sidBytes: Uint8Array;
+  try {
+    sidBytes = base64urlDecode(sid as string);
+  } catch {
+    fail("sid is not valid base64url");
+  }
+
+  if (sidBytes!.length !== 8) {
+    fail(`sid must decode to exactly 8 bytes, got ${sidBytes!.length}`);
+  }
+
+  const value = new DataView(
+    sidBytes!.buffer,
+    sidBytes!.byteOffset,
+    8,
+  ).getBigUint64(0, false);
+
+  if (value === 0n) fail("sid must not be zero");
+
+  return value;
+}
+
+/** Decode a base64url string to bytes (no padding required). */
+function base64urlDecode(input: string): Uint8Array {
+  // Convert base64url to standard base64
+  const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
+  // Add padding
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }

@@ -67,8 +67,9 @@ Key options for `transport.connect(endpoint, options)`:
 - **`auth`** — `{ token, mode?: "header" | "query" }`. Node/Bun default to `"header"`; browsers require `mode: "query"` (cannot set WebSocket headers).
 - **`subprotocols`** — `{ offer?, requireSelection? }`. Set `requireSelection: true` for protocol enforcement.
 - **`limits`** — `{ maxMessageSize?, maxSendBufferBytes?, maxInboundBufferBytes? }`. Defaults: 1 MiB / 16 MiB / 16 MiB.
+- **`headers`** — `Record<string, string>`. Extra upgrade headers. Supported on Node.js only (via the `ws` package); silently ignored by Bun and browsers. For universal token delivery use `auth: { mode: "query" }`.
 - **`timeoutMs`** / **`signal`** — connect deadline and abort signal.
-- **`advanced`** — Node/Bun only: `{ headers?, query?, tls? }`.
+- **`advanced`** — Node/Bun only: `{ headers?, query?, tls? }`. `advanced.headers` merges over top-level `headers` and wins on key conflicts.
 
 ## Listen options (server)
 
@@ -130,7 +131,7 @@ try {
 
 ## Common pitfalls
 
-- **Browser + header auth** — browsers cannot set WebSocket headers; always use `auth: { mode: "query" }` explicitly.
+- **Browser/Bun + header auth** — browsers and Bun cannot set WebSocket upgrade headers; always use `auth: { mode: "query" }` explicitly. Top-level `headers` and `advanced.headers` are also silently ignored on Bun.
 - **Subprotocol enforcement** — default is `requireSelection: false`; set `{ offer: ["sideband.v1"], requireSelection: true }` for Sideband connections.
 - **Origin validation** — protects against DNS rebinding, not authentication. Non-browser clients don't send `Origin` headers and are allowed by default.
 - **Send buffer overflow** — `send()` throws with `buffer_overflow` if the network can't keep up; check `conn.pendingSendBytes` for proactive backpressure.

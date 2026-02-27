@@ -9,6 +9,7 @@
     { "path": "./packages/peer/tsconfig.check.json" },
     { "path": "./packages/transport-ws/tsconfig.check.json" },
     { "path": "./packages/cli/tsconfig.check.json" },
-    { "path": "./packages/testing/tsconfig.check.json" }
+    { "path": "./packages/testing/tsconfig.check.json" },
+    { "path": "./packages/cloud/tsconfig.json" }
   ]
 }

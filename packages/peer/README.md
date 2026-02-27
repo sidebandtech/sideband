@@ -90,7 +90,10 @@ const peer = createPeer({
   endpoint: "ws://relay.example.com",
   negotiator: sbrpClientNegotiator({
     daemonId: asDaemonId("target-daemon-id"),
-    sessionId: 1n,
+    // Relay mode: pass the JWT — sessionId is extracted from the `sid` claim.
+    sessionToken: "<relay-session-jwt>",
+    // Self-hosted mode: provide the uint64 session ID directly instead:
+    // sessionId: 1n,
     identityKeyStore: store,
     trustPolicy: "auto",
   }),
@@ -102,6 +105,8 @@ peer.on("sessionResumed", () => console.log("relay resumed — traffic flowing")
 ```
 
 When the relay pauses a session, the peer transitions to `"paused"`: `peer.ready` is `false`, `peer.connected` is `true`. In this state, RPC/event behavior follows `connectionPolicy.onDisconnect` (reject on `"fail"`, buffer on `"pause"`). On resume, the peer returns to `"active"` and flushes buffered calls/events.
+
+`PeerOptions.endpoint` is optional when the negotiator implements `getConnectionParams()` to supply a fresh URL on each connect attempt (e.g. `@sideband/cloud`'s negotiator mints a new relay session token per attempt). A runtime error is thrown if no endpoint is available at connect time.
 
 Server side uses `sbrpDaemonNegotiator` with an `identityKeyPair`. See `@sideband/secure-relay` for details.
 

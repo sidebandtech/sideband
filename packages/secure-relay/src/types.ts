@@ -12,7 +12,7 @@ export type ClientId = string & { readonly __brand: "ClientId" };
 
 /**
  * Session identifier (uint64).
- * Assigned by control plane, included in JWT `sid` claim as decimal string.
+ * Assigned by control plane, encoded in JWT `sid` claim as base64url(uint64).
  * Used in frame headers for routing.
  */
 export type SessionId = bigint;
