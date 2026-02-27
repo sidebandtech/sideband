@@ -1,12 +1,12 @@
 {
-  "name": "@sideband/transport",
+  "name": "@sideband/cloud",
   "version": "0.3.0",
-  "description": "Transport ABI for Sideband: Transport interface, error taxonomy, and reference loopback transport.",
+  "description": "Cloud relay SDK for Sideband: connect clients and daemons via relay.sideband.cloud with automatic session management, token renewal, and E2EE.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sidebandtech/sideband.git",
-    "directory": "packages/transport"
+    "directory": "packages/cloud"
   },
   "bugs": {
     "url": "https://github.com/sidebandtech/sideband/issues"
@@ -18,11 +18,13 @@
   ],
   "keywords": [
     "sideband",
-    "transport",
-    "abi",
-    "interface",
-    "networking",
-    "loopback",
+    "cloud",
+    "relay",
+    "sdk",
+    "e2ee",
+    "end-to-end-encryption",
+    "real-time",
+    "rpc",
     "websocket",
     "p2p"
   ],
@@ -37,7 +39,10 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@sideband/protocol": "workspace:^"
+    "@sideband/peer": "workspace:^",
+    "@sideband/secure-relay": "workspace:^",
+    "@sideband/transport": "workspace:^",
+    "@sideband/transport-ws": "workspace:^"
   },
   "files": [
     "dist",

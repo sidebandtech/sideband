@@ -60,10 +60,8 @@ from consuming DO resources.
 
 **Auth model:**
 
-- **Daemon connections**: Long-lived API key tied to an account and `daemonId`. Validated
-  against the database on first connection; cached for the DO lifetime.
-- **Client connections**: Short-lived signed token (JWT) scoped to a `daemonId` and TTL.
-  Issued by the API server after the client authenticates.
+- **Daemon connections**: Long-lived presence token (JWT, `role=daemon`) issued by the control plane, scoped to a `daemonId` and signed with the relay's EdDSA key. Validated at WebSocket upgrade; the DO trusts the pre-validated claims.
+- **Client connections**: Short-lived session token (JWT, `role=client`, TTL ≤120s) scoped to a `daemonId` + `sid`. Issued by the control plane after the user authenticates.
 
 ### 4. Token-based session routing
 
@@ -84,8 +82,8 @@ from the token's `did` claim.
 
 Token delivery:
 
-- **Query parameter**: `?token=<jwt>` — required for browser WebSocket compatibility
-- **Authorization header**: `Authorization: Bearer <jwt>` — preferred for programmatic clients (daemons)
+- **Query parameter**: `?token=<jwt>` — universally compatible (browser, Bun, Node.js). All `@sideband/cloud` connections use this form. Bun's native WebSocket constructor does not support custom upgrade headers, so daemons running on Bun must use query-param token delivery.
+- **Authorization header**: `Authorization: Bearer <jwt>` — supported for Node.js `ws`-based transports; not usable from Bun or browsers.
 
 Security note: query-string tokens MUST be short-lived and redacted from logs/analytics.
 
@@ -121,6 +119,10 @@ retry behavior follows the client's retry policy (see ADR-014).
 - Relay package has no dependency on `@sideband/peer`. Frame routing decisions come from
   authenticated connection context (`daemonId`, role, token claims), not SBP payload parsing.
 - Cloudflare Durable Object namespace must be declared in `wrangler.toml`.
+- `packages/cloud/` (`@sideband/cloud`) — new SDK package that wraps `@sideband/peer` with
+  automatic presence token renewal, relay session fetching, and daemon session demultiplexing.
+  All `@sideband/cloud` connections use `?token=<jwt>` in URL for universal Bun/browser/Node.js
+  compatibility. See `docs/guide/e2ee.md` for usage.
 
 ## References
 

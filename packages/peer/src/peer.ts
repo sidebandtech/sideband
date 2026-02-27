@@ -324,6 +324,7 @@ class PeerImpl implements Peer, RpcHost, EventHost {
         classifyError: (err) => this.opts.negotiator.classifyError(err),
         terminate: (conn, opts) => this.opts.negotiator.terminate(conn, opts),
       };
+
       // Deferred for "this session closed"
       const closedDeferred = Promise.withResolvers<{
         reason: string;
@@ -331,43 +332,70 @@ class PeerImpl implements Peer, RpcHost, EventHost {
         fatal: boolean;
       }>();
 
-      const mgr = createSessionManager({
-        endpoint: this.opts.endpoint,
-        transportFactory: (ep) =>
-          this.opts.transport.connect(unsafeAsTransportEndpoint(ep)),
-        negotiator: wrappedNegotiator,
-        retryPolicy: { mode: "never" },
-        onFrame: (frame) => {
-          this.dispatchFrame(frame);
-        },
-      });
-
-      // "connecting" fires from mgr during initial connect and reconnects.
-      // For the initial connect, transition() is already "connecting" (set
-      // synchronously in connect()), so this is a no-op on the first attempt.
-      mgr.on("connecting", () => this.transition("connecting"));
-      mgr.on("negotiating", () => this.transition("negotiating"));
-      mgr.on("closed", (evt) => closedDeferred.resolve(evt));
-
-      this.sessionMgr = mgr;
-
       let connectErr: Error | undefined;
       let session: Session | undefined;
 
-      try {
-        session = await mgr.connect();
-      } catch (err) {
-        connectErr = err instanceof Error ? err : new Error(String(err));
+      // Resolve connection params before transport connect — allows negotiators
+      // to supply a fresh endpoint URL (e.g. with a new relay session token)
+      // on every attempt, including reconnects. If getConnectionParams() throws
+      // (e.g., API unavailable), treat it like a connection failure and retry.
+      let connEndpoint = this.opts.endpoint;
+      let connHeaders: Record<string, string> | undefined;
+      if (this.opts.negotiator.getConnectionParams) {
+        try {
+          const params = await this.opts.negotiator.getConnectionParams();
+          if (params.endpoint) connEndpoint = params.endpoint;
+          connHeaders = params.headers;
+        } catch (err) {
+          connectErr = err instanceof Error ? err : new Error(String(err));
+        }
+      }
+      if (!connectErr && !connEndpoint) {
+        connectErr = new Error(
+          "No endpoint: configure PeerOptions.endpoint or implement Negotiator.getConnectionParams()",
+        );
+      }
+
+      if (!connectErr) {
+        const mgr = createSessionManager({
+          endpoint: connEndpoint!,
+          transportFactory: (ep) =>
+            this.opts.transport.connect(unsafeAsTransportEndpoint(ep), {
+              headers: connHeaders,
+            }),
+          negotiator: wrappedNegotiator,
+          retryPolicy: { mode: "never" },
+          onFrame: (frame) => {
+            this.dispatchFrame(frame);
+          },
+        });
+
+        // "connecting" fires from mgr during initial connect and reconnects.
+        // For the initial connect, transition() is already "connecting" (set
+        // synchronously in connect()), so this is a no-op on the first attempt.
+        mgr.on("connecting", () => this.transition("connecting"));
+        mgr.on("negotiating", () => this.transition("negotiating"));
+        mgr.on("closed", (evt) => closedDeferred.resolve(evt));
+
+        this.sessionMgr = mgr;
+
+        try {
+          session = await mgr.connect();
+        } catch (err) {
+          connectErr = err instanceof Error ? err : new Error(String(err));
+        }
       }
 
       if (connectErr) {
-        // By contract, "closed" fires before connect() throws — closedDeferred is
-        // already resolved. Resolve defensively to prevent an infinite hang if
-        // that invariant is ever broken by a runtime regression.
+        // Two cases: (1) getConnectionParams() failed before mgr was created —
+        // closedDeferred was never resolved; (2) mgr.connect() failed — by
+        // contract "closed" fires before throwing so closedDeferred is already
+        // resolved. Resolve defensively (idempotent) for both cases, using the
+        // error classification to set the correct fatal flag.
         closedDeferred.resolve({
           reason: connectErr.message,
           graceful: false,
-          fatal: true,
+          fatal: this.opts.negotiator.classifyError(connectErr) === "fatal",
         });
         const closeEvt = await closedDeferred.promise;
 

@@ -8,6 +8,7 @@
     { "path": "./packages/peer" },
     { "path": "./packages/transport-ws" },
     { "path": "./packages/cli" },
-    { "path": "./packages/testing" }
+    { "path": "./packages/testing" },
+    { "path": "./packages/cloud" }
   ]
 }

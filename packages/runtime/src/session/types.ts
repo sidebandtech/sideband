@@ -65,6 +65,27 @@ export interface NegotiationResult {
 }
 
 /**
+ * Connection parameters resolved before each connect attempt.
+ *
+ * Returned by `Negotiator.getConnectionParams()` to supply a fresh endpoint
+ * URL and optional upgrade headers on every connection (including reconnects).
+ * Use this to rotate time-limited tokens embedded in the URL or headers.
+ */
+export interface NegotiatorConnectionParams {
+  /**
+   * Endpoint URL for this attempt — overrides `PeerOptions.endpoint`.
+   * Required when `PeerOptions.endpoint` is not set.
+   */
+  endpoint?: string;
+  /**
+   * Extra headers for the WebSocket upgrade request.
+   * Supported on Node.js (ws library). Ignored by Bun and browsers — use
+   * `?token=<jwt>` in the endpoint URL for universal compatibility.
+   */
+  headers?: Record<string, string>;
+}
+
+/**
  * Negotiator interface for pluggable session establishment.
  *
  * Invariants:
@@ -75,6 +96,16 @@ export interface NegotiationResult {
  *   session-layer cleanup is handled by closing the SessionChannel.
  */
 export interface Negotiator {
+  /**
+   * Called before each connect attempt (initial and every reconnect) to
+   * resolve a fresh endpoint URL and optional upgrade headers.
+   *
+   * Use this to rotate time-limited tokens (e.g., embed a new JWT in the URL
+   * on each attempt). If this throws, the attempt fails and the peer retries
+   * per `retryPolicy`. Either this method or `PeerOptions.endpoint` must
+   * provide a non-empty endpoint; runtime throws if neither does.
+   */
+  getConnectionParams?(): Promise<NegotiatorConnectionParams>;
   /** Establish session after transport opens */
   negotiate(conn: TransportConnection): Promise<NegotiationResult>;
   /** Protocol-specific close signaling; MUST be idempotent */

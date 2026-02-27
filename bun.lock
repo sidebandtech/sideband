@@ -25,9 +25,19 @@
       "name": "@sideband/cli",
       "version": "0.0.1",
     },
+    "packages/cloud": {
+      "name": "@sideband/cloud",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sideband/peer": "workspace:^",
+        "@sideband/secure-relay": "workspace:^",
+        "@sideband/transport": "workspace:^",
+        "@sideband/transport-ws": "workspace:^",
+      },
+    },
     "packages/peer": {
       "name": "@sideband/peer",
-      "version": "0.0.1",
+      "version": "0.3.0",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
         "@sideband/rpc": "workspace:^",
@@ -44,18 +54,18 @@
     },
     "packages/protocol": {
       "name": "@sideband/protocol",
-      "version": "0.0.8",
+      "version": "0.0.9",
     },
     "packages/rpc": {
       "name": "@sideband/rpc",
-      "version": "0.0.6",
+      "version": "0.0.7",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
       },
     },
     "packages/runtime": {
       "name": "@sideband/runtime",
-      "version": "0.1.1",
+      "version": "0.2.1",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
         "@sideband/rpc": "workspace:^",
@@ -64,7 +74,7 @@
     },
     "packages/secure-relay": {
       "name": "@sideband/secure-relay",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "dependencies": {
         "@noble/ciphers": "^2.1.1",
         "@noble/curves": "^2.0.1",
@@ -77,14 +87,14 @@
     },
     "packages/transport": {
       "name": "@sideband/transport",
-      "version": "0.0.6",
+      "version": "0.0.7",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
       },
     },
     "packages/transport-ws": {
       "name": "@sideband/transport-ws",
-      "version": "0.0.1",
+      "version": "0.0.4",
       "dependencies": {
         "@sideband/protocol": "workspace:^",
         "@sideband/transport": "workspace:^",
@@ -333,6 +343,8 @@
     "@shikijs/vscode-textmate": ["@shikijs/vscode-textmate@10.0.2", "", {}, "sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg=="],
 
     "@sideband/cli": ["@sideband/cli@workspace:packages/cli"],
+
+    "@sideband/cloud": ["@sideband/cloud@workspace:packages/cloud"],
 
     "@sideband/peer": ["@sideband/peer@workspace:packages/peer"],
 

@@ -40,10 +40,35 @@ for await (const bytes of conn.inbound) {
 
 ## What it provides
 
-- `Transport` / `TransportConnection` / `TransportListener` interfaces for byte-level links
-- `unsafeAsTransportEndpoint` — raw branded cast with no URL validation (for custom transports and tests)
-- Reference `LoopbackTransport` for tests and local loops
-- Safe to use in browser or Node transports; depends only on [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)
+**Interfaces**
+
+- `Transport` — connect (required) + listen (optional) contract all transports implement
+- `TransportConnection` — single byte-level link: `inbound`, `send()`, `close()`, `closed`, `state`
+- `TransportListener` — returned by `listen()`; holds `address` and `close()`
+- `ConnectionHandler` — `(conn: TransportConnection) => void | Promise<void>`
+
+**Types**
+
+- `TransportEndpoint` — branded string; use `unsafeAsTransportEndpoint` or a transport-specific helper
+- `ConnectionState` — `"connecting" | "open" | "closing" | "closed"`
+- `ConnectOptions` — `timeoutMs`, `signal`, `headers` (Node.js only), extensible
+- `CloseOptions` / `CloseInfo` — close codes, reason, graceful flag, optional error
+- `ListenOptions` — extensible per-transport listen configuration
+- `ConnectionId` — re-exported from `@sideband/protocol`
+
+**Errors**
+
+- `TransportError` — typed transport failure with `kind: TransportErrorKind`
+- `TransportErrorKind` — `connection_refused | dns_failure | tls_failure | timeout | network_offline | abnormal_close | message_too_large | buffer_overflow | policy_violation | authentication_failed | aborted | subprotocol_mismatch | transport_failure`
+- `isRetryable(kind)` — returns true for transient failures
+
+**Helpers**
+
+- `unsafeAsTransportEndpoint(value)` — brands a raw string as `TransportEndpoint` with no validation
+- `asConnectionId(value)` — brands a value as `ConnectionId` (re-exported from `@sideband/protocol`)
+- `LoopbackTransport` — in-process transport for tests and local loops
+
+Depends only on [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol); safe in browser, Node, and Bun environments.
 
 ## License
 

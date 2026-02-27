@@ -159,8 +159,13 @@ class NodeWsTransport implements Transport {
       }
     }
 
-    // Build headers (Node/Bun default to header mode for auth)
-    const headers: Record<string, string> = { ...options?.advanced?.headers };
+    // Build headers (Node/Bun default to header mode for auth).
+    // Merge ConnectOptions.headers (negotiator-provided) under advanced.headers
+    // (transport-specific, wins on conflict). Bun ignores headers silently.
+    const headers: Record<string, string> = {
+      ...options?.headers,
+      ...options?.advanced?.headers,
+    };
 
     // Add auth header (default mode for Node/Bun)
     if (options?.auth && options.auth.mode !== "query") {

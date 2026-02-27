@@ -18,16 +18,25 @@ export interface IdentityKeyStore {
 /** Trust policy for first-connection and reconnection identity verification. */
 export type TrustPolicy = "auto" | "prompt" | "strict";
 
-interface SbrpClientSharedOptions {
+/**
+ * Session source for `sbrpClientNegotiator`.
+ *
+ * - `sessionToken`: relay mode — provide the JWT directly; `sessionId` is
+ *   extracted from the `sid` claim automatically (base64url → uint64).
+ * - `sessionId`: direct / self-hosted mode — provide the uint64 explicitly.
+ */
+type SbrpClientSessionSource =
+  | { sessionToken: string; sessionId?: never }
+  | { sessionId: bigint; sessionToken?: never };
+
+type SbrpClientSharedOptions = SbrpClientSessionSource & {
   daemonId: DaemonId;
-  /** Relay-assigned session ID (from JWT `sid` claim). */
-  sessionId: bigint;
   identityKeyStore: IdentityKeyStore;
   handshakeTimeoutMs?: number;
   /** Local peer ID for inner SBP handshake. Auto-generated if omitted. */
   peerId?: string;
   capabilities?: string[];
-}
+};
 
 type FirstConnectionPrompt = (info: {
   fingerprint: string;

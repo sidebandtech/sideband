@@ -299,9 +299,11 @@ export interface AcceptedPeer {
 export interface PeerOptions {
   /**
    * WebSocket endpoint, e.g. `"ws://localhost:8080"`.
-   * Use `wsEndpoint()` from `@sideband/transport-ws` for validation.
+   * Optional when `negotiator.getConnectionParams()` provides a fresh
+   * endpoint on each connect attempt (e.g. for time-limited relay tokens).
+   * A runtime error is thrown if neither source provides an endpoint.
    */
-  endpoint: string;
+  endpoint?: string;
   /**
    * Session negotiator. Defaults to `sbpNegotiator()` (plain SBP handshake).
    * Pass `sbrpClientNegotiator(...)` for E2EE relay mode.
@@ -327,7 +329,7 @@ export interface PeerOptions {
 
 /** Fully-resolved internal options (defaults applied). */
 export interface ResolvedPeerOptions {
-  endpoint: string;
+  endpoint?: string;
   negotiator: Negotiator;
   transport: Transport;
   peerId: string;
@@ -355,8 +357,10 @@ export interface PeerServer {
 export interface ListenOptions {
   /**
    * Endpoint to listen on, e.g. `"ws://0.0.0.0:8080"`.
+   * Optional when `transport` handles its own connection (e.g. relay daemons
+   * that connect outbound — no local port is bound).
    */
-  endpoint: string;
+  endpoint?: string;
   /**
    * Called for each accepted connection. The `peer` argument is always in
    * `"active"` state at the point of the callback.

@@ -61,6 +61,7 @@ export {
   defaultRetryPolicy,
   type NegotiationResult,
   type Negotiator,
+  type NegotiatorConnectionParams,
   type RetryPolicy,
   type SessionChannel,
   type SessionEvents,
