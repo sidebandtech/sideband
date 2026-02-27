@@ -1,6 +1,6 @@
 {
   "name": "@sideband/peer",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Peer SDK for Sideband: friendly API over runtime + transports with lifecycle utilities, pub/sub, and RPC helpers to run peers quickly.",
   "license": "Apache-2.0",
   "repository": {
