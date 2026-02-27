@@ -1,6 +1,6 @@
 # @sideband/cloud
 
-High-level SDK for [relay.sideband.cloud](https://relay.sideband.cloud). Wraps `@sideband/peer` and `@sideband/secure-relay` with automatic relay session management, presence token renewal, and E2EE.
+High-level SDK for [relay.sideband.cloud](https://sideband.cloud). Wraps `@sideband/peer` and `@sideband/secure-relay` with automatic relay session management, presence token renewal, and E2EE.
 
 ## Install
 

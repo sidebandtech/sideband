@@ -68,17 +68,17 @@ const result = await peer.rpc.call("echo", { msg: "hello" }); // "hello"
 
 Most apps start with `@sideband/peer` (local) or `@sideband/cloud` (relay). Lower-level packages are for custom transports and advanced use cases.
 
-| Package                                                                          | Role                                        |
-| -------------------------------------------------------------------------------- | ------------------------------------------- |
-| [`@sideband/peer`](https://www.npmjs.com/package/@sideband/peer)                 | High-level SDK                              |
-| [`@sideband/cloud`](https://www.npmjs.com/package/@sideband/cloud)               | Cloud relay SDK (relay.sideband.cloud)      |
-| [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)         | Wire format, frame types, codecs            |
-| [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport)       | Transport ABI and shared utilities          |
-| [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)           | Session lifecycle, routing, RPC correlation |
-| [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc)                   | Typed RPC layer                             |
-| [`@sideband/secure-relay`](https://www.npmjs.com/package/@sideband/secure-relay) | E2EE relay protocol                         |
-| [`@sideband/transport-ws`](https://www.npmjs.com/package/@sideband/transport-ws) | WebSocket transport (Browser/Node/Bun)      |
-| [`@sideband/cli`](https://www.npmjs.com/package/@sideband/cli)                   | Developer CLI (coming soon)                 |
+| Package                                                                          | Role                                                             |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [`@sideband/peer`](https://www.npmjs.com/package/@sideband/peer)                 | High-level SDK                                                   |
+| [`@sideband/cloud`](https://www.npmjs.com/package/@sideband/cloud)               | Cloud relay SDK ([relay.sideband.cloud](https://sideband.cloud)) |
+| [`@sideband/protocol`](https://www.npmjs.com/package/@sideband/protocol)         | Wire format, frame types, codecs                                 |
+| [`@sideband/transport`](https://www.npmjs.com/package/@sideband/transport)       | Transport ABI and shared utilities                               |
+| [`@sideband/runtime`](https://www.npmjs.com/package/@sideband/runtime)           | Session lifecycle, routing, RPC correlation                      |
+| [`@sideband/rpc`](https://www.npmjs.com/package/@sideband/rpc)                   | Typed RPC layer                                                  |
+| [`@sideband/secure-relay`](https://www.npmjs.com/package/@sideband/secure-relay) | E2EE relay protocol                                              |
+| [`@sideband/transport-ws`](https://www.npmjs.com/package/@sideband/transport-ws) | WebSocket transport (Browser/Node/Bun)                           |
+| [`@sideband/cli`](https://www.npmjs.com/package/@sideband/cli)                   | Developer CLI (coming soon)                                      |
 
 ## Develop
 
