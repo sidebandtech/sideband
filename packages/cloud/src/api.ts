@@ -28,8 +28,8 @@ export class CloudApiError extends Error {
 }
 
 interface TrpcResponse<T> {
-  result?: { data?: { json: T } };
-  error?: { json?: { message?: string; code?: string } };
+  result?: { data?: T };
+  error?: { message?: string; data?: { code?: string } };
 }
 
 async function trpcMutation<TInput, TOutput>(
@@ -50,7 +50,7 @@ async function trpcMutation<TInput, TOutput>(
     let message = `HTTP ${res.status}`;
     try {
       const body = (await res.json()) as TrpcResponse<TOutput>;
-      const trpcMsg = body.error?.json?.message;
+      const trpcMsg = body.error?.message;
       if (trpcMsg) message = `HTTP ${res.status}: ${trpcMsg}`;
     } catch {
       // Ignore JSON parse errors
@@ -72,8 +72,8 @@ async function trpcMutation<TInput, TOutput>(
     );
   }
   if (body.error) {
-    const msg = body.error.json?.message ?? "Unknown error";
-    const code = body.error.json?.code;
+    const msg = body.error.message ?? "Unknown error";
+    const code = body.error.data?.code;
     // Map known fatal tRPC error codes to their HTTP equivalents so
     // classifyApiError() treats them as fatal (stops retrying).
     // All other tRPC errors default to 500 (retryable).
@@ -93,7 +93,7 @@ async function trpcMutation<TInput, TOutput>(
     );
   }
 
-  const out = body.result?.data?.json;
+  const out = body.result?.data;
   if (out === undefined) {
     throw new CloudApiError(
       500,
