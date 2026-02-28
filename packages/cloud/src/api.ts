@@ -10,6 +10,8 @@
 
 export const DEFAULT_API = "https://api.sideband.cloud";
 
+const dec = new TextDecoder();
+
 /**
  * Error thrown when api.sideband.cloud returns an HTTP error response.
  * Carries the HTTP status so `classifyError()` can distinguish fatal
@@ -35,11 +37,13 @@ async function trpcMutation<TInput, TOutput>(
   procedure: string,
   input: TInput,
   headers: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<TOutput> {
   const res = await fetch(`${api}/api/trpc/${procedure}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({ json: input }),
+    signal,
   });
 
   if (!res.ok) {
@@ -57,7 +61,16 @@ async function trpcMutation<TInput, TOutput>(
     );
   }
 
-  const body = (await res.json()) as TrpcResponse<TOutput>;
+  let body: TrpcResponse<TOutput>;
+  try {
+    body = (await res.json()) as TrpcResponse<TOutput>;
+  } catch {
+    // Proxy or WAF returned non-JSON on 200 (captive portal or WAF intercept?).
+    throw new CloudApiError(
+      500,
+      `api.sideband.cloud ${procedure}: non-JSON response on HTTP 200 — possible captive portal or WAF intercept`,
+    );
+  }
   if (body.error) {
     const msg = body.error.json?.message ?? "Unknown error";
     const code = body.error.json?.code;
@@ -76,7 +89,7 @@ async function trpcMutation<TInput, TOutput>(
               : 500;
     throw new CloudApiError(
       status,
-      `api.sideband.cloud ${procedure} error — ${msg}`,
+      `api.sideband.cloud ${procedure} error — ${code ? `[${code}] ` : ""}${msg}`,
     );
   }
 
@@ -102,12 +115,14 @@ export async function fetchRelaySession(
   daemonId: string,
   accessToken: string,
   apiUrl = DEFAULT_API,
+  signal?: AbortSignal,
 ): Promise<{ relayUrl: string; token: string }> {
   return trpcMutation(
     apiUrl,
     "relay.createSession",
     { daemonId },
     { Authorization: `Bearer ${accessToken}` },
+    signal,
   );
 }
 
@@ -121,14 +136,66 @@ export async function fetchRelaySession(
 export async function renewPresenceToken(
   apiKey: string,
   apiUrl = DEFAULT_API,
+  signal?: AbortSignal,
 ): Promise<string> {
   const result = await trpcMutation<null, { presenceToken: string }>(
     apiUrl,
     "daemon.renewToken",
     null,
     { Authorization: `Bearer ${apiKey}` },
+    signal,
   );
   return result.presenceToken;
+}
+
+/**
+ * Extract the daemon ID from a presence token (`did` JWT claim).
+ *
+ * Does not verify the signature — the relay validates the full token at
+ * WebSocket upgrade time. Throws `CloudApiError(400, ...)` for malformed tokens.
+ */
+export function extractDaemonIdFromToken(token: string): string {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    throw new CloudApiError(
+      400,
+      "Invalid presence token: not a JWT (expected 3 segments)",
+    );
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    const payloadBytes = base64urlDecode(parts[1]!);
+    payload = JSON.parse(dec.decode(payloadBytes)) as Record<string, unknown>;
+  } catch {
+    throw new CloudApiError(
+      400,
+      "Invalid presence token: payload is not valid base64url JSON",
+    );
+  }
+
+  const did = payload["did"];
+  if (typeof did !== "string" || did === "") {
+    throw new CloudApiError(
+      400,
+      "Invalid presence token: missing or empty did claim",
+    );
+  }
+  return did;
+}
+
+/** Decode a base64url string to bytes (no padding required). */
+function base64urlDecode(input: string): Uint8Array {
+  // Convert base64url to standard base64
+  const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
+  // Add padding
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 /**
@@ -139,8 +206,6 @@ export async function renewPresenceToken(
  * 429/5xx/network = transient (retryable with backoff).
  */
 export function classifyApiError(error: CloudApiError): "fatal" | "retryable" {
-  if (error.status === 400 || error.status === 401 || error.status === 403)
-    return "fatal";
-  if (error.status === 404) return "fatal";
+  if ([400, 401, 403, 404].includes(error.status)) return "fatal";
   return "retryable";
 }
