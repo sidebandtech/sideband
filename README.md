@@ -1,7 +1,8 @@
 # Sideband
 
 [![CI](https://github.com/sidebandtech/sideband/actions/workflows/ci.yml/badge.svg)](https://github.com/sidebandtech/sideband/actions)
-[![npm](https://img.shields.io/npm/v/@sideband/protocol.svg)](https://www.npmjs.com/package/@sideband/protocol)
+[![npm peer](https://img.shields.io/npm/v/@sideband/peer.svg?label=%40sideband%2Fpeer)](https://www.npmjs.com/package/@sideband/peer)
+[![npm cloud](https://img.shields.io/npm/v/@sideband/cloud.svg?label=%40sideband%2Fcloud)](https://www.npmjs.com/package/@sideband/cloud)
 
 Browser ↔ daemon communication — local or via cloud relay, without WebSocket code.
 
