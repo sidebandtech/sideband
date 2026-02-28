@@ -1,5 +1,22 @@
 # @sideband/transport
 
+## 0.5.0
+
+### Minor Changes
+
+- [#35](https://github.com/sidebandtech/sideband/pull/35) [`307e7d9`](https://github.com/sidebandtech/sideband/commit/307e7d94b8354bfe351f98f8efe3e649fb392a84) Thanks [@koistya](https://github.com/koistya)! - Make `daemonId` optional in `listen()` — extracted from the presence token's `did` claim automatically; mismatch with a provided value throws immediately.
+
+  Add `AbortSignal` support to `fetchRelaySession` and `renewPresenceToken`.
+
+  Export `CloudApiError` from the main entry point.
+
+  Fix SBRP application-level Ping/Pong handling, `close()` now awaits full loop drain, and add jitter + backoff credit for stable connections.
+
+### Patch Changes
+
+- Updated dependencies [[`307e7d9`](https://github.com/sidebandtech/sideband/commit/307e7d94b8354bfe351f98f8efe3e649fb392a84)]:
+  - @sideband/protocol@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
