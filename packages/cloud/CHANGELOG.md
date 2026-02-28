@@ -1,5 +1,11 @@
 # @sideband/cloud
 
+## 0.5.1
+
+### Patch Changes
+
+- [#37](https://github.com/sidebandtech/sideband/pull/37) [`39621cd`](https://github.com/sidebandtech/sideband/commit/39621cdcdc0e7f2a6b02e403b43a5a12786f284d) Thanks [@koistya](https://github.com/koistya)! - Fix tRPC response parsing — correct `TrpcResponse<T>` envelope shape (`data: T` not `data: { json: T }`, `error.message`/`error.data.code` not `error.json`).
+
 ## 0.5.0
 
 ### Minor Changes
