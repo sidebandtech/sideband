@@ -48,6 +48,13 @@ interface ConnectOptionsBase {
   rpcPolicy?: Partial<RpcPolicy>;
   eventPolicy?: Partial<EventPolicy>;
   retryPolicy?: Partial<RetryPolicy>;
+  /**
+   * Called for unhandled runtime errors (via `@sideband/peer`) and for
+   * terminal connection failures. Terminal failures surface as `CloudApiError`
+   * (fatal credentials) or `PeerError` (retries exhausted); when omitted,
+   * terminal failures fall back to `console.error`. Runtime error handling
+   * when omitted follows `@sideband/peer`'s default.
+   */
   onUnhandledError?: (error: Error) => void;
 }
 
@@ -124,14 +131,23 @@ export function connect(opts: ConnectOptions): Peer {
     eventPolicy: opts.eventPolicy,
     onUnhandledError: opts.onUnhandledError,
   });
-  // Fire-and-forget: peer.connect() rejects only on fatal terminal failures
-  // (credential errors, retries exhausted). The peer also emits an "error"
-  // event for the same terminal conditions — subscribe to that for structured
-  // handling. The .catch() below prevents an UnhandledPromiseRejection and
-  // falls back to console.error so unwiresed setups still log visibly.
-  peer
-    .connect()
-    .catch((err) => (opts.onUnhandledError ?? console.error)(err as Error));
+  // Fire-and-forget: peer.connect() rejects only on terminal failures
+  // (fatal credential error, or retries exhausted). The peer wraps these as
+  // PeerError(peer_closed, { cause }). Unwrap fatal CloudApiErrors (400/401/403/404)
+  // so credential failures surface the same way they do from listen() — both
+  // expose CloudApiError directly. Retryable errors that became terminal via
+  // maxAttempts keep the PeerError wrapper (terminality came from retry policy,
+  // not the error itself — the wrapper adds meaningful context in that case).
+  peer.connect().catch((err) => {
+    const error = err instanceof Error ? err : new Error(String(err));
+    const unwrapped =
+      error instanceof PeerError &&
+      error.cause instanceof CloudApiError &&
+      classifyApiError(error.cause) === "fatal"
+        ? error.cause
+        : error;
+    (opts.onUnhandledError ?? console.error)(unwrapped);
+  });
   return peer;
 }
 

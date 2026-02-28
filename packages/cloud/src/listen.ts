@@ -40,12 +40,18 @@ import {
   asDaemonId,
   decodeControl,
   decodeFrame,
+  encodePong,
   fromWireControlCode,
   FrameType,
   type IdentityKeyPair,
   SbrpErrorCode,
 } from "@sideband/secure-relay";
-import { classifyApiError, CloudApiError, renewPresenceToken } from "./api.js";
+import {
+  classifyApiError,
+  CloudApiError,
+  extractDaemonIdFromToken,
+  renewPresenceToken,
+} from "./api.js";
 
 // A connection must stay open at least this long to reset the backoff counter.
 // Shorter connections indicate relay-side rejection or network flapping.
@@ -78,8 +84,12 @@ class SessionClosedError extends Error {
 
 /** Options for {@link listen}. */
 export interface ListenOptions {
-  /** Daemon ID (e.g. `"d_abc123"`). */
-  daemonId: string;
+  /**
+   * Daemon ID (e.g. `"d_abc123"`). If omitted, extracted from the presence
+   * token's `did` claim. If provided, validated against the token on startup —
+   * a mismatch (API key belongs to a different daemon) throws immediately.
+   */
+  daemonId?: string;
   /** API key (`dak_...`) used to renew the relay presence token on each reconnect. */
   apiKey: string;
   /** Ed25519 identity keypair for SBRP daemon authentication. */
@@ -115,15 +125,15 @@ export interface ListenOptions {
  *
  * **Startup behavior:** transient failures (DNS, 502, network unavailable)
  * are retried with exponential backoff — `listen()` stays pending until the
- * first successful relay connection. Only fatal errors (401/403/404 from
+ * first successful relay connection. Only fatal errors (400/401/403/404 from
  * the API) reject the returned promise and stop retrying. This mirrors
  * standard server-daemon semantics: the process starts and waits for the
  * network, rather than crashing on a transient hiccup.
  *
  * @example
  * ```ts
+ * // daemonId is optional — extracted from the presence token automatically.
  * const server = await listen({
- *   daemonId: process.env.SIDEBAND_DAEMON_ID,
  *   apiKey: process.env.SIDEBAND_API_KEY,
  *   identityKeyPair: await loadOrCreateIdentityKeyPair(),
  *   onConnection(peer) {
@@ -135,9 +145,80 @@ export interface ListenOptions {
 export async function listen(opts: ListenOptions): Promise<PeerServer> {
   const relayBase = opts.relayUrl ?? "wss://relay.sideband.cloud";
 
+  // Fetch initial token eagerly: (1) validates API key credentials immediately
+  // so bad keys fail fast rather than after a connection attempt, (2) extracts
+  // the canonical daemon ID from the `did` claim so callers don't need to
+  // supply it, and (3) avoids a redundant renewPresenceToken call on first connect.
+  // Transient failures (DNS, 502) are retried with backoff to match standard
+  // server daemon startup semantics.
+  let firstToken: string;
+  let daemonId: string;
+  let attempt = 0;
+
+  while (true) {
+    if (opts.signal?.aborted) throw normalizeAbortReason(opts.signal.reason);
+    try {
+      firstToken = await renewPresenceToken(
+        opts.apiKey,
+        opts.apiUrl,
+        opts.signal,
+      );
+      daemonId = extractDaemonIdFromToken(firstToken);
+      if (opts.daemonId !== undefined && opts.daemonId !== daemonId) {
+        throw new CloudApiError(
+          400,
+          `daemonId mismatch: provided "${opts.daemonId}" but API key belongs to daemon "${daemonId}"`,
+        );
+      }
+      break;
+    } catch (err) {
+      if (opts.signal?.aborted) throw normalizeAbortReason(opts.signal.reason);
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (
+        error instanceof CloudApiError &&
+        classifyApiError(error) === "fatal"
+      ) {
+        throw error;
+      }
+      // Transient error (network, 5xx) — retry with exponential backoff.
+      // Register abort listener before sleep and always remove it after,
+      // whether sleep times out or abort cancels it early. once:true alone
+      // only cleans up on abort — without removeEventListener, timed-out
+      // sleeps leave dangling listeners that accumulate across retries.
+      const delayMs = Math.min(1000 * 2 ** attempt, 30_000);
+      attempt++;
+      let sleepCancel: (() => void) | undefined;
+      const onAbort = () => sleepCancel?.();
+      opts.signal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        await sleep(delayMs, (cancel) => {
+          sleepCancel = cancel;
+          // Signal already aborted before addEventListener: the event won't
+          // re-fire, so cancel eagerly here (inside the Promise constructor,
+          // before any yield) instead of relying on the event.
+          if (opts.signal?.aborted) cancel();
+        });
+      } finally {
+        opts.signal?.removeEventListener("abort", onAbort);
+      }
+      if (opts.signal?.aborted) throw normalizeAbortReason(opts.signal.reason);
+    }
+  }
+
+  // Carry the pre-fetched token into the transport closure so the first relay
+  // connect uses it directly; subsequent reconnects fetch fresh tokens.
+  let pendingToken: string | null = firstToken;
+
   const transport = new RelayDaemonTransport(
-    async () => {
-      const token = await renewPresenceToken(opts.apiKey, opts.apiUrl);
+    async (shutdownSignal: AbortSignal) => {
+      // shutdownSignal is the transport's internal shutdown controller signal —
+      // fired only when server.close() is called, allowing pending token fetches
+      // to be cancelled and close() to drain promptly instead of hanging on
+      // network stalls. opts.signal is intentionally NOT used here (startup only).
+      const token =
+        pendingToken ??
+        (await renewPresenceToken(opts.apiKey, opts.apiUrl, shutdownSignal));
+      pendingToken = null;
       const url = new URL(relayBase);
       url.searchParams.set("token", token);
       return url.toString();
@@ -149,7 +230,7 @@ export async function listen(opts: ListenOptions): Promise<PeerServer> {
   return peerListen({
     transport,
     negotiator: sbrpDaemonNegotiator({
-      daemonId: asDaemonId(opts.daemonId),
+      daemonId: asDaemonId(daemonId),
       identityKeyPair: opts.identityKeyPair,
     }),
     onConnection: opts.onConnection,
@@ -177,7 +258,7 @@ class RelayDaemonTransport implements Transport {
   private readonly logError: (e: Error) => void;
 
   constructor(
-    private readonly getRelayUrl: () => Promise<string>,
+    private readonly getRelayUrl: (signal: AbortSignal) => Promise<string>,
     onUnhandledError: ((e: Error) => void) | undefined,
     private readonly signal: AbortSignal | undefined,
   ) {
@@ -195,6 +276,10 @@ class RelayDaemonTransport implements Transport {
     handler: ConnectionHandler,
   ): Promise<TransportListener> {
     let stopped = false;
+    // Internal shutdown controller: fired by close() to interrupt in-flight
+    // token fetches and WS connection attempts, ensuring loopPromise drains
+    // promptly without relying on OS network timeouts (which can be 30+ s).
+    const shutdownCtrl = new AbortController();
     let stopCurrent: (() => void) | undefined;
     let stopSleep: (() => void) | undefined;
     let firstConnectResolve: (() => void) | undefined;
@@ -205,13 +290,35 @@ class RelayDaemonTransport implements Transport {
       firstConnectReject = reject;
     });
 
+    // Helper: sleep with cancellation support via stopSleep (shared with close()).
+    const sleepWithCancel = (ms: number) =>
+      sleep(ms, (c) => {
+        stopSleep = c;
+      }).finally(() => {
+        stopSleep = undefined;
+      });
+
     const run = async () => {
       let attempt = 0;
       while (!stopped) {
+        // Hoisted so the catch path can credit a stable connection even when
+        // runMux() throws (network drop, RelayControlKick, etc.). Without this,
+        // a long-lived connection that ends in a transient error accumulates the
+        // attempt counter permanently, resulting in maximum backoff after a few
+        // weekly network blips despite otherwise healthy uptime.
+        let connectedAt = 0;
         try {
-          const url = await this.getRelayUrl();
+          const url = await this.getRelayUrl(shutdownCtrl.signal);
           const ws = nodeWsTransport();
-          const relayConn = await ws.connect(unsafeAsTransportEndpoint(url));
+          const relayConn = await ws.connect(unsafeAsTransportEndpoint(url), {
+            signal: shutdownCtrl.signal,
+          });
+          // Guard: close() may have been called while we were connecting.
+          // stopCurrent is not yet set, so close the fresh connection explicitly.
+          if (stopped) {
+            relayConn.close({ reason: "stopped" }).catch(() => {});
+            break;
+          }
           stopCurrent = () =>
             relayConn.close({ reason: "stopped" }).catch(() => {});
 
@@ -220,27 +327,29 @@ class RelayDaemonTransport implements Transport {
           firstConnectResolve = undefined;
           firstConnectReject = undefined;
 
-          const connectedAt = Date.now();
+          connectedAt = Date.now();
           await runMux(relayConn, handler, this.logError);
+          if (stopped) break; // close() called during runMux — skip reconnect sleep
           // Relay connection closed cleanly (normal for graceful relay restart).
           // Reset backoff for stable connections; apply it for short-lived ones
           // to avoid hammering the token endpoint on rapid relay close cycles.
           if (Date.now() - connectedAt >= STABLE_CONNECTION_MS) {
             attempt = 0;
+            // Jitter before reconnect: relay restarts are correlated — without
+            // this, all daemons that see a clean close would hit renewPresenceToken
+            // simultaneously and DDoS the control plane.
+            await sleepWithCancel(Math.random() * 2000);
           } else {
             const delayMs = Math.min(1000 * 2 ** attempt, 30_000);
             attempt++;
-            await sleep(delayMs, (c) => {
-              stopSleep = c;
-            });
-            stopSleep = undefined;
+            await sleepWithCancel(delayMs);
           }
         } catch (err) {
           if (stopped) break;
           const error = err instanceof Error ? err : new Error(String(err));
 
-          // Fatal API errors (401/403/404) — credentials are wrong or the daemon
-          // doesn't exist; retrying won't help. Surface immediately and stop.
+          // Fatal API errors (400/401/403/404) — credentials are wrong or the
+          // daemon doesn't exist; retrying won't help. Surface immediately and stop.
           if (
             error instanceof CloudApiError &&
             classifyApiError(error) === "fatal"
@@ -262,18 +371,30 @@ class RelayDaemonTransport implements Transport {
             this.logError(error);
           }
 
-          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s max
-          const delayMs = Math.min(1000 * 2 ** attempt, 30_000);
+          // Credit stable connections regardless of how they ended — a network
+          // drop after hours of uptime is not the same as an immediate reject.
+          if (
+            connectedAt > 0 &&
+            Date.now() - connectedAt >= STABLE_CONNECTION_MS
+          ) {
+            attempt = 0;
+          }
+
+          // Exponential backoff with jitter: 1s–30s + up to 500ms random.
+          // Jitter prevents correlated reconnect storms when many daemons lose
+          // the relay connection simultaneously (e.g., network blip).
+          const delayMs =
+            Math.min(1000 * 2 ** attempt, 30_000) + Math.random() * 500;
           attempt++;
-          await sleep(delayMs, (c) => {
-            stopSleep = c;
-          });
-          stopSleep = undefined;
+          await sleepWithCancel(delayMs);
         }
       }
     };
 
-    run().catch((err) => {
+    // Capture the loop's lifecycle promise so close() can await full termination.
+    // Errors that escape run() are programmer bugs (run() only throws if a
+    // while-loop invariant breaks); suppress them after stop to avoid spurious logs.
+    const loopPromise = run().catch((err) => {
       if (!stopped)
         this.logError(err instanceof Error ? err : new Error(String(err)));
     });
@@ -283,17 +404,11 @@ class RelayDaemonTransport implements Transport {
     // is removed — use server.close() to stop a running daemon.
     const abortHandler = () => {
       stopped = true;
+      shutdownCtrl.abort(); // cancel any in-flight getRelayUrl / ws.connect
       stopCurrent?.();
       stopSleep?.();
       if (firstConnectReject) {
-        const reason = this.signal!.reason;
-        firstConnectReject(
-          reason instanceof Error
-            ? reason
-            : Object.assign(new Error("listen() aborted"), {
-                name: "AbortError",
-              }),
-        );
+        firstConnectReject(normalizeAbortReason(this.signal!.reason));
         firstConnectResolve = undefined;
         firstConnectReject = undefined;
       }
@@ -313,8 +428,10 @@ class RelayDaemonTransport implements Transport {
       address: unsafeAsTransportEndpoint("cloud:relay-daemon"),
       async close() {
         stopped = true;
+        shutdownCtrl.abort(); // cancel in-flight token fetches and WS connects
         stopCurrent?.();
         stopSleep?.();
+        await loopPromise;
       },
     };
   }
@@ -370,12 +487,20 @@ async function runMux(
       }
 
       const { type, sessionId: sid } = frame;
-
-      // Ping — relay keepalive, pong is handled at the ws transport layer.
-      // Keepalives don't indicate the application protocol is healthy, so they
-      // must not reset the decode-error counter.
-      if (type === FrameType.Ping || type === FrameType.Pong) continue;
+      // Successful decode — reset the consecutive-error counter. Any valid
+      // frame (including Ping/Pong) proves the decode path is working; the
+      // circuit breaker should only trip on truly consecutive failures.
       consecutiveDecodeErrors = 0;
+
+      // Application-level keepalive: echo Pong with matching payload.
+      // Note: the WS transport handles native WS Pings (opcode 0x09) at the
+      // TCP/WS layer. SBRP Pings (0x10) are binary frames the relay sends to
+      // detect dead daemon connections — they must be answered at this layer.
+      if (type === FrameType.Ping) {
+        relayConn.send(encodePong(frame.payload)).catch(() => {});
+        continue;
+      }
+      if (type === FrameType.Pong) continue;
 
       // Daemon-level Control (SID=0): sent by the relay for connection-level events.
       // rate_limited (0x0901) is non-terminal — relay keeps the connection alive
@@ -414,7 +539,7 @@ async function runMux(
       if (!vconn) {
         // Unknown session — only HandshakeInit starts a new one
         if (type !== FrameType.HandshakeInit) continue;
-        vconn = new RelayVirtualConn(sid, relayConn);
+        vconn = new RelayVirtualConn(sid, relayConn, onError);
         sessions.set(sid, vconn);
         vconn.whenClosed().then(() => sessions.delete(sid));
         // handler() runs sbrpDaemonNegotiator.negotiate(vconn) asynchronously.
@@ -465,6 +590,7 @@ class RelayVirtualConn implements TransportConnection {
   constructor(
     readonly sessionId: bigint,
     private readonly relay: TransportConnection,
+    private readonly onError?: (e: Error) => void,
   ) {
     this.id = asConnectionId(`relay:${sessionId}`);
     this.endpoint = unsafeAsTransportEndpoint(`relay:${sessionId}`);
@@ -489,7 +615,13 @@ class RelayVirtualConn implements TransportConnection {
       this._waiter = null;
     } else {
       if (this._buffer.length >= MAX_BUFFER_FRAMES) {
-        // Slow consumer — drop and close this session to protect daemon memory.
+        // Slow consumer — terminate session to protect daemon memory.
+        // Log before terminating so operators can detect backpressure drops.
+        this.onError?.(
+          new Error(
+            `Relay session ${this.sessionId}: buffer full (${MAX_BUFFER_FRAMES} frames), terminating slow consumer`,
+          ),
+        );
         this.terminate(false);
         return;
       }
@@ -534,9 +666,26 @@ class RelayVirtualConn implements TransportConnection {
             if (self._closed) {
               return { value: undefined as unknown as Uint8Array, done: true };
             }
+            // Guard against concurrent consumers — _waiter is single-slot.
+            // @sideband/peer guarantees single-consumer reads, but we defend
+            // explicitly since TransportConnection imposes the same contract.
+            if (self._waiter) {
+              throw new Error(
+                "RelayVirtualConn: concurrent reads are not supported",
+              );
+            }
             return new Promise<IteratorResult<Uint8Array>>((resolve) => {
               self._waiter = resolve;
             });
+          },
+          // Required by the AsyncIterator spec: called when a consumer breaks
+          // out of for-await-of early. Eagerly terminates the virtual connection
+          // so the mux stops buffering frames — without this, the buffer would
+          // grow to MAX_BUFFER_FRAMES and trigger a noisy "slow consumer" log.
+          // terminate() also resolves any pending _waiter, so no leak occurs.
+          async return(): Promise<IteratorResult<Uint8Array>> {
+            self.terminate(true);
+            return { value: undefined as unknown as Uint8Array, done: true };
           },
         };
       },
@@ -557,4 +706,11 @@ function sleep(
       resolve();
     });
   });
+}
+
+/** Normalize an AbortSignal reason to an Error. `abort()` with no argument sets reason to undefined. */
+function normalizeAbortReason(reason: unknown): Error {
+  return reason instanceof Error
+    ? reason
+    : new DOMException("listen() aborted", "AbortError");
 }

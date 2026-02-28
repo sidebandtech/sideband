@@ -55,7 +55,7 @@
     "@sideband/transport-ws": "workspace:^"
   },
   "peerDependencies": {
-    "@sideband/secure-relay": "workspace:^"
+    "@sideband/secure-relay": ">=0.5.0 <1.0.0"
   },
   "peerDependenciesMeta": {
     "@sideband/secure-relay": {

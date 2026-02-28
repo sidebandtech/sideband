@@ -28,8 +28,8 @@
  * ```ts
  * import { listen, generateIdentityKeyPair } from "@sideband/cloud";
  *
+ * // daemonId is optional — extracted from the presence token automatically.
  * const server = await listen({
- *   daemonId: process.env.SIDEBAND_DAEMON_ID,
  *   apiKey: process.env.SIDEBAND_API_KEY,
  *   identityKeyPair: await loadOrCreateIdentityKeyPair(),
  *   onConnection(peer) {
@@ -43,6 +43,7 @@ export { connect } from "./connect.js";
 export type { ConnectOptions } from "./connect.js";
 export { listen } from "./listen.js";
 export type { ListenOptions } from "./listen.js";
+export { CloudApiError } from "./api.js";
 
 // Convenience re-exports so callers don't need to import from @sideband/peer directly
 export { PeerError, PeerErrorCode } from "@sideband/peer";

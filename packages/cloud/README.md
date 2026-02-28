@@ -31,8 +31,8 @@ const result = await peer.rpc.call("ping");
 ```ts
 import { listen, generateIdentityKeyPair } from "@sideband/cloud";
 
+// daemonId is optional — extracted from the presence token's `did` claim.
 const server = await listen({
-  daemonId: process.env.SIDEBAND_DAEMON_ID,
   apiKey: process.env.SIDEBAND_API_KEY,
   identityKeyPair: await loadOrCreateIdentityKeyPair(),
   onConnection(peer) {
@@ -41,7 +41,9 @@ const server = await listen({
 });
 ```
 
-`listen()` makes an outbound WebSocket to the relay (not a local port bind) and demultiplexes incoming SBRP sessions from multiple clients over it. Resolves once the first relay connection succeeds — transient failures (network unavailable, 502, DNS) are retried with exponential backoff before resolving. Only fatal API errors (401/403/404) reject immediately.
+`listen()` makes an outbound WebSocket to the relay (not a local port bind) and demultiplexes incoming SBRP sessions from multiple clients over it. Resolves once the first relay connection succeeds — transient failures (network unavailable, 502, DNS) are retried with exponential backoff before resolving. Only fatal API errors (400/401/403/404) reject immediately.
+
+If `daemonId` is provided it is validated against the token's `did` claim on startup. A mismatch (API key belongs to a different daemon) throws `CloudApiError(400)` immediately, making misconfiguration obvious.
 
 Pass a `signal` to cancel startup before the first connect. Use `server.close()` to stop a running daemon. Override `relayUrl` for staging or self-hosted relays.
 
@@ -99,13 +101,30 @@ API errors (relay session fetch or presence token renewal) are classified before
 
 The SDK does not refresh user access tokens. If `getAccessToken()` consistently returns an invalid token, the peer retries until `retryPolicy.maxAttempts` is exhausted.
 
-```ts
-import { PeerError, PeerErrorCode } from "@sideband/cloud";
+Fatal credential failures (`CloudApiError` with status 401/403/404/400) are surfaced directly — both `listen()` rejection and `connect()`'s `onUnhandledError` receive the `CloudApiError` instance. Transient errors that become terminal via `maxAttempts` are wrapped in `PeerError` to signal that terminality came from the retry policy.
 
-peer.on("error", (err) => {
-  if (err instanceof PeerError) {
-    // err.code — see PeerErrorCode
+```ts
+import { CloudApiError, PeerError, PeerErrorCode } from "@sideband/cloud";
+
+// listen(): await the promise and catch directly
+try {
+  const server = await listen({ ... });
+} catch (err) {
+  if (err instanceof CloudApiError) {
+    console.error("Bad credentials or config:", err.status, err.message);
   }
+}
+
+// connect(): use onUnhandledError
+const peer = connect({
+  ...
+  onUnhandledError(err) {
+    if (err instanceof CloudApiError) {
+      // Fatal credential failure (401/403/404) or config mismatch (400)
+    } else if (err instanceof PeerError) {
+      // Terminal: retries exhausted or peer closed
+    }
+  },
 });
 ```
 
