@@ -1,5 +1,11 @@
 # @sideband/cloud
 
+## 0.5.2
+
+### Patch Changes
+
+- [#39](https://github.com/sidebandtech/sideband/pull/39) [`660cd2d`](https://github.com/sidebandtech/sideband/commit/660cd2da60f390ac99a4b234382abf08d0f02a62) Thanks [@koistya](https://github.com/koistya)! - Fix `RelayVirtualConn` iterator `return()` leaving a pending `next()` unresolved
+
 ## 0.5.1
 
 ### Patch Changes
