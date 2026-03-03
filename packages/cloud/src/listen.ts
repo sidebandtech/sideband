@@ -90,7 +90,7 @@ export interface ListenOptions {
    * a mismatch (API key belongs to a different daemon) throws immediately.
    */
   daemonId?: string;
-  /** API key (`dak_...`) used to renew the relay presence token on each reconnect. */
+  /** API key (`sbnd_dak_...`) used to renew the relay presence token on each reconnect. */
   apiKey: string;
   /** Ed25519 identity keypair for SBRP daemon authentication. */
   identityKeyPair: IdentityKeyPair;
@@ -679,13 +679,16 @@ class RelayVirtualConn implements TransportConnection {
             });
           },
           // Required by the AsyncIterator spec: called when a consumer breaks
-          // out of for-await-of early. Eagerly terminates the virtual connection
-          // so the mux stops buffering frames — without this, the buffer would
-          // grow to MAX_BUFFER_FRAMES and trigger a noisy "slow consumer" log.
-          // terminate() also resolves any pending _waiter, so no leak occurs.
-          async return(): Promise<IteratorResult<Uint8Array>> {
-            self.terminate(true);
-            return { value: undefined as unknown as Uint8Array, done: true };
+          // out of for-await-of early. Eagerly releases the iterator lock so
+          // that a new iterator can be created (e.g. handshake then message loop).
+          return(): Promise<IteratorResult<Uint8Array>> {
+            const w = self._waiter;
+            self._waiter = null;
+            w?.({ value: undefined as unknown as Uint8Array, done: true });
+            return Promise.resolve({
+              value: undefined as unknown as Uint8Array,
+              done: true,
+            });
           },
         };
       },

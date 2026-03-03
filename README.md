@@ -4,9 +4,7 @@
 [![npm peer](https://img.shields.io/npm/v/@sideband/peer.svg?label=%40sideband%2Fpeer)](https://www.npmjs.com/package/@sideband/peer)
 [![npm cloud](https://img.shields.io/npm/v/@sideband/cloud.svg?label=%40sideband%2Fcloud)](https://www.npmjs.com/package/@sideband/cloud)
 
-Browser ↔ daemon communication — local or via cloud relay, without WebSocket code.
-
-Sideband is for apps that run a local process (daemon, agent, service) and need a browser UI to talk to it — reliably, securely, and beyond localhost.
+Browser ↔ daemon/agent communication — direct or E2EE cloud-relayed, with typed RPC and events.
 
 > **Early-stage.** APIs may evolve. If you're building on this, [reach out](mailto:hello@sideband.tech) — feedback shapes the protocol.
 

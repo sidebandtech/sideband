@@ -49,7 +49,7 @@ async function loadOrCreateIdentity() {
 
 const server = await listen({
   daemonId: process.env.SIDEBAND_DAEMON_ID,
-  apiKey: process.env.SIDEBAND_API_KEY, // dak_... from the dashboard
+  apiKey: process.env.SIDEBAND_API_KEY, // sbnd_dak_... from the dashboard
   identityKeyPair: await loadOrCreateIdentity(),
   onConnection(peer) {
     peer.rpc.handle("ping", () => "pong");

@@ -42,7 +42,7 @@ describe("listen() — startup error paths", () => {
     ctrl.abort();
     await expect(
       listen({
-        apiKey: "dak_test",
+        apiKey: "sbnd_dak_test",
         identityKeyPair: fakeKeyPair,
         onConnection: () => {},
         signal: ctrl.signal,
@@ -56,7 +56,7 @@ describe("listen() — startup error paths", () => {
     );
     await expect(
       listen({
-        apiKey: "dak_test",
+        apiKey: "sbnd_dak_test",
         daemonId: "d_wrong",
         identityKeyPair: fakeKeyPair,
         onConnection: () => {},
@@ -70,7 +70,7 @@ describe("listen() — startup error paths", () => {
     );
     await expect(
       listen({
-        apiKey: "dak_invalid",
+        apiKey: "sbnd_dak_invalid",
         identityKeyPair: fakeKeyPair,
         onConnection: () => {},
       }),
