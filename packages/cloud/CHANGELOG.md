@@ -1,5 +1,24 @@
 # @sideband/cloud
 
+## 0.5.3
+
+### Patch Changes
+
+- [#43](https://github.com/sidebandtech/sideband/pull/43) [`b405ad1`](https://github.com/sidebandtech/sideband/commit/b405ad1a28924d9de1e3dd1c99e0745041b91407) Thanks [@koistya](https://github.com/koistya)! - Add `createIndexedDBIdentityKeyStore()` for browser-persistent TOFU pins
+
+  Browser-backed `IdentityKeyStore` that persists daemon identity keys in
+  IndexedDB across page reloads. Lazy-initialized (safe to import in Node),
+  auto-recovers on `versionchange` or open errors, and defensively copies
+  all key material.
+
+- [#41](https://github.com/sidebandtech/sideband/pull/41) [`278417a`](https://github.com/sidebandtech/sideband/commit/278417a658841e606e3142072c5fc90d967c6da6) Thanks [@koistya](https://github.com/koistya)! - Add Quick Connect auth mode to `connect()`
+
+  `connect()` now accepts a `quickConnectCode` option as a one-shot bootstrap
+  path. The code is redeemed on the first connect attempt (single-use) and the
+  resolved `daemonId` is used for the SBRP handshake. Because the code is
+  consumed on use, the peer terminates fatally on disconnect — use the account
+  path (`daemonId` + `getAccessToken`) for persistent, reconnectable sessions.
+
 ## 0.5.2
 
 ### Patch Changes

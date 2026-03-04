@@ -1,6 +1,6 @@
 {
   "name": "@sideband/cloud",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Cloud relay SDK for Sideband: connect clients and daemons via relay.sideband.cloud with automatic session management, token renewal, and E2EE.",
   "license": "Apache-2.0",
   "repository": {
