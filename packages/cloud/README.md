@@ -13,12 +13,12 @@ bun add @sideband/cloud
 ### Client (account path)
 
 ```ts
-import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+import { connect, createIndexedDBIdentityKeyStore } from "@sideband/cloud";
 
 const peer = connect({
   daemonId: "d_abc123",
   getAccessToken: () => auth.getSessionToken(), // called on each connect attempt
-  identityKeyStore: createMemoryIdentityKeyStore(),
+  identityKeyStore: createIndexedDBIdentityKeyStore(),
 });
 
 peer.rpc.handle("push", handlePush); // register before connection completes
@@ -29,16 +29,25 @@ const result = await peer.rpc.call("ping");
 ### Client (Quick Connect)
 
 ```ts
-import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+import { connect, createIndexedDBIdentityKeyStore } from "@sideband/cloud";
 
 const peer = connect({
   quickConnectCode: "abcd-efgh-ijkl",
-  identityKeyStore: createMemoryIdentityKeyStore(),
+  identityKeyStore: createIndexedDBIdentityKeyStore(),
 });
 await peer.whenReady();
 ```
 
 QC codes are single-use: the code is consumed on the first connection. If the connection later drops, the peer terminates fatally — use the account path for persistent, reconnectable sessions.
+
+### Identity key store
+
+TOFU pins are stored in an `IdentityKeyStore`. Two implementations are provided:
+
+| Store                               | Use case                                                                                       |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `createIndexedDBIdentityKeyStore()` | Browser — pins persist across reloads (best-effort; cleared in private mode or by user action) |
+| `createMemoryIdentityKeyStore()`    | Node/Bun/tests — ephemeral, pins lost on process exit                                          |
 
 ### Daemon
 
