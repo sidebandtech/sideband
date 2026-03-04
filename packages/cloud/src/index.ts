@@ -17,12 +17,12 @@
  *
  * @example Account mode — persistent, reconnectable
  * ```ts
- * import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+ * import { connect, createIndexedDBIdentityKeyStore } from "@sideband/cloud";
  *
  * const peer = connect({
  *   daemonId: "d_abc123",
  *   getAccessToken: () => auth.getSessionToken(),
- *   identityKeyStore: createMemoryIdentityKeyStore(),
+ *   identityKeyStore: createIndexedDBIdentityKeyStore(),
  * });
  * peer.rpc.handle("push", handlePush);
  * await peer.whenReady();
@@ -30,11 +30,11 @@
  *
  * @example Quick Connect — one-shot bootstrap (code consumed on connect)
  * ```ts
- * import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+ * import { connect, createIndexedDBIdentityKeyStore } from "@sideband/cloud";
  *
  * const peer = connect({
  *   quickConnectCode: "abcd-efgh-ijkl",
- *   identityKeyStore: createMemoryIdentityKeyStore(),
+ *   identityKeyStore: createIndexedDBIdentityKeyStore(),
  * });
  * await peer.whenReady();
  * ```
@@ -54,17 +54,18 @@
  * ```
  */
 
+export { CloudApiError } from "./api.js";
 export { connect } from "./connect.js";
 export type { ConnectOptions } from "./connect.js";
 export { listen } from "./listen.js";
 export type { ListenOptions } from "./listen.js";
-export { CloudApiError } from "./api.js";
 
 // Convenience re-exports so callers don't need to import from @sideband/peer directly
 export { PeerError, PeerErrorCode } from "@sideband/peer";
 export type { AcceptedPeer, Peer, PeerServer, PeerState } from "@sideband/peer";
 export { createMemoryIdentityKeyStore } from "@sideband/peer/sbrp";
 export type { IdentityKeyStore } from "@sideband/peer/sbrp";
+export { createIndexedDBIdentityKeyStore } from "./identity-key-store.js";
 
 // Key management helpers for daemon identity
 export { generateIdentityKeyPair } from "@sideband/secure-relay";
