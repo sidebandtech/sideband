@@ -10,7 +10,7 @@ bun add @sideband/cloud
 
 ## Quick start
 
-### Client
+### Client (account path)
 
 ```ts
 import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
@@ -25,6 +25,20 @@ peer.rpc.handle("push", handlePush); // register before connection completes
 await peer.whenReady();
 const result = await peer.rpc.call("ping");
 ```
+
+### Client (Quick Connect)
+
+```ts
+import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+
+const peer = connect({
+  quickConnectCode: "abcd-efgh-ijkl",
+  identityKeyStore: createMemoryIdentityKeyStore(),
+});
+await peer.whenReady();
+```
+
+QC codes are single-use: the code is consumed on the first connection. If the connection later drops, the peer terminates fatally — use the account path for persistent, reconnectable sessions.
 
 ### Daemon
 
@@ -51,12 +65,14 @@ Pass a `signal` to cancel startup before the first connect. Use `server.close()`
 
 ## Reconnection
 
-**Client** (`connect()`): auto-reconnects with cloud-appropriate defaults:
+**Client** (`connect()`) — account path: auto-reconnects with cloud-appropriate defaults:
 
 - `connectionPolicy.onDisconnect: "pause"` — RPCs buffer across reconnects, flushed on re-activation
 - `retryPolicy.mode: "on-error"` — reconnect automatically on transport drops
 
 A fresh relay session is fetched from `api.sideband.cloud` on every connect attempt — relay rejects reused session IDs with 409.
+
+**Client** (`connect()`) — Quick Connect: no automatic reconnection. QC codes are single-use, so a dropped connection is fatal. The peer surfaces the error via `onUnhandledError`.
 
 **Daemon** (`listen()`): reconnects automatically with exponential backoff (1s–30s). A fresh presence token is fetched via the API key on each attempt.
 
@@ -93,11 +109,12 @@ const peer = connect({
 
 API errors (relay session fetch or presence token renewal) are classified before any retry:
 
-| HTTP status       | Classification                                                              |
-| ----------------- | --------------------------------------------------------------------------- |
-| 400, 401, 403     | Fatal — bad request or invalid credentials; peer / server stops immediately |
-| 404               | Fatal — daemon not registered                                               |
-| 429, 5xx, network | Retryable — exponential backoff                                             |
+| HTTP status       | Classification                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| 400, 401, 403     | Fatal — bad request or invalid credentials; peer / server stops immediately                          |
+| 404               | Fatal — daemon not registered (or QC code not found)                                                 |
+| 409               | Fatal in QC mode (daemon offline, code consumed); retryable in account mode (ghost-socket collision) |
+| 429, 5xx, network | Retryable — exponential backoff                                                                      |
 
 The SDK does not refresh user access tokens. If `getAccessToken()` consistently returns an invalid token, the peer retries until `retryPolicy.maxAttempts` is exhausted.
 

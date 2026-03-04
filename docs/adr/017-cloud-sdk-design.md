@@ -45,7 +45,7 @@ SaaS URLs and deployment-specific logic are isolated in `@sideband/cloud`. Core 
 
 Entry points:
 
-- `connect(opts)` — cloud client; returns a `Peer` that auto-fetches relay sessions
+- `connect(opts)` — cloud client; two auth modes (see §3)
 - `listen(opts)` — cloud daemon; outbound relay connection with session demultiplexing
 
 **Why not `@sideband/peer/cloud` subpath?** SaaS URLs don't belong in the open-source core —
@@ -55,7 +55,31 @@ they'd appear in bundle output and lock the core to a specific hosted product.
 a relay-specific mux loop, bloating browser bundles and conflating the generic SDK with a
 specific hosted deployment model.
 
-### 3. `RelayDaemonTransport` — inverted transport for daemon relay
+### 3. `connect()` auth modes — account vs. Quick Connect
+
+`connect()` accepts two mutually exclusive auth modes (discriminated union at the type level):
+
+**Account path** (`{ daemonId, getAccessToken }`): standard persistent sessions. A fresh relay
+session is fetched from `api.sideband.cloud` on every connect attempt (relay rejects reused
+sessionIds with 409 — treated as retryable ghost-socket collision here). `daemonId` is known
+upfront. Reconnects automatically on transport drops.
+
+**Quick Connect path** (`{ quickConnectCode }`): one-shot bootstrap using a short-lived code as
+the sole credential. `redeemQuickConnectCode()` is called once — it returns the relay URL, a
+session JWT, and the `daemonId` resolved server-side. After redeem, `qcRedeemed` is set to `true`
+and any further `getConnectionParams()` call throws `PeerError(InvalidState)` (fatal), preventing
+silent re-redeem attempts.
+
+**Why consume-first?** The server atomically transitions the code to `redeemed` before checking
+whether the daemon is online (there is no race-free pre-check). A 409 response means the code is
+already burned and the daemon was offline — retrying would produce a misleading 404. The SDK
+classifies 409 as fatal in QC mode so callers surface the true error immediately: "get a new code."
+
+**Why is QC non-reconnecting?** QC codes are single-use by design. Persisting a session after the
+initial bootstrap is the account path's responsibility; QC serves the "no-login" first-contact
+scenario. Attempting auto-reconnect with a burned code would stall until `maxAttempts` is exhausted.
+
+### 4. `RelayDaemonTransport` — inverted transport for daemon relay
 
 Daemons do not bind a local port. The relay multiplexes frames from multiple client sessions
 onto a single outbound WebSocket, each tagged by `SessionID`. `RelayDaemonTransport` implements
@@ -84,6 +108,8 @@ on protocol version mismatch).
 
 - `getConnectionParams()` MUST run before `negotiate()` for every attempt, in sequence.
 - `@sideband/peer` and `@sideband/runtime` MUST NOT reference any `*.sideband.cloud` URLs.
+- In QC mode, `getConnectionParams()` MUST NOT be called a second time after a successful redeem.
+- 409 from the relay in account mode is retryable; in QC mode it is fatal (code is burned).
 
 ## References
 

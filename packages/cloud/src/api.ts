@@ -86,7 +86,9 @@ async function trpcMutation<TInput, TOutput>(
             ? 404
             : code === "BAD_REQUEST"
               ? 400
-              : 500;
+              : code === "CONFLICT"
+                ? 409
+                : 500;
     throw new CloudApiError(
       status,
       `api.sideband.cloud ${procedure} error — ${code ? `[${code}] ` : ""}${msg}`,
@@ -124,6 +126,24 @@ export async function fetchRelaySession(
     { Authorization: `Bearer ${accessToken}` },
     signal,
   );
+}
+
+/**
+ * Redeem a Quick Connect code for a relay session.
+ * Returns the relay WebSocket URL, a short-lived client session JWT, and the
+ * daemonId. The code is the credential — no auth header required.
+ *
+ * QC codes are single-use: a second call with the same code returns NOT_FOUND
+ * (404 → fatal). CONFLICT (409) means the daemon was offline; the code is
+ * already burned — the server atomically consumes the code before the online
+ * check (consume-first design). Caller must prompt the user for a new code.
+ */
+export async function redeemQuickConnectCode(
+  code: string,
+  apiUrl = DEFAULT_API,
+  signal?: AbortSignal,
+): Promise<{ relayUrl: string; token: string; daemonId: string }> {
+  return trpcMutation(apiUrl, "quickConnect.redeem", { code }, {}, signal);
 }
 
 /**
