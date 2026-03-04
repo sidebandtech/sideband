@@ -84,6 +84,30 @@ await peer.whenReady();
 const result = await peer.rpc.call("ping");
 ```
 
+### Quick Connect (one-shot bootstrap)
+
+Quick Connect lets a client connect to a daemon without a user account. The daemon generates
+a short-lived code via the Sideband API; the client redeems it as the sole credential.
+
+```typescript
+import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+
+const peer = connect({
+  quickConnectCode: "abcd-efgh-ijkl", // displayed by the daemon, scanned/pasted by client
+  identityKeyStore: createMemoryIdentityKeyStore(),
+});
+await peer.whenReady();
+```
+
+**Important limitations:**
+
+- Codes are **single-use** — the server atomically consumes the code before checking daemon
+  status. A 409 response means the code is burned and the daemon is offline; the client must
+  ask for a new code.
+- **No reconnection** — if the connection drops, the peer terminates fatally. QC is a first-contact
+  bootstrap; for persistent sessions, transition to the account path after the initial connection.
+- `daemonId` is resolved from the redeem response — clients do not need to know it upfront.
+
 ---
 
 ## Self-Hosted Relay

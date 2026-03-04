@@ -7,11 +7,15 @@
  *   - `connect(opts)` — client: connect to a daemon via the cloud relay
  *   - `listen(opts)` — daemon: accept client sessions via the cloud relay
  *
- * Both handle token management automatically:
- *   - `connect()` fetches a fresh relay session on every connect attempt
- *   - `listen()` renews the presence token on every relay reconnect
+ * `connect()` supports two auth modes:
+ *   - Account (`{ daemonId, getAccessToken }`) — fetches a fresh relay session
+ *     on every connect attempt and reconnects automatically on transient failures.
+ *   - Quick Connect (`{ quickConnectCode }`) — one-shot: code is consumed on the
+ *     first connect; the peer terminates fatally on disconnect (code is gone).
  *
- * @example Client
+ * `listen()` renews the presence token on every relay reconnect automatically.
+ *
+ * @example Account mode — persistent, reconnectable
  * ```ts
  * import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
  *
@@ -21,6 +25,17 @@
  *   identityKeyStore: createMemoryIdentityKeyStore(),
  * });
  * peer.rpc.handle("push", handlePush);
+ * await peer.whenReady();
+ * ```
+ *
+ * @example Quick Connect — one-shot bootstrap (code consumed on connect)
+ * ```ts
+ * import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+ *
+ * const peer = connect({
+ *   quickConnectCode: "abcd-efgh-ijkl",
+ *   identityKeyStore: createMemoryIdentityKeyStore(),
+ * });
  * await peer.whenReady();
  * ```
  *
