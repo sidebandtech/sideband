@@ -1,7 +1,53 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseArgs } from "./bin.js";
+
+const binPath = join(import.meta.dirname, "bin.ts");
+
+describe("direct-run guard", () => {
+  it("runs main() and prints version when invoked directly", () => {
+    const result = Bun.spawnSync([
+      process.execPath,
+      "run",
+      binPath,
+      "--version",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString().trim()).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("runs main() via symlink", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "sideband-cli-test-"));
+    const link = join(tmp, "sideband");
+    try {
+      symlinkSync(binPath, link);
+      const result = Bun.spawnSync([
+        process.execPath,
+        "run",
+        link,
+        "--version",
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.toString().trim()).toMatch(/^\d+\.\d+\.\d+$/);
+    } finally {
+      try {
+        unlinkSync(link);
+        rmdirSync(tmp);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  });
+
+  it("does not throw when imported (guard skipped)", () => {
+    // If the guard threw on import, this entire test file would fail to load
+    expect(parseArgs(["node", "bin", "--help"])).toEqual({ command: "help" });
+  });
+});
 
 describe("parseArgs", () => {
   const node = "node";

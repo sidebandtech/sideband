@@ -16,6 +16,7 @@
  * Unknown flags exit with code 2; --help/--version exit with code 0.
  */
 
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runInit } from "./commands/init.js";
 import { getCliVersion, runStart } from "./commands/start.js";
@@ -168,7 +169,17 @@ async function main(): Promise<void> {
 }
 
 // Only execute when run directly, not when imported by tests.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// realpathSync resolves npm bin symlinks so the guard works with `npx sideband`.
+// try/catch: argv[1] may not exist on disk (e.g. during tests or embedded runtimes).
+let isDirectRun = false;
+try {
+  isDirectRun =
+    realpathSync(process.argv[1]!) ===
+    realpathSync(fileURLToPath(import.meta.url));
+} catch {
+  // expected when argv[1] doesn't resolve to a real path
+}
+if (isDirectRun) {
   main().catch((err) => {
     if (err instanceof CliUsageError) {
       process.stderr.write(`Error: ${err.message}\n`);
