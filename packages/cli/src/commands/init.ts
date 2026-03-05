@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { renewPresenceToken, extractDaemonIdFromToken } from "@sideband/cloud";
+import { extractDaemonIdFromToken, renewPresenceToken } from "@sideband/cloud";
 import { loadConfig, loadIdentityKeyPair, saveConfig } from "../config.js";
 import { printFatal } from "../output.js";
 

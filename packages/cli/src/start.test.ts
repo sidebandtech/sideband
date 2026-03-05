@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
 import type { CloudPeerServer } from "@sideband/cloud";
+import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
 import { parseExpiryMs, renewQc, scheduleQcRenewal } from "./commands/start.js";
 
 // ─── parseExpiryMs ────────────────────────────────────────────────────────────

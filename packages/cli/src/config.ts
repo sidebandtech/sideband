@@ -11,11 +11,11 @@
  * so secrets are never world-readable, even on a partial write.
  */
 
-import { mkdir, readFile, rename, writeFile, chmod } from "node:fs/promises";
+import type { IdentityKeyPair } from "@sideband/secure-relay";
+import { generateIdentityKeyPair } from "@sideband/secure-relay";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { generateIdentityKeyPair } from "@sideband/secure-relay";
-import type { IdentityKeyPair } from "@sideband/secure-relay";
 
 export interface Config {
   apiKey?: string;

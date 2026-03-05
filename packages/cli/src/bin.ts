@@ -17,9 +17,9 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { getConfigDir, resolveApiKey } from "./config.js";
 import { runInit } from "./commands/init.js";
-import { runStart, getCliVersion } from "./commands/start.js";
+import { getCliVersion, runStart } from "./commands/start.js";
+import { getConfigDir, resolveApiKey } from "./config.js";
 import { printFatal } from "./output.js";
 
 const USAGE = `

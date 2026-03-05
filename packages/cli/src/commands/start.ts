@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { listen } from "@sideband/cloud";
 import type { AcceptedPeer, CloudPeerServer } from "@sideband/cloud";
+import { listen } from "@sideband/cloud";
 import { readFileSync } from "node:fs";
 import { loadIdentityKeyPair } from "../config.js";
-import * as out from "../output.js";
 import type { QuickConnectInfo } from "../output.js";
+import * as out from "../output.js";
 
 export function getCliVersion(): string {
   try {
@@ -53,7 +53,7 @@ export async function runStart(args: StartArgs): Promise<void> {
         else out.printRpc("$sideband/info");
         return {
           daemonId: server.daemonId,
-          cliVersion,
+          version: cliVersion,
           platform: process.platform,
           arch: process.arch,
           nodeVersion: process.version,
