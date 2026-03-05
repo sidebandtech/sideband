@@ -1,5 +1,11 @@
 # sideband
 
+## 0.5.1
+
+### Patch Changes
+
+- [#46](https://github.com/sidebandtech/sideband/pull/46) [`6964d71`](https://github.com/sidebandtech/sideband/commit/6964d71c722dc7f6b679b903d38be8712fd097cf) Thanks [@koistya](https://github.com/koistya)! - Fix `npx sideband` silently exiting by resolving bin symlinks in the direct-run guard
+
 ## 0.5.0
 
 ### Minor Changes
