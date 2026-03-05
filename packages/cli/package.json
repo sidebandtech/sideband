@@ -1,6 +1,6 @@
 {
   "name": "sideband",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Sideband daemon CLI — run `npx sideband` to start a relay-connected daemon in seconds.",
   "license": "Apache-2.0",
   "repository": {
