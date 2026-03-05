@@ -45,7 +45,7 @@ async function trpcMutation<TInput, TOutput>(
   const res = await fetch(`${api}/api/trpc/${procedure}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify({ json: input }),
+    body: JSON.stringify(input),
     signal: effectiveSignal,
   });
 
