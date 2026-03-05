@@ -54,7 +54,7 @@ describe("Cloud SDK Integration", () => {
     // 1. Mock the Cloud API
     fetchMock = mock(async (url: string, init: MockInit) => {
       const path = new URL(url).pathname;
-      const body = JSON.parse(init.body).json;
+      const body = JSON.parse(init.body);
 
       if (path.endsWith("daemon.renewToken")) {
         // Authorization: Bearer <apiKey>

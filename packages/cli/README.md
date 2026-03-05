@@ -1,11 +1,11 @@
 # sideband
 
-Developer CLI for [Sideband](https://sideband.tech). Run `npx sideband` to start a relay-connected daemon with a Quick Connect URL — any browser can connect and call RPC methods over E2EE in under 30 seconds.
+Developer CLI for [Sideband](https://sideband.tech). Run `npx sideband` to get a Quick Connect URL — any browser can open it and start calling RPC methods over E2EE.
 
 ## Install
 
 ```bash
-npm i -g sideband    # or use npx/bunx without installing
+npm i -g sideband   # global install; npx/bunx work without installing
 ```
 
 ## Setup
@@ -47,8 +47,6 @@ $ npx sideband
   - Client disconnected (peer_abc123) [12:34:12]
 ```
 
-Open the Quick Connect URL in any browser to connect and call RPCs immediately.
-
 ## API key resolution
 
 Highest priority wins:
@@ -61,7 +59,7 @@ Override the config directory with `SIDEBAND_HOME`.
 
 ## Built-in RPC methods
 
-The daemon registers two methods under the reserved `$sideband/` namespace on each connection:
+Two methods are always available under the reserved `$sideband/` namespace:
 
 | Method           | Returns                                         |
 | ---------------- | ----------------------------------------------- |
@@ -73,7 +71,7 @@ The daemon registers two methods under the reserved `$sideband/` namespace on ea
 `--json` emits NDJSON to stdout (one event per line). The first line is always a `ready` event:
 
 ```jsonl
-{"event":"ready","daemonId":"d_8f3kN2p","cliVersion":"0.0.1","configDir":"/home/user/.sideband","relayUrl":"wss://relay.sideband.cloud","quickConnectCode":"abcd-efgh-ijkl","quickConnectUrl":"https://sideband.cloud/connect#qc=abcd-efgh-ijkl"}
+{"event":"ready","daemonId":"d_8f3kN2p","cliVersion":"0.5.0","configDir":"/home/user/.sideband","relayUrl":"wss://relay.sideband.cloud","quickConnectCode":"abcd-efgh-ijkl","quickConnectUrl":"https://sideband.cloud/connect#qc=abcd-efgh-ijkl"}
 {"event":"connected","peerId":"peer_abc123"}
 {"event":"rpc","peerId":"peer_abc123","method":"$sideband/echo"}
 {"event":"disconnected","peerId":"peer_abc123"}

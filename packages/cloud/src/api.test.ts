@@ -112,9 +112,7 @@ describe("redeemQuickConnectCode", () => {
   it("sends code in request body without an auth header", async () => {
     await redeemQuickConnectCode("abcd-efgh-ijkl");
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({
-      json: { code: "abcd-efgh-ijkl" },
-    });
+    expect(JSON.parse(init.body as string)).toEqual({ code: "abcd-efgh-ijkl" });
     expect(
       (init.headers as Record<string, string>)["Authorization"],
     ).toBeUndefined();
