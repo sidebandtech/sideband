@@ -185,7 +185,7 @@ if (isDirectRun) {
       process.stderr.write(`Error: ${err.message}\n`);
       process.exit(2);
     }
-    printFatal(`Fatal: ${err instanceof Error ? err.message : String(err)}`);
+    printFatal(err instanceof Error ? err.message : String(err));
     process.exit(1);
   });
 }

@@ -40,8 +40,8 @@ export async function runStart(args: StartArgs): Promise<void> {
       else out.printConnected(peerId);
 
       peer.rpc.handle("$sideband/echo", (data: unknown) => {
-        if (json) out.emitRpc(peerId, "$sideband/echo");
-        else out.printRpc("$sideband/echo");
+        if (json) out.emitEcho(peerId, data);
+        else out.printEcho(data);
         return data;
       });
 

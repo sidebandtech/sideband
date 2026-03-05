@@ -4,6 +4,7 @@ import { describe, expect, it } from "bun:test";
 import {
   emitConnected,
   emitDisconnected,
+  emitEcho,
   emitQcRenewed,
   emitReady,
   emitRpc,
@@ -68,6 +69,33 @@ describe("NDJSON event contract", () => {
     expect(ev["event"]).toBe("rpc");
     expect(ev["peerId"]).toBe("peer_abc123");
     expect(ev["method"]).toBe("$sideband/echo");
+  });
+
+  it("emitEcho includes data payload", () => {
+    const ev = parseEvent(
+      captureStdout(() => emitEcho("peer_abc123", { msg: "hello" })),
+    );
+    expect(ev["event"]).toBe("rpc");
+    expect(ev["method"]).toBe("$sideband/echo");
+    expect(ev["data"]).toEqual({ msg: "hello" });
+  });
+
+  it("emitEcho does not throw on non-serializable data", () => {
+    const circular: Record<string, unknown> = {};
+    circular["self"] = circular;
+    const ev = parseEvent(
+      captureStdout(() => emitEcho("peer_abc123", circular)),
+    );
+    expect(ev["event"]).toBe("rpc");
+    expect(ev["method"]).toBe("$sideband/echo");
+    expect(typeof ev["data"]).toBe("string"); // fallback to String()
+  });
+
+  it("emitEcho normalizes undefined to null", () => {
+    const ev = parseEvent(
+      captureStdout(() => emitEcho("peer_abc123", undefined)),
+    );
+    expect(ev["data"]).toBeNull();
   });
 
   it("emitDisconnected produces correct schema", () => {

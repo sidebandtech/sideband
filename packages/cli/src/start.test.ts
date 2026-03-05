@@ -3,6 +3,7 @@
 import type { CloudPeerServer } from "@sideband/cloud";
 import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
 import { parseExpiryMs, renewQc, scheduleQcRenewal } from "./commands/start.js";
+import { printEcho } from "./output.js";
 
 // ─── parseExpiryMs ────────────────────────────────────────────────────────────
 
@@ -20,6 +21,20 @@ describe("parseExpiryMs", () => {
 
   it("throws on empty string", () => {
     expect(() => parseExpiryMs("")).toThrow();
+  });
+});
+
+// ─── printEcho safe stringify ──────────────────────────────────────────────────
+
+describe("printEcho", () => {
+  it("does not throw on non-serializable data", async () => {
+    const output = await captureStdout(async () => {
+      const circular: Record<string, unknown> = {};
+      circular["self"] = circular;
+      printEcho(circular);
+      printEcho(BigInt(42));
+    });
+    expect(output).toContain("← echo:");
   });
 });
 
@@ -158,8 +173,8 @@ describe("renewQc", () => {
     const server = makeFakeServer(new Error("still failing"));
 
     let expiredCount = 0;
-    const origWrite = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (chunk: string | Uint8Array) => {
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Uint8Array) => {
       const s =
         typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
       if (s.includes("expired")) expiredCount++;
@@ -178,7 +193,7 @@ describe("renewQc", () => {
       // Second retry → should NOT announce "expired" again
       // (timer was set; fire it manually via advanceTimersByTime above)
     } finally {
-      process.stderr.write = origWrite;
+      process.stdout.write = origWrite;
       jest.clearAllTimers();
     }
 
