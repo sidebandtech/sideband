@@ -104,6 +104,24 @@ whether they come from a local server or relay mux. Slow consumers are terminate
 Consecutive malformed frames trigger reconnect with backoff (circuit breaker against log storms
 on protocol version mismatch).
 
+`listen()` returns `CloudPeerServer` (extends `PeerServer`) with three additional members that
+are only available after the first relay connection resolves:
+
+```typescript
+interface CloudPeerServer extends PeerServer {
+  readonly daemonId: string; // `did` claim extracted from the presence token
+  readonly relayUrl: string; // e.g. "wss://relay.sideband.cloud"
+  createQuickConnect(opts?: { ttlSeconds?: number }): Promise<{
+    code: string; // short-lived QC code
+    url: string; // ready-to-use connect URL
+    expiresAt: string; // ISO 8601
+  }>;
+}
+```
+
+`daemonId` and `relayUrl` are read from the presence token on first connect, so they are never
+stale even if the daemon ID was omitted from `ListenOptions`.
+
 ## Invariants
 
 - `getConnectionParams()` MUST run before `negotiate()` for every attempt, in sequence.
@@ -117,4 +135,4 @@ on protocol version mismatch).
 - ADR-016: Relay Server Design
 - `packages/runtime/src/session/types.ts` — `Negotiator`, `NegotiatorConnectionParams`
 - `packages/cloud/src/connect.ts` — `CloudClientNegotiator`
-- `packages/cloud/src/listen.ts` — `RelayDaemonTransport`, `RelayVirtualConn`, `runMux`
+- `packages/cloud/src/listen.ts` — `RelayDaemonTransport`, `RelayVirtualConn`, `runMux`, `CloudPeerServer`

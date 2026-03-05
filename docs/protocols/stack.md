@@ -15,7 +15,7 @@ This document defines frame wrapping rules, dependency invariants, and layer bou
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Application / SDK                                                  │
-│  (@sideband/peer, sideband)                                         │
+│  (@sideband/peer, @sideband/cloud, sideband CLI)                    │
 ├─────────────────────────────────────────────────────────────────────┤
 │  RPC Layer                                                          │
 │  Typed request/response/notification semantics                      │

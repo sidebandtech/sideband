@@ -16,8 +16,9 @@ What lives where, who depends on whom, and where to start.
 │  ├─ peer/
 │  ├─ secure-relay/        # E2EE relay protocol (SBRP)
 │  ├─ testing/             # Test helpers
-│  ├─ transport-ws/         # WebSocket transport (browser + Node/Bun)
-│  └─ cli/
+│  ├─ transport-ws/        # WebSocket transport (browser + Node/Bun)
+│  ├─ cloud/               # relay.sideband.cloud integration
+│  └─ cli/                 # Daemon CLI (npx sideband)
 ├─ README.md               # Top-level overview
 ├─ package.json            # Workspace root
 ├─ tsconfig.base.json      # Shared TS options
@@ -63,9 +64,13 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 • Standalone cryptographic layer; no I/O or transport code.
 • Depends on: none (uses @noble/\* for crypto). Used by: relay implementations, browser/daemon apps.
 
-`sideband` — Developer tooling (CLI)
-• Commands for scaffolding, inspection, debugging, admin. Logic should reuse existing packages.  
-• Depends on: any package as needed; does not define protocol/runtime behavior itself.
+`@sideband/cloud` — relay.sideband.cloud integration
+• `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudPeerServer` with `daemonId`, `relayUrl`, and `createQuickConnect()` for zero-infrastructure Quick Connect URLs.
+• Depends on: peer, secure-relay, transport-ws.
+
+`sideband` — Daemon CLI
+• `npx sideband` starts a relay-connected daemon and prints a Quick Connect URL. Wraps `@sideband/cloud`'s `listen()`.
+• Depends on: cloud, secure-relay; does not define protocol or runtime behavior.
 
 `@sideband/testing` — Test scaffolding  
 • Central place for fakes, loopback transports, peer fixtures, and shared test helpers.  
@@ -89,8 +94,11 @@ graph TD
   runtime --> peer
   transport_ws --> peer
   secure_relay --> peer
-  peer --> cli
-  rpc --> cli
+  peer --> cloud
+  secure_relay --> cloud
+  transport_ws --> cloud
+  cloud --> cli
+  secure_relay --> cli
 ```
 
 ## Dependency policy
