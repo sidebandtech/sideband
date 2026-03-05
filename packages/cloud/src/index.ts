@@ -54,11 +54,15 @@
  * ```
  */
 
-export { CloudApiError } from "./api.js";
+export {
+  CloudApiError,
+  renewPresenceToken,
+  extractDaemonIdFromToken,
+} from "./api.js";
 export { connect } from "./connect.js";
 export type { ConnectOptions } from "./connect.js";
 export { listen } from "./listen.js";
-export type { ListenOptions } from "./listen.js";
+export type { CloudPeerServer, ListenOptions } from "./listen.js";
 
 // Convenience re-exports so callers don't need to import from @sideband/peer directly
 export { PeerError, PeerErrorCode } from "@sideband/peer";

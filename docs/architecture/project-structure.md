@@ -63,7 +63,7 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 • Standalone cryptographic layer; no I/O or transport code.
 • Depends on: none (uses @noble/\* for crypto). Used by: relay implementations, browser/daemon apps.
 
-`@sideband/cli` — Developer tooling  
+`sideband` — Developer tooling (CLI)
 • Commands for scaffolding, inspection, debugging, admin. Logic should reuse existing packages.  
 • Depends on: any package as needed; does not define protocol/runtime behavior itself.
 

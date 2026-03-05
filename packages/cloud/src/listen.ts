@@ -49,6 +49,7 @@ import {
 import {
   classifyApiError,
   CloudApiError,
+  createQuickConnectCode,
   extractDaemonIdFromToken,
   renewPresenceToken,
 } from "./api.js";
@@ -80,6 +81,26 @@ class SessionClosedError extends Error {
     super("Session closed");
     this.name = "SessionClosedError";
   }
+}
+
+/**
+ * Server returned by the cloud `listen()`. Extends `PeerServer` with
+ * cloud-specific identifiers and the Quick Connect code factory.
+ */
+export interface CloudPeerServer extends PeerServer {
+  /** Daemon ID extracted from the presence token (`did` JWT claim). */
+  readonly daemonId: string;
+  /** Relay WebSocket base URL used by this daemon (e.g. `wss://relay.sideband.cloud`). */
+  readonly relayUrl: string;
+  /**
+   * Create a Quick Connect code that a browser can use to connect to this daemon.
+   * Resolves with the code, a ready-to-use URL, and an ISO 8601 expiry string.
+   */
+  createQuickConnect(opts?: { ttlSeconds?: number }): Promise<{
+    code: string;
+    url: string;
+    expiresAt: string;
+  }>;
 }
 
 /** Options for {@link listen}. */
@@ -142,7 +163,7 @@ export interface ListenOptions {
  * });
  * ```
  */
-export async function listen(opts: ListenOptions): Promise<PeerServer> {
+export async function listen(opts: ListenOptions): Promise<CloudPeerServer> {
   const relayBase = opts.relayUrl ?? "wss://relay.sideband.cloud";
 
   // Fetch initial token eagerly: (1) validates API key credentials immediately
@@ -227,7 +248,7 @@ export async function listen(opts: ListenOptions): Promise<PeerServer> {
     opts.signal,
   );
 
-  return peerListen({
+  const server = await peerListen({
     transport,
     negotiator: sbrpDaemonNegotiator({
       daemonId: asDaemonId(daemonId),
@@ -236,6 +257,15 @@ export async function listen(opts: ListenOptions): Promise<PeerServer> {
     onConnection: opts.onConnection,
     onUnhandledError: opts.onUnhandledError,
   });
+
+  return {
+    ...server,
+    daemonId,
+    relayUrl: relayBase,
+    createQuickConnect(qcOpts) {
+      return createQuickConnectCode(opts.apiKey, qcOpts ?? {}, opts.apiUrl);
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -713,7 +743,8 @@ function sleep(
 
 /** Normalize an AbortSignal reason to an Error. `abort()` with no argument sets reason to undefined. */
 function normalizeAbortReason(reason: unknown): Error {
-  return reason instanceof Error
-    ? reason
-    : new DOMException("listen() aborted", "AbortError");
+  if (reason instanceof Error) return reason;
+  if (typeof reason === "string" && reason.trim())
+    return new DOMException(reason, "AbortError");
+  return new DOMException("listen() aborted", "AbortError");
 }

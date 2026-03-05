@@ -27,7 +27,7 @@ Package boundaries and dependency direction for the current Sideband workspace.
 | Layer 3: Coordination      | `@sideband/runtime`                             | Peer lifecycle, routing, transport attachment              |
 | Layer 4: Session Crypto    | `@sideband/secure-relay`                        | SBRP handshake/encryption/replay protection                |
 | Layer 5: SDK               | `@sideband/peer`                                | User-facing composition of runtime, transport, negotiators |
-| Tooling                    | `@sideband/cli`, `@sideband/testing`            | Developer CLI and test helpers                             |
+| Tooling                    | `sideband`, `@sideband/testing`                 | Developer CLI and test helpers                             |
 
 `@sideband/runtime` and `@sideband/secure-relay` are sibling layers: neither depends on the other.
 
@@ -76,7 +76,7 @@ Package boundaries and dependency direction for the current Sideband workspace.
 - Runtime dependencies: `@sideband/protocol`, `@sideband/rpc`, `@sideband/runtime`, `@sideband/transport`, `@sideband/transport-ws`.
 - Optional peer dependency: `@sideband/secure-relay` (for SBRP negotiators).
 
-### `@sideband/cli`
+### `sideband`
 
 - Provides: developer tooling and operational commands built on workspace packages.
 - Runtime dependencies: package-local only; may consume workspace libraries as needed.
@@ -97,7 +97,7 @@ Package boundaries and dependency direction for the current Sideband workspace.
 | `@sideband/runtime`      | Runtime coordination engine      |
 | `@sideband/secure-relay` | SBRP cryptographic session layer |
 | `@sideband/peer`         | User-facing SDK                  |
-| `@sideband/cli`          | Developer tooling                |
+| `sideband`               | Developer tooling                |
 | `@sideband/testing`      | Test helpers                     |
 
 ## Dependency Direction

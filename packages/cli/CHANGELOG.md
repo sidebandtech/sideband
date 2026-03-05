@@ -1,9 +1,11 @@
-# @sideband/cli
+# sideband
 
 ## 0.0.1
 
-### Patch Changes
+### Initial Release
 
-- [#15](https://github.com/sidebandtech/sideband/pull/15) [`38d05a0`](https://github.com/sidebandtech/sideband/commit/38d05a0a10fca560167bec8ad6d6def501aa033d) Thanks [@koistya](https://github.com/koistya)! - Add `@sideband/secure-relay` package with Sideband Relay Protocol (SBRP) implementation: X25519 key exchange, ChaCha20-Poly1305 encryption, and replay protection.
-
-  Change license from MIT to Apache 2.0.
+- `sideband` — start a relay-connected daemon (reads API key from flag, env, or config)
+- `sideband init --api-key <key>` — save API key and generate identity key pair
+- Atomic config writes with `0o600` permissions (`~/.sideband/config.json`, `identity.json`)
+- `--json` flag for NDJSON output (scripting/CI)
+- `--version` / `--help` global flags
