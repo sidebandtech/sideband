@@ -5,7 +5,28 @@ url: /guide.md
 
 Sideband is a secure communication stack for TypeScript applications.
 
-## Installation
+## Zero-Infrastructure Start
+
+The fastest way to get a browser talking to a local daemon — no infrastructure required:
+
+```bash
+npx sideband
+```
+
+This starts a relay-connected daemon and prints a Quick Connect URL
+(`https://sideband.cloud/connect#qc=...`). Open it in any browser to connect and
+call RPC methods over E2EE in under 30 seconds. Requires an API key from
+[sideband.cloud](https://sideband.cloud) — run `npx sideband init --api-key sbnd_dak_...`
+once to save it.
+
+See the [CLI README](https://github.com/sidebandtech/sideband/tree/main/packages/cli) for
+full usage (`--json` mode, built-in RPC methods, QC renewal).
+
+***
+
+## SDK Installation
+
+For integrating Sideband into your own application:
 
 ```bash
 bun add @sideband/peer
@@ -49,15 +70,17 @@ Recommended order for new users:
 | [Server](server.md)             | 4) `listen()`, AcceptedPeer, connection management            |
 | [E2EE Relay](e2ee.md)           | 5) End-to-end encrypted sessions via SBRP and TOFU            |
 | [Testing](testing.md)           | 6) LoopbackTransport and integration testing patterns         |
-| [Self-Hosting](self-hosting.md) | Relay architecture and deployment status (roadmap-oriented)   |
+| [Self-Hosting](self-hosting.md) | Relay architecture and self-hosted deployment                 |
 
 ## Packages
 
-| Package                  | Description                              |
-| ------------------------ | ---------------------------------------- |
-| `@sideband/protocol`     | Wire format, frame types, encode/decode  |
-| `@sideband/transport`    | Transport interface and shared utilities |
-| `@sideband/runtime`      | Peer lifecycle, routing, subscriptions   |
-| `@sideband/rpc`          | Typed RPC layer                          |
-| `@sideband/peer`         | High-level SDK                           |
-| `@sideband/secure-relay` | E2EE relay protocol                      |
+| Package                  | Description                                              |
+| ------------------------ | -------------------------------------------------------- |
+| `@sideband/protocol`     | Wire format, frame types, encode/decode                  |
+| `@sideband/transport`    | Transport interface and shared utilities                 |
+| `@sideband/runtime`      | Peer lifecycle, routing, subscriptions                   |
+| `@sideband/rpc`          | Typed RPC layer                                          |
+| `@sideband/peer`         | High-level SDK                                           |
+| `@sideband/secure-relay` | E2EE relay protocol                                      |
+| `@sideband/cloud`        | `relay.sideband.cloud` integration (`connect`, `listen`) |
+| `sideband`               | CLI — `npx sideband` zero-infrastructure daemon          |

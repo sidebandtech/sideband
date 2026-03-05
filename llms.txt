@@ -58,6 +58,7 @@ A drop-in SDK that lets browsers talk to local daemons reliably – no reconnect
 
 ### Other
 
+- [ADR-017: Cloud SDK Design](/adr/017-cloud-sdk-design.md)
 - [ADR-NNN: \[Short Title]](/adr/_template.md)
 - [Control Codes](/protocols/sbrp/control-codes.md)
 - [Cryptography and Wire Format](/protocols/sbrp/wire-crypto.md)

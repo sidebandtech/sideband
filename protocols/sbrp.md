@@ -155,6 +155,7 @@ sequenceDiagram
 2. Relay sends `Control(session_paused)` to client
 3. Client suspends sends, shows UI indicator
 4. If daemon reconnects within grace period:
+   * Relay sends `Control(session_pending)` to client
    * Daemon sends `Signal(ready)` for sessions with retained state
    * Relay sends `Control(session_resumed)` to client
 5. If state is lost or grace expires:
@@ -172,7 +173,7 @@ See [state-machine.md](./state-machine.md) for complete state transition rules.
 | Control   | 0x20       | Relay → Endpoint | Notifications and errors      |
 | Keepalive | 0x10–0x11  | Either           | Connection liveness detection |
 
-**Endpoint frames** participate in E2EE and are forwarded by relay without inspection. **Signal frames** are daemon-to-relay commands (ready, close). **Control frames** are relay-generated notifications (session\_paused, rate\_limited). **Keepalive frames** are connection-scoped and never forwarded.
+**Endpoint frames** participate in E2EE and are forwarded by relay without inspection. **Signal frames** are daemon-to-relay commands (ready, close). **Control frames** are relay-generated notifications (session\_paused, session\_pending, rate\_limited, backpressure). **Keepalive frames** are connection-scoped and never forwarded.
 
 See [wire-crypto.md](./wire-crypto.md) for wire format details.
 
@@ -180,13 +181,13 @@ See [wire-crypto.md](./wire-crypto.md) for wire format details.
 
 The relay operates as a frame router with these core responsibilities:
 
-| Responsibility     | Description                                            |
-| ------------------ | ------------------------------------------------------ |
-| Token validation   | Validate JWTs from control plane; enforce claims       |
-| Routing            | Route session-bound frames between paired connections  |
-| Presence tracking  | Track daemon online/offline; notify clients of changes |
-| Rate limiting      | Enforce message rate and payload size limits           |
-| Keepalive handling | Respond to Ping with Pong; detect dead connections     |
+| Responsibility     | Description                                                                       |
+| ------------------ | --------------------------------------------------------------------------------- |
+| Token validation   | Validate JWTs from control plane; enforce claims                                  |
+| Routing            | Route session-bound frames between paired connections                             |
+| Presence tracking  | Track daemon online/offline; notify clients of changes                            |
+| Throttling         | Rate-limit connections/throughput (non-terminal); close slow consumers (terminal) |
+| Keepalive handling | Respond to Ping with Pong; detect dead connections                                |
 
 The relay MUST NOT interpret encrypted payloads or derive information from their content.
 

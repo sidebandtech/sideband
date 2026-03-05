@@ -24,14 +24,17 @@ See `docs/protocols/sbrp/` for the full protocol specification.
 
 ***
 
-## Daemon Setup
+## Cloud Relay (relay.sideband.cloud)
+
+`@sideband/cloud` handles token management automatically — presence token renewal,
+relay session fetching, and reconnect logic.
+
+### Daemon
 
 The daemon has a persistent identity keypair. Generate it once on first run and persist it.
 
 ```typescript
-import { listen } from "@sideband/peer/server";
-import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
-import { generateIdentityKeyPair } from "@sideband/secure-relay";
+import { listen, generateIdentityKeyPair } from "@sideband/cloud";
 import * as fs from "node:fs/promises";
 
 const identityPath = ".sideband/identity.json";
@@ -47,14 +50,84 @@ async function loadOrCreateIdentity() {
   }
 }
 
-const identity = await loadOrCreateIdentity();
+const server = await listen({
+  apiKey: process.env.SIDEBAND_API_KEY, // sbnd_dak_... from sideband.cloud
+  identityKeyPair: await loadOrCreateIdentity(),
+  onConnection(peer) {
+    peer.rpc.handle("ping", () => "pong");
+  },
+});
+// Presence token renewed automatically on each relay reconnect.
+```
+
+### Client
+
+The client connects to the relay using the daemon's ID. On first connection, the client sees
+the daemon's identity fingerprint and must decide whether to trust it.
+
+```typescript
+import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+
+const peer = connect({
+  daemonId: "d_abc123",
+  getAccessToken: () => auth.getSessionToken(), // called on every connect attempt
+  identityKeyStore: createMemoryIdentityKeyStore(),
+  // trustPolicy defaults to "auto" — appropriate for cloud (control plane
+  // already authenticated the daemon via API key at registration)
+  onIdentityMismatch: async ({ expectedFingerprint, receivedFingerprint }) => {
+    return confirm(
+      `Daemon identity changed (${expectedFingerprint} → ${receivedFingerprint}). Trust new key?`,
+    );
+  },
+});
+
+peer.rpc.handle("push", handlePush); // register before connection completes
+await peer.whenReady();
+const result = await peer.rpc.call("ping");
+```
+
+### Quick Connect (one-shot bootstrap)
+
+Quick Connect lets a client connect to a daemon without a user account. The daemon generates
+a short-lived code via the Sideband API; the client redeems it as the sole credential.
+
+```typescript
+import { connect, createMemoryIdentityKeyStore } from "@sideband/cloud";
+
+const peer = connect({
+  quickConnectCode: "abcd-efgh-ijkl", // displayed by the daemon, scanned/pasted by client
+  identityKeyStore: createMemoryIdentityKeyStore(),
+});
+await peer.whenReady();
+```
+
+**Important limitations:**
+
+* Codes are **single-use** — the server atomically consumes the code before checking daemon
+  status. A 409 response means the code is burned and the daemon is offline; the client must
+  ask for a new code.
+* **No reconnection** — if the connection drops, the peer terminates fatally. QC is a first-contact
+  bootstrap; for persistent sessions, transition to the account path after the initial connection.
+* `daemonId` is resolved from the redeem response — clients do not need to know it upfront.
+
+***
+
+## Self-Hosted Relay
+
+For self-hosted relay servers, use `@sideband/peer` directly:
+
+### Daemon
+
+```typescript
+import { listen } from "@sideband/peer/server";
+import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
+import { generateIdentityKeyPair } from "@sideband/secure-relay";
 
 const server = await listen({
-  endpoint: "wss://eu-1.relay.sideband.cloud",
+  endpoint: "wss://relay.example.com",
   negotiator: sbrpDaemonNegotiator({
-    daemonId: "my-daemon-id",
+    daemonId: asDaemonId("my-daemon"),
     identityKeyPair: identity,
-    presenceToken, // long-lived JWT from daemon registration
   }),
   onConnection(peer) {
     peer.rpc.handle("ping", () => "pong");
@@ -62,29 +135,24 @@ const server = await listen({
 });
 ```
 
-***
-
-## Client Setup
-
-The client connects to the relay using the daemon's ID. On first connection, the client sees
-the daemon's identity fingerprint and must decide whether to trust it.
+### Client
 
 ```typescript
 import { createPeer } from "@sideband/peer";
 import { sbrpClientNegotiator } from "@sideband/peer/sbrp";
 
-// relayUrl and sessionToken from POST /api/sessions
+// sessionToken from your relay API — contains the sid claim
 const { relayUrl, token: sessionToken } = await api.createSession({
-  daemonId: "my-daemon-id",
+  daemonId: "my-daemon",
 });
 
 const peer = createPeer({
-  endpoint: relayUrl,
+  endpoint: `${relayUrl}?token=${sessionToken}`,
   negotiator: sbrpClientNegotiator({
-    daemonId: "my-daemon-id",
-    sessionToken,
-    identityKeyStore, // see Key Management below
-    trustPolicy: "prompt", // default: ask on first connection
+    daemonId: asDaemonId("my-daemon"),
+    sessionToken, // sessionId extracted from JWT sid claim automatically
+    identityKeyStore,
+    trustPolicy: "prompt",
     onFirstConnection: async ({ fingerprint }) => {
       return confirm(`Trust daemon with fingerprint ${fingerprint}?`);
     },

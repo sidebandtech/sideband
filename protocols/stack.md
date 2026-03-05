@@ -18,7 +18,7 @@ This document defines frame wrapping rules, dependency invariants, and layer bou
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Application / SDK                                                  │
-│  (@sideband/peer, @sideband/cli)                                    │
+│  (@sideband/peer, @sideband/cloud, sideband CLI)                    │
 ├─────────────────────────────────────────────────────────────────────┤
 │  RPC Layer                                                          │
 │  Typed request/response/notification semantics                      │
@@ -193,7 +193,7 @@ Two distinct constructs use "Control" terminology:
 These are unrelated:
 
 * **SBP ControlFrame**: Application-level protocol control (peer handshake, keepalive). Travels end-to-end inside SBRP Data frames, encrypted.
-* **SBRP RelayNotification**: Relay-generated notifications (`session_paused`, `rate_limited`). Sent plaintext from relay to endpoint only. (Wire type 0x20; historically called "Control frame" but renamed to avoid confusion with SBP ControlFrame.)
+* **SBRP RelayNotification**: Relay-generated notifications (`session_paused`, `rate_limited`, `backpressure`). Sent plaintext from relay to endpoint only. (Wire type 0x20; historically called "Control frame" but renamed to avoid confusion with SBP ControlFrame.)
 
 ### "Session" at Different Layers
 

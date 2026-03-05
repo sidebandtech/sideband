@@ -91,15 +91,15 @@ any → closed  (terminal)
 Reconnection always goes through the full `connecting → negotiating → active` cycle — session
 state is re-established, not resumed from mid-handshake.
 
-| State          | Meaning                                                 |
-| -------------- | ------------------------------------------------------- |
-| `idle`         | Not connected. Initial state.                           |
-| `connecting`   | Transport connect in progress.                          |
-| `negotiating`  | Transport open; handshake in progress.                  |
-| `active`       | Ready to send and receive.                              |
-| `paused`       | SBRP session pause — relay buffering, not disconnected. |
-| `reconnecting` | Waiting before retry attempt.                           |
-| `closed`       | Terminal. No further transitions.                       |
+| State          | Meaning                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| `idle`         | Not connected. Initial state.                                                            |
+| `connecting`   | Transport connect in progress.                                                           |
+| `negotiating`  | Transport open; handshake in progress.                                                   |
+| `active`       | Ready to send and receive.                                                               |
+| `paused`       | SBRP session pause — daemon disconnected; relay holds WebSocket, client buffers locally. |
+| `reconnecting` | Waiting before retry attempt.                                                            |
+| `closed`       | Terminal. No further transitions.                                                        |
 
 `peer.ready` is `true` only in `active`. `peer.connected` is `true` in both `active` and `paused`.
 

@@ -387,7 +387,7 @@ Control codes use **ranges** to categorize error types and session states. Range
 | `0x05xx`        | Reserved       | Future use                     |
 | `0x06xx`        | Internal       | Relay internal errors          |
 | `0x07xx–0x08xx` | Reserved       | Future use                     |
-| `0x09xx`        | Rate limiting  | Throttling (recoverable)       |
+| `0x09xx`        | Throttling     | Traffic control (varies: N/T)  |
 | `0x0Axx–0x0Fxx` | Reserved       | Future use                     |
 | `0x10xx`        | Session state  | Non-terminal state transitions |
 | `0x11xx–0x1Fxx` | Reserved       | Future state notifications     |

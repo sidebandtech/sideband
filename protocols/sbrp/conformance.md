@@ -61,7 +61,7 @@ Items tagged MUST/SHOULD mirror normative requirements.
 
 ### Session Resumption (resumable daemons only)
 
-Daemons with `res: false` in their presence token skip this section—the relay handles session cleanup automatically on reconnect.
+Daemons without `"session:resume"` in `scp` skip this section—the relay handles session cleanup automatically on reconnect.
 
 * \[ ] MUST resume with the same keys and sequence state if relay session is resumed.
 * \[ ] MUST send `Signal(ready)` for sessions with retained state after reconnect.
@@ -97,7 +97,7 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 * \[ ] MUST verify `sid` in token (base64url-decoded to uint64) matches frame header SessionID for client connections.
 * \[ ] MUST NOT generate Control frames that leak information derived from encrypted payloads.
 * \[ ] MUST NOT include identifiers (daemonId, clientId, sessionId, tokens) in Control message text.
-* \[ ] MUST send `Control(session_expired)` to all paired clients immediately when non-resumable daemon (`res: false`) reconnects.
+* \[ ] MUST send `Control(session_expired)` to all paired clients immediately when non-resumable daemon (no `"session:resume"` in `scp`) reconnects.
 * \[ ] SHOULD send `Control(internal_error, SessionID=0)` and close WebSocket on unrecoverable internal failures.
 
 ### Frame Validation Order
@@ -119,7 +119,7 @@ Daemons with `res: false` in their presence token skip this section—the relay 
 
 ### Wire Codes (Relay → Endpoint)
 
-* \[ ] MUST use code ranges per [control-codes.md](./control-codes.md): 0x01xx auth, 0x02xx routing, 0x03xx session, 0x04xx wire, 0x06xx internal, 0x09xx rate, 0x10xx state.
+* \[ ] MUST use code ranges per [control-codes.md](./control-codes.md): 0x01xx auth, 0x02xx routing, 0x03xx session, 0x04xx wire, 0x06xx internal, 0x09xx throttling, 0x10xx state.
 * \[ ] MUST use correct SessionID scope per [control-codes.md](./control-codes.md) SID column: 0 for connection-level errors, non-zero for session-specific events.
 * \[ ] Terminal codes (T in [control-codes.md](./control-codes.md)) MUST close WebSocket after sending.
 * \[ ] Non-terminal codes (N in [control-codes.md](./control-codes.md)) MUST NOT close WebSocket.

@@ -20,7 +20,7 @@ Control frames (`0x20`) are relay-originated only. Ranges enable category discri
 | `0x05xx`        | Reserved       | Future use                     |
 | `0x06xx`        | Internal       | Relay internal errors          |
 | `0x07xx–0x08xx` | Reserved       | Future use                     |
-| `0x09xx`        | Rate limiting  | Throttling (recoverable)       |
+| `0x09xx`        | Throttling     | Traffic control (varies: N/T)  |
 | `0x0Axx–0x0Fxx` | Reserved       | Future use                     |
 | `0x10xx`        | Session state  | Non-terminal state transitions |
 | `0x11xx–0x1Fxx` | Reserved       | Future state notifications     |
@@ -42,7 +42,7 @@ Control frames (`0x20`) are relay-originated only. Ranges enable category discri
 | Code   | Name               | T/N | SID | Meaning              | When Emitted                    |
 | ------ | ------------------ | --- | --- | -------------------- | ------------------------------- |
 | 0x0201 | `daemon_not_found` | T   | S   | Unknown daemon ID    | Daemon doesn't exist            |
-| 0x0202 | `daemon_offline`   | N   | S   | Daemon not connected | Client connects, daemon offline |
+| 0x0202 | `daemon_offline`   | T   | S   | Daemon not connected | Client connects, daemon offline |
 
 ### Session (0x03xx)
 
@@ -63,16 +63,16 @@ Control frames (`0x20`) are relay-originated only. Ranges enable category discri
 
 ### Internal (0x06xx)
 
-| Code   | Name             | T/N | SID | Meaning                | When Emitted                                         |
-| ------ | ---------------- | --- | --- | ---------------------- | ---------------------------------------------------- |
-| 0x0601 | `internal_error` | T   | 0   | Relay internal failure | Unrecoverable relay error (bug, resource exhaustion) |
+| Code   | Name             | T/N | SID | Meaning                | When Emitted                                                                |
+| ------ | ---------------- | --- | --- | ---------------------- | --------------------------------------------------------------------------- |
+| 0x0601 | `internal_error` | T   | 0   | Relay internal failure | Connection-fatal relay failure; reconnect may succeed on a healthy instance |
 
-### Rate Limiting (0x09xx)
+### Throttling (0x09xx)
 
 | Code   | Name           | T/N | SID | Meaning           | When Emitted          |
 | ------ | -------------- | --- | --- | ----------------- | --------------------- |
 | 0x0901 | `rate_limited` | N   | 0   | Too many requests | Message rate exceeded |
-| 0x0902 | `backpressure` | T   | 0   | Send buffer full  | Receiver too slow    |
+| 0x0902 | `backpressure` | T   | 0   | Send buffer full  | Receiver too slow     |
 
 Rate limiting (`rate_limited`) is non-terminal and connection-level — the connection stays open and the sender should back off. Backpressure (`backpressure`) is terminal — the slow consumer is closed because silently dropping forwarded frames would corrupt the E2EE sequence stream.
 

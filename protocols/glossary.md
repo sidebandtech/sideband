@@ -47,11 +47,13 @@ Terms defined here are authoritative. Protocol-specific index.md files SHOULD li
 
 ## SBRP-Specific
 
-| Term                 | Definition                                                           |
-| -------------------- | -------------------------------------------------------------------- |
-| Relay                | Routing authority and token validator; not an encryption endpoint    |
-| Client               | Session initiator with ephemeral keys; no persistent crypto identity |
-| Daemon               | Long-lived agent with Ed25519 identity; reachable via relay          |
-| Control Frame (SBRP) | Relay-generated notifications (0x20); distinct from SBP ControlFrame |
-| Signal Frame         | Daemon-to-relay session lifecycle commands (ready/close)             |
-| Nonce Monotonicity   | Sequence numbers must strictly increase per direction                |
+| Term                 | Definition                                                                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Relay                | Routing authority and token validator; not an encryption endpoint                                                                            |
+| Client               | Session initiator with ephemeral keys; no persistent crypto identity                                                                         |
+| Daemon               | Long-lived agent with Ed25519 identity; reachable via relay                                                                                  |
+| Control Frame (SBRP) | Relay-generated notifications (0x20); distinct from SBP ControlFrame                                                                         |
+| Signal Frame         | Daemon-to-relay session lifecycle commands (ready/close)                                                                                     |
+| Nonce Monotonicity   | Sequence numbers must strictly increase per direction                                                                                        |
+| Throttling           | Traffic control category (0x09xx); covers rate-limiting (non-terminal: back off and retry) and backpressure (terminal: slow consumer closed) |
+| Backpressure         | Terminal relay signal (0x0902) closing a connection whose send buffer is full; distinct from `rate_limited` (0x0901) which is non-terminal   |
