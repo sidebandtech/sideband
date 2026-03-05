@@ -39,11 +39,14 @@ async function trpcMutation<TInput, TOutput>(
   headers: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<TOutput> {
+  // 15s timeout guards against hung connections; callers can supply their own signal to cancel sooner.
+  const timeout = AbortSignal.timeout(15_000);
+  const effectiveSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const res = await fetch(`${api}/api/trpc/${procedure}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({ json: input }),
-    signal,
+    signal: effectiveSignal,
   });
 
   if (!res.ok) {
@@ -216,6 +219,28 @@ function base64urlDecode(input: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+/**
+ * Create a Quick Connect code for the daemon identified by its API key.
+ * Returns a short-lived code, a ready-to-use connect URL, and an ISO 8601 expiry.
+ *
+ * Called by the CLI daemon to generate the QC code printed at startup and
+ * renewed every TTL period. The API key is the credential — no daemonId required.
+ */
+export async function createQuickConnectCode(
+  apiKey: string,
+  opts: { ttlSeconds?: number } = {},
+  apiUrl = DEFAULT_API,
+  signal?: AbortSignal,
+): Promise<{ code: string; url: string; expiresAt: string }> {
+  return trpcMutation(
+    apiUrl,
+    "quickConnect.create",
+    { ttlSeconds: opts.ttlSeconds },
+    { Authorization: `Bearer ${apiKey}` },
+    signal,
+  );
 }
 
 /**

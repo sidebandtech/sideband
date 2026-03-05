@@ -22,6 +22,7 @@ export function classifySbrpError(error: Error): "fatal" | "retryable" {
     case SbrpErrorCode.DecryptFailed:
     case SbrpErrorCode.SequenceError:
     // Fatal: relay rejected this client — auth, routing, or wire format error
+    // eslint-disable-next-line no-fallthrough
     case SbrpErrorCode.Unauthorized:
     case SbrpErrorCode.Forbidden:
     case SbrpErrorCode.DaemonNotFound:
@@ -41,6 +42,7 @@ export function classifySbrpError(error: Error): "fatal" | "retryable" {
     case SbrpErrorCode.InternalError: // Relay-side failure; not a client error
     case SbrpErrorCode.HandshakeTimeout:
     // Session state transitions — non-terminal relay notifications
+    // eslint-disable-next-line no-fallthrough
     case SbrpErrorCode.SessionPaused:
     case SbrpErrorCode.SessionResumed:
     case SbrpErrorCode.SessionEnded:

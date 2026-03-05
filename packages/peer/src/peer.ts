@@ -211,7 +211,7 @@ class PeerImpl implements Peer, RpcHost, EventHost {
       );
     }
     return new Promise<void>((resolve, reject) => {
-      let unsubState: Unsubscribe;
+      let unsubState: Unsubscribe = () => {};
 
       const cleanup = () => {
         unsubState();

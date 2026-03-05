@@ -10,6 +10,9 @@ hero:
       text: Quick Start
       link: /guide/
     - theme: alt
+      text: npx sideband
+      link: /guide/#zero-infrastructure-start
+    - theme: alt
       text: GitHub
       link: https://github.com/sidebandtech/sideband
 

@@ -83,10 +83,12 @@ export class SessionManager {
   private retryTimeout?: ReturnType<typeof setTimeout>;
   private retryReject?: (reason: Error) => void;
   private terminated = false;
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   private readonly eventHandlers = new Map<
     keyof SessionEvents,
     Set<EventHandler<any>>
   >();
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   private readonly config: SessionConfig;
   private readonly retryPolicy: RetryPolicy;
@@ -403,11 +405,11 @@ export class SessionManager {
       identity: this.identity,
       state: this._state,
       channel: ch,
-      sendFrame: async (frame: Frame) => {
+      async sendFrame(frame: Frame) {
         const bytes = encodeFrame(frame);
         await ch.send(bytes);
       },
-      sendRaw: async (data: Uint8Array) => {
+      async sendRaw(data: Uint8Array) {
         await ch.send(data);
       },
     };

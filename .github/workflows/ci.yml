@@ -24,6 +24,7 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       - run: bun prettier --check .
+      - run: bun lint
       - run: bun typecheck
       - run: bun run build
       - run: bun test

@@ -226,42 +226,43 @@ class LoopbackChannel implements TransportConnection {
   }
 
   get inbound(): AsyncIterable<Uint8Array> {
-    const channel = this;
+    // Arrow functions throughout so `this` refers to the LoopbackChannel instance;
+    // method shorthand would bind `this` to the iterable/iterator objects instead.
     return {
-      [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
-        if (channel._iteratorActive) {
+      [Symbol.asyncIterator]: (): AsyncIterator<Uint8Array> => {
+        if (this._iteratorActive) {
           throw new TransportError(
             "transport_failure",
             "Iterator already active",
           );
         }
-        channel._iteratorActive = true;
+        this._iteratorActive = true;
 
         return {
-          async next(): Promise<IteratorResult<Uint8Array, void>> {
-            while (channel.buffer.length === 0 && channel._state === "open") {
+          next: async (): Promise<IteratorResult<Uint8Array, void>> => {
+            while (this.buffer.length === 0 && this._state === "open") {
               await new Promise<void>((resolve) => {
-                channel.resolvers.push(resolve);
+                this.resolvers.push(resolve);
               });
             }
-            if (channel.buffer.length > 0) {
-              return { value: channel.buffer.shift()!, done: false };
+            if (this.buffer.length > 0) {
+              return { value: this.buffer.shift()!, done: false };
             }
             // Buffer drained; check for abnormal close
-            channel._iteratorActive = false;
-            if (channel._closeError) {
-              throw channel._closeError;
+            this._iteratorActive = false;
+            if (this._closeError) {
+              throw this._closeError;
             }
             return { done: true, value: undefined };
           },
-          async return(): Promise<IteratorResult<Uint8Array, void>> {
-            channel._iteratorActive = false;
+          return: async (): Promise<IteratorResult<Uint8Array, void>> => {
+            this._iteratorActive = false;
             return { done: true, value: undefined };
           },
-          async throw(
+          throw: async (
             err?: unknown,
-          ): Promise<IteratorResult<Uint8Array, void>> {
-            channel._iteratorActive = false;
+          ): Promise<IteratorResult<Uint8Array, void>> => {
+            this._iteratorActive = false;
             throw err;
           },
         };

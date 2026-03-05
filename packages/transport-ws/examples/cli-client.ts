@@ -52,9 +52,11 @@ async function main() {
         case "connection_refused":
           console.error("Daemon not running. Start it with: bun run daemon");
           process.exit(1);
+          break;
         case "timeout":
           console.error("Connection timed out.");
           process.exit(1);
+          break;
         default:
           console.error(`Error: ${err.kind} - ${err.message}`);
           process.exit(1);

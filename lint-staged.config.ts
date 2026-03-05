@@ -1,9 +1,11 @@
-// SPDX-FileCopyrightText: 2025-present Sideband
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
 import type { Configuration } from "lint-staged";
 
 export default {
-  "*.{ts,tsx,js,jsx}": ["prettier --write", () => "tsc --noEmit"],
+  "*.{ts,tsx,js,jsx}": [
+    "eslint --fix",
+    "prettier --write",
+    // Function prevents lint-staged from appending staged filenames to tsc.
+    () => "tsc --build tsconfig.check.json",
+  ],
   "*.{json,md}": ["prettier --write"],
 } satisfies Configuration;

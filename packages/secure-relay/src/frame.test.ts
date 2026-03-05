@@ -864,7 +864,9 @@ describe("frame codec", () => {
       const decoder = new FrameDecoder();
       const frame = encodePing();
       // Must consume the generator to trigger buffering
-      [...decoder.push(frame.subarray(0, 5))];
+      for (const _ of decoder.push(frame.subarray(0, 5))) {
+        /* consume */
+      }
       expect(decoder.bufferedBytes).toBe(5);
 
       decoder.reset();

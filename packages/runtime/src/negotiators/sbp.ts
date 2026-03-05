@@ -61,7 +61,7 @@ export class SbpNegotiator implements Negotiator {
     await conn.send(encodeFrame(handshakeFrame));
 
     // Wait for response with timeout
-    let timeoutId: any;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<"timeout">((resolve) => {
       timeoutId = setTimeout(() => resolve("timeout"), this.handshakeTimeoutMs);
     });
