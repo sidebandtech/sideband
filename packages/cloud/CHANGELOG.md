@@ -1,5 +1,11 @@
 # @sideband/cloud
 
+## 0.5.5
+
+### Patch Changes
+
+- [#48](https://github.com/sidebandtech/sideband/pull/48) [`6be8333`](https://github.com/sidebandtech/sideband/commit/6be8333d20b0614ead1b1e2368d791bd59134050) Thanks [@koistya](https://github.com/koistya)! - Fix tRPC mutation request body: remove incorrect `{ json: input }` wrapper so the API call sends the input directly.
+
 ## 0.5.4
 
 ### Patch Changes
