@@ -6,12 +6,17 @@
  * Human mode (default): indented, readable text to stdout; errors to stderr.
  * JSON mode (--json): NDJSON to stdout (one JSON object per line); errors to stderr.
  *
- * Method names are logged for RPC events; args/results are never logged.
+ * Activity lines use a consistent format: `  {sigil} {message} [{HH:MM:SS}]`
+ * Sigils: + connected, - disconnected, → RPC call, ← echo reply, ⚠ warning.
  */
 
 function timestamp(): string {
-  const now = new Date();
-  return now.toTimeString().slice(0, 8); // HH:MM:SS
+  return new Date().toTimeString().slice(0, 8); // HH:MM:SS
+}
+
+/** Shorten peer ID to first 8 chars for readability. */
+function shortId(peerId: string): string {
+  return peerId.slice(0, 8);
 }
 
 export interface ReadyInfo {
@@ -49,28 +54,40 @@ export function printReady(info: ReadyInfo): void {
 }
 
 export function printConnected(peerId: string): void {
-  process.stdout.write(`  + Client connected (${peerId}) [${timestamp()}]\n`);
+  process.stdout.write(`  + Connected (${shortId(peerId)}) [${timestamp()}]\n`);
 }
 
 export function printDisconnected(peerId: string): void {
   process.stdout.write(
-    `  - Client disconnected (${peerId}) [${timestamp()}]\n`,
+    `  - Disconnected (${shortId(peerId)}) [${timestamp()}]\n`,
   );
 }
 
 export function printRpc(method: string): void {
-  process.stdout.write(`  > ${method} [${timestamp()}]\n`);
+  process.stdout.write(`  → ${method} [${timestamp()}]\n`);
+}
+
+export function printEcho(data: unknown): void {
+  let text: string;
+  try {
+    text = typeof data === "string" ? data : JSON.stringify(data);
+  } catch {
+    text = String(data);
+  }
+  process.stdout.write(`  ← echo: ${text} [${timestamp()}]\n`);
 }
 
 export function printQcRenewed(info: QuickConnectInfo): void {
   process.stdout.write(
-    `  Quick Connect renewed: ${info.url} [${timestamp()}]\n  Code:          ${info.code}\n`,
+    `  Quick Connect renewed [${timestamp()}]\n` +
+      `  Code: ${info.code}\n` +
+      `  URL:  ${info.url}\n`,
   );
 }
 
 export function printQcExpired(): void {
-  process.stderr.write(
-    "  Quick Connect code expired. Retrying... (existing connections unaffected)\n",
+  process.stdout.write(
+    `  ⚠ Quick Connect expired, retrying... [${timestamp()}]\n`,
   );
 }
 
@@ -79,11 +96,11 @@ export function printError(message: string): void {
 }
 
 export function printFatal(message: string): void {
-  process.stderr.write(`\n  ${message}\n\n`);
+  process.stderr.write(`  Error: ${message}\n`);
 }
 
 export function printShutdown(): void {
-  process.stdout.write("\n  Shutting down...\n");
+  process.stdout.write("  Shutting down...\n");
 }
 
 // ─── JSON (NDJSON) mode ──────────────────────────────────────────────────────
@@ -114,6 +131,19 @@ export function emitDisconnected(peerId: string): void {
 
 export function emitRpc(peerId: string, method: string): void {
   emit({ event: "rpc", peerId, method });
+}
+
+export function emitEcho(peerId: string, data: unknown): void {
+  // Normalize to a JSON-safe value so the `data` field is always present.
+  let safe: unknown;
+  try {
+    JSON.stringify(data);
+    safe = data;
+  } catch {
+    safe = String(data);
+  }
+  if (safe === undefined) safe = null;
+  emit({ event: "rpc", peerId, method: "$sideband/echo", data: safe });
 }
 
 export function emitQcRenewed(info: QuickConnectInfo): void {

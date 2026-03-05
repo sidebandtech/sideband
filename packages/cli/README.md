@@ -41,10 +41,10 @@ $ npx sideband
 
   Waiting for connections...
 
-  + Client connected (peer_abc123) [12:34:05]
-  > $sideband/echo [12:34:06]
-  > $sideband/info [12:34:07]
-  - Client disconnected (peer_abc123) [12:34:12]
+  + Connected (8f3kN2p1) [12:34:05]
+  ← echo: hello [12:34:06]
+  → $sideband/info [12:34:07]
+  - Disconnected (8f3kN2p1) [12:34:12]
 ```
 
 ## API key resolution
@@ -73,7 +73,7 @@ Two methods are always available under the reserved `$sideband/` namespace:
 ```jsonl
 {"event":"ready","daemonId":"d_8f3kN2p","cliVersion":"0.5.0","configDir":"/home/user/.sideband","relayUrl":"wss://relay.sideband.cloud","quickConnectCode":"abcd-efgh-ijkl","quickConnectUrl":"https://sideband.cloud/connect#qc=abcd-efgh-ijkl"}
 {"event":"connected","peerId":"peer_abc123"}
-{"event":"rpc","peerId":"peer_abc123","method":"$sideband/echo"}
+{"event":"rpc","peerId":"peer_abc123","method":"$sideband/echo","data":"hello"}
 {"event":"disconnected","peerId":"peer_abc123"}
 {"event":"quick_connect","code":"mnop-qrst-uvwx","url":"https://sideband.cloud/connect#qc=mnop-qrst-uvwx","expiresAt":"2026-03-05T12:44:05Z"}
 {"event":"error","message":"Quick Connect renewal failed: rate limited"}
