@@ -240,7 +240,7 @@ class AcceptedPeerImpl implements AcceptedPeer, RpcHost, EventHost {
       );
     }
     return new Promise<void>((resolve, reject) => {
-      let unsub: Unsubscribe;
+      let unsub: Unsubscribe = () => {};
       const onAbort = () => {
         unsub();
         reject(new PeerError(PeerErrorCode.Cancelled, "whenReady aborted"));

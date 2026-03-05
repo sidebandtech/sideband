@@ -77,6 +77,7 @@ function encodeJson(envelope: RpcEnvelope): Uint8Array {
     // Convert FrameId to hex string for JSON serialization
     const envelopeForJson = { ...envelope };
     if ("cid" in envelope) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (envelopeForJson as any).cid = frameIdToHex(envelope.cid);
     }
     const json = JSON.stringify(envelopeForJson);
@@ -114,8 +115,9 @@ function decodeJson(data: Uint8Array | ArrayBufferView): RpcEnvelope {
     // Convert cid hex string back to FrameId
     if ("cid" in envelope && typeof envelope.cid === "string") {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (envelope as any).cid = frameIdFromHex(envelope.cid);
-      } catch (err) {
+      } catch (_err) {
         throw new ProtocolError(
           `Invalid cid hex value: ${envelope.cid}`,
           RpcErrorCode.InvalidEnvelope,

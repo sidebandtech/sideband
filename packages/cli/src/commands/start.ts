@@ -30,10 +30,7 @@ export async function runStart(args: StartArgs): Promise<void> {
   const cliVersion = getCliVersion();
   const identityKeyPair = await loadIdentityKeyPair(configDir);
 
-  // server is assigned before onConnection is ever called (listen() resolves first)
-  let server!: CloudPeerServer;
-
-  server = await listen({
+  const server = await listen({
     apiKey,
     identityKeyPair,
     onConnection(peer: AcceptedPeer) {

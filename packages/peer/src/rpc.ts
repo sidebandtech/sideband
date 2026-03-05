@@ -153,9 +153,9 @@ export class RpcImpl implements RpcInterface {
 
   client<T>(): TypedRpcClient<T> {
     if (!this._proxy) {
-      const self = this;
+      // Arrow so `this` refers to RpcImpl; Proxy calls the trap with `this` = handler object.
       this._proxy = new Proxy(Object.create(null), {
-        get(_target, prop) {
+        get: (_target, prop) => {
           // Exclude Symbol keys, Promise inspection props (prevents thenable
           // duck-typing when the proxy is awaited or returned from async fns),
           // and Object.prototype methods (prevents spurious RPC calls from
@@ -175,7 +175,7 @@ export class RpcImpl implements RpcInterface {
             return Reflect.get(Object.prototype, prop);
           }
           return (params?: unknown, options?: RpcCallOptions) =>
-            self.call(prop, params, options);
+            this.call(prop, params, options);
         },
       });
     }

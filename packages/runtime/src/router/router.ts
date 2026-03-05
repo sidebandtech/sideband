@@ -213,11 +213,11 @@ export class Router {
       method: rpcMsg.rpc!.method,
       params: rpcMsg.rpc!.params,
       cid: rpcMsg.rpc!.cid,
-      reply: async (result?: unknown) => {
+      async reply(result?: unknown) {
         replied = true;
         await rpcMsg.rpc!.reply(result);
       },
-      error: async (code: number, message: string, data?: unknown) => {
+      async error(code: number, message: string, data?: unknown) {
         replied = true;
         await rpcMsg.rpc!.error(code, message, data);
       },
@@ -332,7 +332,7 @@ export class Router {
       peerId: session.peerId,
       session,
       frame: Object.freeze({ ...frame }),
-      send: async (subject: Subject, data: Uint8Array) => {
+      async send(subject: Subject, data: Uint8Array) {
         const newFrame = createMessageFrame(subject, data);
         await session.send(encodeFrame(newFrame));
       },
@@ -349,7 +349,7 @@ export class Router {
       method: envelope.m,
       params: envelope.p,
       cid: envelope.cid,
-      reply: async (result?: unknown) => {
+      async reply(result?: unknown) {
         const responseEnvelope = createRpcSuccessResponse(envelope.cid, result);
         const responseFrame = createMessageFrame(
           responseSubject,
@@ -357,7 +357,7 @@ export class Router {
         );
         await session.send(encodeFrame(responseFrame));
       },
-      error: async (code: number, message: string, data?: unknown) => {
+      async error(code: number, message: string, data?: unknown) {
         const errorEnvelope = createRpcErrorResponse(
           envelope.cid,
           code,

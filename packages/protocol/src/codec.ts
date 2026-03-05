@@ -133,7 +133,9 @@ export function decodeFrame(buffer: Uint8Array): Readonly<Frame> {
 function encodeFramePayload(frame: Frame): Uint8Array {
   const encodeString = (str: string): Uint8Array => {
     return globalThis.TextEncoder
-      ? new (globalThis.TextEncoder as any)().encode(str)
+      ? new (globalThis.TextEncoder as unknown as typeof TextEncoder)().encode(
+          str,
+        )
       : new Uint8Array(str.split("").map((c) => c.charCodeAt(0)));
   };
 
@@ -252,7 +254,9 @@ function decodeFramePayload(
 ): Frame {
   const decodeString = (bytes: Uint8Array): string => {
     return globalThis.TextDecoder
-      ? new (globalThis.TextDecoder as any)().decode(bytes)
+      ? new (globalThis.TextDecoder as unknown as typeof TextDecoder)().decode(
+          bytes,
+        )
       : new Uint8Array(bytes).reduce(
           (acc, byte) => acc + String.fromCharCode(byte),
           "",

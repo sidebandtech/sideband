@@ -246,7 +246,7 @@ describe("SBRP negotiator integration", () => {
 
       // Both sides race; the one with the stalling inner negotiator will timeout.
       // The key assertion: total time should be bounded by ~timeoutMs, not 2x.
-      const results = await Promise.allSettled([
+      await Promise.allSettled([
         clientNeg.negotiate(clientConn),
         daemonNeg.negotiate(daemonConn),
       ]);

@@ -418,7 +418,7 @@ class NodeWsTransport implements Transport {
 
         resolve({
           address: actualEndpoint,
-          close: async () => {
+          async close() {
             return new Promise<void>((res) => {
               wss.close(() => res());
             });
@@ -540,7 +540,7 @@ class NodeWsTransport implements Transport {
 
     return {
       address: actualEndpoint,
-      close: async () => {
+      async close() {
         server.stop();
       },
     };
