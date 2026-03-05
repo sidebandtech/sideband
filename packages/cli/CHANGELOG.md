@@ -1,5 +1,11 @@
 # sideband
 
+## 0.5.2
+
+### Patch Changes
+
+- [#50](https://github.com/sidebandtech/sideband/pull/50) [`420ed6f`](https://github.com/sidebandtech/sideband/commit/420ed6f67a0de209c342d74c5542a2f4502d6ba6) Thanks [@koistya](https://github.com/koistya)! - Polish CLI output: consistent sigils, short peer IDs, dedicated echo handler, QC expiry to stdout
+
 ## 0.5.1
 
 ### Patch Changes
