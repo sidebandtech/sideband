@@ -9,10 +9,10 @@ SDK docs may reference `runtime/` for behavioral contracts and `protocols/` for 
 
 ## Documents
 
-| Document                        | Scope                                                                       | Status |
-| ------------------------------- | --------------------------------------------------------------------------- | ------ |
-| [peer.md](./peer.md)            | Peer SDK API design, lifecycle, pub/sub, error handling                     | Active |
-| [`@sideband/cloud`](./cloud.md) | Cloud relay SDK: `connect()`, `listen()` → `CloudPeerServer`, Quick Connect | Active |
+| Document                        | Scope                                                                   | Status |
+| ------------------------------- | ----------------------------------------------------------------------- | ------ |
+| [peer.md](./peer.md)            | Peer SDK API design, lifecycle, pub/sub, error handling                 | Active |
+| [`@sideband/cloud`](./cloud.md) | Cloud relay SDK: `connect()`, `listen()` → `CloudServer`, Quick Connect | Active |
 
 ## Layer Boundary
 

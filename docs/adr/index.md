@@ -23,6 +23,7 @@ This section documents significant architectural decisions for the Sideband proj
 | [015](./015-p2p-direct-protocol.md)                   | P2P Direct Protocol (SBDP)            | Accepted |
 | [016](./016-relay-server-design.md)                   | Relay Server Design                   | Accepted |
 | [017](./017-cloud-sdk-design.md)                      | Cloud SDK Design                      | Accepted |
+| [018](./018-daemon-capabilities.md)                   | Daemon Built-in Capabilities          | Accepted |
 
 ## Creating a new ADR
 

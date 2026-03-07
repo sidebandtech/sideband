@@ -20,7 +20,7 @@ import type {
   RetryPolicy,
   RpcPolicy,
 } from "@sideband/peer";
-import { classifySbrpError, sbrpClientNegotiator } from "@sideband/peer/sbrp";
+import { classifySbrpError, relayClientNegotiator } from "@sideband/peer/sbrp";
 import type { IdentityKeyStore } from "@sideband/peer/sbrp";
 import type { TransportConnection } from "@sideband/transport";
 import { asDaemonId } from "@sideband/secure-relay";
@@ -104,9 +104,9 @@ export type ConnectOptions =
        *
        * ⚠ `"auto"` weakens TOFU guarantees: it silently re-pins on identity
        * mismatch, making it TOFR (Trust On First Registration) rather than
-       * strict TOFU. Use `"prompt"` or `"strict"` for higher-assurance scenarios.
+       * strict TOFU. Use `"prompt"` or `"pinned-only"` for higher-assurance scenarios.
        */
-      trustPolicy?: "auto" | "strict";
+      trustPolicy?: "auto" | "pinned-only";
       onFirstConnection?: (info: { fingerprint: string }) => Promise<boolean>;
       onIdentityMismatch?: (info: {
         expectedFingerprint: string;
@@ -291,7 +291,7 @@ export class CloudClientNegotiator {
     // against SbrpClientOptions — no assertion casts needed.
     const inner =
       opts.trustPolicy === "prompt"
-        ? sbrpClientNegotiator({
+        ? relayClientNegotiator({
             daemonId,
             sessionToken,
             identityKeyStore: opts.identityKeyStore,
@@ -299,7 +299,7 @@ export class CloudClientNegotiator {
             onFirstConnection: opts.onFirstConnection,
             onIdentityMismatch: opts.onIdentityMismatch,
           })
-        : sbrpClientNegotiator({
+        : relayClientNegotiator({
             daemonId,
             sessionToken,
             identityKeyStore: opts.identityKeyStore,

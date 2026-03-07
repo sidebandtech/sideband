@@ -10,15 +10,15 @@ import {
   WireControlCode,
 } from "@sideband/secure-relay";
 import { describe, expect, it } from "bun:test";
-import { sbrpClientNegotiator } from "./client.js";
-import { sbrpDaemonNegotiator } from "./daemon.js";
+import { relayClientNegotiator } from "./client.js";
+import { relayDaemonNegotiator } from "./daemon.js";
 import { createMemoryIdentityKeyStore } from "./identity-key-store.js";
 import { createTransportPair } from "./test-helpers.js";
 
 const daemonId = asDaemonId("test-daemon");
 const sessionId = 100n;
 
-describe("sbrpDaemonNegotiator", () => {
+describe("relayDaemonNegotiator", () => {
   describe("full handshake", () => {
     it("completes handshake with client", async () => {
       const identity = generateIdentityKeyPair();
@@ -26,14 +26,14 @@ describe("sbrpDaemonNegotiator", () => {
 
       const { clientConn, daemonConn } = createTransportPair();
 
-      const clientNeg = sbrpClientNegotiator({
+      const clientNeg = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
         trustPolicy: "auto",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -65,14 +65,14 @@ describe("sbrpDaemonNegotiator", () => {
 
       const { clientConn, daemonConn } = createTransportPair();
 
-      const clientNeg = sbrpClientNegotiator({
+      const clientNeg = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
         trustPolicy: "auto",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -93,7 +93,7 @@ describe("sbrpDaemonNegotiator", () => {
 
       const { clientConn, daemonConn } = createTransportPair();
 
-      const clientNeg = sbrpClientNegotiator({
+      const clientNeg = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
@@ -101,7 +101,7 @@ describe("sbrpDaemonNegotiator", () => {
         peerId: "custom-client",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
         peerId: "custom-daemon",
@@ -125,7 +125,7 @@ describe("sbrpDaemonNegotiator", () => {
       (value) => {
         const identity = generateIdentityKeyPair();
         expect(() =>
-          sbrpDaemonNegotiator({
+          relayDaemonNegotiator({
             daemonId,
             identityKeyPair: identity,
             handshakeTimeoutMs: value,
@@ -156,7 +156,7 @@ describe("sbrpDaemonNegotiator", () => {
         },
       };
 
-      const negotiator = sbrpDaemonNegotiator({
+      const negotiator = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -170,7 +170,7 @@ describe("sbrpDaemonNegotiator", () => {
   describe("classifyError", () => {
     it("classifies handshake_failed as fatal", () => {
       const identity = generateIdentityKeyPair();
-      const negotiator = sbrpDaemonNegotiator({
+      const negotiator = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -184,7 +184,7 @@ describe("sbrpDaemonNegotiator", () => {
 
     it("classifies handshake_timeout as retryable", () => {
       const identity = generateIdentityKeyPair();
-      const negotiator = sbrpDaemonNegotiator({
+      const negotiator = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -198,7 +198,7 @@ describe("sbrpDaemonNegotiator", () => {
 
     it("classifies relay terminal codes as fatal", () => {
       const identity = generateIdentityKeyPair();
-      const negotiator = sbrpDaemonNegotiator({
+      const negotiator = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -218,7 +218,7 @@ describe("sbrpDaemonNegotiator", () => {
 
     it("classifies transient relay codes as retryable", () => {
       const identity = generateIdentityKeyPair();
-      const negotiator = sbrpDaemonNegotiator({
+      const negotiator = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -238,7 +238,7 @@ describe("sbrpDaemonNegotiator", () => {
 
     it("classifies non-SbrpError as retryable", () => {
       const identity = generateIdentityKeyPair();
-      const negotiator = sbrpDaemonNegotiator({
+      const negotiator = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });

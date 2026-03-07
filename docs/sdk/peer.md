@@ -141,7 +141,7 @@ function sbpNegotiator(opts?: {
   capabilities?: string[];
   handshakeTimeoutMs?: number;
 }): Negotiator;
-// sbrpClientNegotiator / sbrpDaemonNegotiator — see §10
+// relayClientNegotiator / relayDaemonNegotiator — see §10
 
 // Pattern utilities (also exported from the package)
 function isValidEventName(name: string): boolean;
@@ -158,7 +158,7 @@ interface PeerOptions {
 
   /**
    * Session negotiator. Defaults to sbpNegotiator() (plain SBP handshake).
-   * Pass sbrpClientNegotiator(...) for E2EE relay mode.
+   * Pass relayClientNegotiator(...) for E2EE relay mode.
    */
   negotiator?: Negotiator;
 
@@ -379,6 +379,13 @@ interface RpcInterface {
    * are function signatures describing params and return type.
    */
   client<T>(): TypedRpcClient<T>;
+
+  /**
+   * Returns currently registered RPC handler method names, sorted
+   * lexicographically. Used by platform infrastructure (e.g. $sideband/rpc.list)
+   * and available to programmatic daemons for introspection. See ADR-018.
+   */
+  listMethods(): string[];
 }
 
 interface RpcCallOptions {
@@ -467,12 +474,12 @@ type PatternSubscription = Unsubscribe;
 
 Valid characters in segment tokens: `A-Z`, `a-z`, `0-9`, `-`, `_`. Case-sensitive. Max 255 UTF-8 bytes.
 
-### 6.9 AcceptedPeer
+### 6.9 ConnectedPeer
 
-`AcceptedPeer` is the server-side view of a connection, handed to `ListenOptions.onConnection` after negotiation completes.
+`ConnectedPeer` is the server-side view of a connection, handed to `ListenOptions.onConnection` after negotiation completes.
 
 ```typescript
-interface AcceptedPeer {
+interface ConnectedPeer {
   readonly state: "active" | "paused" | "closed";
   readonly connected: boolean; // state === "active" || state === "paused"
   readonly ready: boolean; // state === "active"
@@ -504,11 +511,11 @@ interface ListenOptions {
    * Called for each accepted connection after negotiation.
    * peer is always in "active" state at the time of the callback.
    */
-  onConnection: (peer: AcceptedPeer) => void | Promise<void>;
+  onConnection: (peer: ConnectedPeer) => void | Promise<void>;
 
   /**
    * Session negotiator. Defaults to sbpNegotiator().
-   * Pass sbrpDaemonNegotiator(...) for E2EE relay mode.
+   * Pass relayDaemonNegotiator(...) for E2EE relay mode.
    */
   negotiator?: Negotiator;
   transport?: Transport;
@@ -522,9 +529,9 @@ interface PeerServer {
   /** The address the server is listening on. */
   readonly address: string;
   /** All currently-connected accepted peers, keyed by remote PeerId. */
-  readonly connections: ReadonlyMap<string, AcceptedPeer>;
+  readonly connections: ReadonlyMap<string, ConnectedPeer>;
   /**
-   * Hard shutdown. Transitions all AcceptedPeer instances to "closed",
+   * Hard shutdown. Transitions all ConnectedPeer instances to "closed",
    * severs transports. Idempotent.
    */
   close(): Promise<void>;
@@ -720,27 +727,27 @@ SBRP (Sideband Bridge Relay Protocol) provides end-to-end encryption over an unt
 
 ```typescript
 // Client-side (browser / CLI)
-function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator;
+function relayClientNegotiator(options: SbrpClientOptions): Negotiator;
 
 // Server-side (daemon connecting to relay)
-function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
+function relayDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
 ```
 
 Client and daemon roles use distinct negotiators because their handshake responsibilities differ: the client verifies daemon identity via TOFU, while the daemon presents its identity key pair and registers with the relay. See ADR-013.
 
 ### 10.4 TOFU Trust Policies
 
-| Policy     | First Connection | Mismatch                                       | Use Case             |
-| ---------- | ---------------- | ---------------------------------------------- | -------------------- |
-| `"auto"`   | Auto-accept      | Silent re-pin                                  | Development only     |
-| `"prompt"` | Require callback | Call `onIdentityMismatch()`, abort if rejected | Production (default) |
-| `"strict"` | Reject if no pin | Abort                                          | High-security        |
+| Policy          | First Connection | Mismatch                                       | Use Case             |
+| --------------- | ---------------- | ---------------------------------------------- | -------------------- |
+| `"auto"`        | Auto-accept      | Silent re-pin                                  | Development only     |
+| `"prompt"`      | Require callback | Call `onIdentityMismatch()`, abort if rejected | Production (default) |
+| `"pinned-only"` | Reject if no pin | Abort                                          | High-security        |
 
 ```typescript
 // Development: auto-accept (NOT RECOMMENDED for production)
 const peer = createPeer({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "dev-daemon",
     sessionId,
     identityKeyStore,
@@ -751,7 +758,7 @@ const peer = createPeer({
 // Production: require explicit acceptance
 const peer = createPeer({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "prod-daemon",
     sessionId,
     identityKeyStore,
@@ -765,11 +772,11 @@ const peer = createPeer({
 // High-security: pre-provisioned keys only
 const peer = createPeer({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "secure-daemon",
     sessionId,
     identityKeyStore, // Must already contain the pinned key
-    trustPolicy: "strict",
+    trustPolicy: "pinned-only",
   }),
 });
 ```
@@ -783,7 +790,7 @@ const peer = createPeer({
 │  2. No pin found:                                                │
 │     - "auto": Accept, pin, emit warning                          │
 │     - "prompt": Call onFirstConnection (REQUIRED)                │
-│     - "strict": Abort with handshake_failed                      │
+│     - "pinned-only": Abort with handshake_failed                 │
 │  3. State transitions to "active" via stateChange event          │
 └──────────────────────────────────────────────────────────────────┘
                               │
@@ -794,7 +801,7 @@ const peer = createPeer({
 │  2. Pin found; compare against daemon's key from handshake       │
 │  3a. Match → connection proceeds normally                        │
 │  3b. Mismatch:                                                   │
-│      - "strict": Abort (no callback)                             │
+│      - "pinned-only": Abort (no callback)                        │
 │      - "prompt": Call onIdentityMismatch(), abort if rejected    │
 │      - "auto": Silent re-pin (no callback)                       │
 └──────────────────────────────────────────────────────────────────┘
@@ -871,7 +878,7 @@ console.log("Listening on", server.address);
 ```typescript
 import { createPeer } from "@sideband/peer";
 import {
-  sbrpClientNegotiator,
+  relayClientNegotiator,
   createMemoryIdentityKeyStore,
 } from "@sideband/peer/sbrp";
 
@@ -882,7 +889,7 @@ const { relayUrl, token: sessionToken } = await api.createSession({
 
 const peer = createPeer({
   endpoint: relayUrl, // e.g. wss://eu-1.relay.sideband.cloud
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "daemon-prod-001",
     sessionToken,
     identityKeyStore: createMemoryIdentityKeyStore(),
@@ -911,11 +918,11 @@ const status = await peer.rpc.call("system.status");
 
 ```typescript
 import { createPeer } from "@sideband/peer";
-import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
+import { relayDaemonNegotiator } from "@sideband/peer/sbrp";
 
 const peer = createPeer({
   endpoint: "wss://relay.sideband.cloud",
-  negotiator: sbrpDaemonNegotiator({
+  negotiator: relayDaemonNegotiator({
     daemonId: process.env.DAEMON_ID!,
     identityKeyPair: await loadIdentityKeyPair("./daemon-identity.key"),
   }),

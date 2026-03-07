@@ -46,11 +46,11 @@ const DEFAULT_HANDSHAKE_TIMEOUT_MS = 30_000;
  * Receives SBRP HandshakeInit → creates encrypted channel → inner SBP handshake.
  * Returns a `Negotiator` compatible with `listen({ negotiator: ... })`.
  */
-export function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator {
+export function relayDaemonNegotiator(options: SbrpDaemonOptions): Negotiator {
   const timeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error(
-      `sbrpDaemonNegotiator: handshakeTimeoutMs must be a finite positive number (got ${timeoutMs})`,
+      `relayDaemonNegotiator: handshakeTimeoutMs must be a finite positive number (got ${timeoutMs})`,
     );
   }
 

@@ -5,12 +5,12 @@
  *
  * `listen()` starts a transport listener. For each incoming connection:
  *   1. Run negotiation (SBP or custom).
- *   2. Create an `AcceptedPeerImpl` in `"active"` state.
+ *   2. Create a `ConnectedPeerImpl` in `"active"` state.
  *   3. Register the peer in `PeerServer.connections`.
  *   4. Invoke `onConnection(peer)`.
  *   5. Start the frame processing loop.
  *
- * `AcceptedPeer` differences vs `Peer` (enforced at type level):
+ * `ConnectedPeer` differences vs `Peer` (enforced at type level):
  *   - No `connect()` — the server did that before hand-off.
  *   - No `reconnecting` — accepted peers never auto-reconnect.
  *   - Valid states: `"active"`, `"paused"`, `"closed"`.
@@ -36,7 +36,7 @@ import { EVENT_SUBJECT, EventsImpl, type EventHost } from "./events.js";
 import { generateId } from "./id.js";
 import { RPC_SUBJECT, RpcImpl, type RpcHost } from "./rpc.js";
 import type {
-  AcceptedPeer,
+  ConnectedPeer,
   ConnectionPolicy,
   EventPolicy,
   ListenOptions,
@@ -64,7 +64,7 @@ const DEFAULT_CONNECTION_POLICY: ConnectionPolicy = {
 export async function listen(options: ListenOptions): Promise<PeerServer> {
   const resolved = resolveListenOptions(options);
   const transport = options.transport ?? nodeWsTransport();
-  const connections = new Map<string, AcceptedPeer>();
+  const connections = new Map<string, ConnectedPeer>();
 
   if (!transport.listen) {
     throw new Error(
@@ -86,7 +86,7 @@ export async function listen(options: ListenOptions): Promise<PeerServer> {
   const server: PeerServer = {
     address: listener.address,
     get connections() {
-      return connections as ReadonlyMap<string, AcceptedPeer>;
+      return connections as ReadonlyMap<string, ConnectedPeer>;
     },
     async close() {
       // Seal the listener first so no new connections can arrive during teardown.
@@ -106,7 +106,7 @@ export async function listen(options: ListenOptions): Promise<PeerServer> {
 async function handleIncoming(
   conn: TransportConnection,
   opts: ResolvedListenOptions,
-  connections: Map<string, AcceptedPeer>,
+  connections: Map<string, ConnectedPeer>,
   listenOpts: ListenOptions,
 ): Promise<void> {
   // Negotiate the session
@@ -136,7 +136,7 @@ async function handleIncoming(
     return;
   }
 
-  const peer = new AcceptedPeerImpl(channel, peerIdStr, opts);
+  const peer = new ConnectedPeerImpl(channel, peerIdStr, opts);
   connections.set(peerIdStr, peer);
 
   // Register stateChange BEFORE subscribing to signals: if a signal fires
@@ -182,7 +182,7 @@ async function handleIncoming(
 
 // ────────────────────────────────────────────────────────────────────────────
 
-class AcceptedPeerImpl implements AcceptedPeer, RpcHost, EventHost {
+class ConnectedPeerImpl implements ConnectedPeer, RpcHost, EventHost {
   private _state: "active" | "paused" | "closed" = "active";
   private frameLoopStarted = false;
 
@@ -203,7 +203,7 @@ class AcceptedPeerImpl implements AcceptedPeer, RpcHost, EventHost {
     this.events = new EventsImpl(this);
   }
 
-  // ────────────────── AcceptedPeer interface ──────────────────────────────
+  // ────────────────── ConnectedPeer interface ──────────────────────────────
 
   get state(): "active" | "paused" | "closed" {
     return this._state;
@@ -414,7 +414,7 @@ class AcceptedPeerImpl implements AcceptedPeer, RpcHost, EventHost {
   }
 
   private close(): void {
-    // AcceptedPeer is always terminal — call onClosed() directly to reject
+    // ConnectedPeer is always terminal — call onClosed() directly to reject
     // all pending/queued work without the intermediate onDisconnect() step.
     this.transition("closed");
     this.rpc.onClosed();

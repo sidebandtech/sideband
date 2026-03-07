@@ -170,6 +170,12 @@ export interface RpcInterface {
 
   /** Returns a typed proxy that maps method keys to typed call functions. */
   client<T>(): TypedRpcClient<T>;
+
+  /**
+   * Returns currently registered RPC handler method names, sorted
+   * lexicographically. These are the methods callable by peers.
+   */
+  listMethods(): string[];
 }
 
 /** The Events sub-namespace on a Peer. */
@@ -278,7 +284,7 @@ export interface Peer {
  *
  * `disconnect()` is always a hard close, even when state is `"paused"`.
  */
-export interface AcceptedPeer {
+export interface ConnectedPeer {
   readonly state: "active" | "paused" | "closed";
   readonly connected: boolean;
   readonly ready: boolean;
@@ -307,7 +313,7 @@ export interface PeerOptions {
   endpoint?: string;
   /**
    * Session negotiator. Defaults to `sbpNegotiator()` (plain SBP handshake).
-   * Pass `sbrpClientNegotiator(...)` for E2EE relay mode.
+   * Pass `relayClientNegotiator(...)` for E2EE relay mode.
    */
   negotiator?: Negotiator;
   /**
@@ -346,9 +352,9 @@ export interface PeerServer {
   /** The address the server is listening on. */
   readonly address: string;
   /** All currently-connected accepted peers, keyed by their remote PeerId. */
-  readonly connections: ReadonlyMap<string, AcceptedPeer>;
+  readonly connections: ReadonlyMap<string, ConnectedPeer>;
   /**
-   * Hard shutdown. Immediately transitions all `AcceptedPeer` instances to
+   * Hard shutdown. Immediately transitions all `ConnectedPeer` instances to
    * `"closed"`, severs transports. Idempotent.
    */
   close(): Promise<void>;
@@ -366,10 +372,10 @@ export interface ListenOptions {
    * Called for each accepted connection. The `peer` argument is always in
    * `"active"` state at the point of the callback.
    */
-  onConnection: (peer: AcceptedPeer) => void | Promise<void>;
+  onConnection: (peer: ConnectedPeer) => void | Promise<void>;
   /**
    * Session negotiator. Defaults to `sbpNegotiator()`.
-   * Pass `sbrpDaemonNegotiator(...)` for E2EE relay mode.
+   * Pass `relayDaemonNegotiator(...)` for E2EE relay mode.
    */
   negotiator?: Negotiator;
   /**

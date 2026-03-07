@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { CloudPeerServer } from "@sideband/cloud";
+import type { CloudServer } from "@sideband/cloud";
 import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
 import { parseExpiryMs, renewQc, scheduleQcRenewal } from "./commands/start.js";
+import { registerStatsHandlers } from "./handlers/stats.js";
+import { makeStubPeer } from "./handlers/test-utils.js";
 import { printEcho } from "./output.js";
 
 // ─── parseExpiryMs ────────────────────────────────────────────────────────────
@@ -21,6 +23,28 @@ describe("parseExpiryMs", () => {
 
   it("throws on empty string", () => {
     expect(() => parseExpiryMs("")).toThrow();
+  });
+});
+
+// ─── $sideband/info contract ──────────────────────────────────────────────────
+
+describe("$sideband/info handler", () => {
+  it("returns { daemonId, name, version, capabilities: { stats: {} } }", () => {
+    const { peer, callHandler } = makeStubPeer();
+    // Simulate what onConnection wires up
+    const capabilities = { ...registerStatsHandlers(peer) };
+    peer.rpc.handle("$sideband/info", () => ({
+      daemonId: "d_test",
+      name: "My Dev",
+      version: "1.0.0",
+      capabilities,
+    }));
+    expect(callHandler("$sideband/info")).toEqual({
+      daemonId: "d_test",
+      name: "My Dev",
+      version: "1.0.0",
+      capabilities: { stats: {} },
+    });
   });
 });
 
@@ -75,13 +99,13 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 
 function makeFakeServer(
   qcResult: { code: string; url: string; expiresAt: string } | Error,
-): CloudPeerServer {
+): CloudServer {
   return {
     createQuickConnect: () =>
       qcResult instanceof Error
         ? Promise.reject(qcResult)
         : Promise.resolve(qcResult),
-  } as unknown as CloudPeerServer;
+  } as unknown as CloudServer;
 }
 
 // ─── scheduleQcRenewal ────────────────────────────────────────────────────────

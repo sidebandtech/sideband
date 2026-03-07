@@ -5,8 +5,8 @@
  * Sideband CLI entry point.
  *
  * Usage:
- *   sideband [--api-key <key>] [--json]       Start daemon
- *   sideband init --api-key <key>              Save API key to config
+ *   sideband [--api-key <key>] [--name <value>] [--json]   Start daemon
+ *   sideband init --api-key <key>                          Save API key to config
  *
  * API key resolution (highest wins):
  *   1. --api-key flag
@@ -19,17 +19,22 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runInit } from "./commands/init.js";
-import { getCliVersion, runStart } from "./commands/start.js";
+import {
+  getCliVersion,
+  resolveDaemonName,
+  runStart,
+} from "./commands/start.js";
 import { getConfigDir, resolveApiKey } from "./config.js";
 import { printFatal } from "./output.js";
 
 const USAGE = `
   Usage:
-    sideband [--api-key <key>] [--json]
+    sideband [--api-key <key>] [--name <value>] [--json]
     sideband init --api-key <key>
 
   Options:
     --api-key <key>   Override API key from env/config
+    --name <value>    Daemon name (default: hostname)
     --json            NDJSON output (for scripting/CI)
     --version, -V     Print version and exit
     --help            Show this help
@@ -48,7 +53,12 @@ class CliUsageError extends Error {
 }
 
 export type ParsedArgs =
-  | { command: "start"; apiKey: string | undefined; json: boolean }
+  | {
+      command: "start";
+      apiKey: string | undefined;
+      name: string | undefined;
+      json: boolean;
+    }
   | { command: "init"; apiKey: string | undefined }
   | { command: "version" }
   | { command: "help" };
@@ -66,33 +76,41 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (args[0] === "init") {
     return { command: "init", apiKey: parseInitFlags(args, 1) };
   }
-  return { command: "start", ...parseStartFlags(args) };
+  return { command: "start", ...parseStartFlags(args, USAGE) };
 }
 
 /**
- * Consume `--api-key <value>` or `--api-key=<value>` at index i.
+ * Consume a named flag `--<name> <value>` or `--<name>=<value>` at index i.
  * Returns the value and the index of the next unconsumed argument, or undefined if no match.
  */
-function consumeApiKey(
+function consumeFlag(
+  flag: string,
   args: string[],
   i: number,
 ): { value: string; next: number } | undefined {
   const arg = args[i]!;
-  if (arg.startsWith("--api-key="))
-    return { value: arg.slice(10), next: i + 1 };
-  if (arg === "--api-key") {
-    if (i + 1 >= args.length)
-      throw new CliUsageError("--api-key requires a value");
-    return { value: args[i + 1]!, next: i + 2 };
+  const prefix = `--${flag}=`;
+  if (arg.startsWith(prefix))
+    return { value: arg.slice(prefix.length), next: i + 1 };
+  if (arg === `--${flag}`) {
+    const next = args[i + 1];
+    if (next === undefined || next.startsWith("-"))
+      throw new CliUsageError(`--${flag} requires a value`);
+    return { value: next, next: i + 2 };
   }
   return undefined;
 }
 
-function parseStartFlags(args: string[]): {
+function parseStartFlags(
+  args: string[],
+  usage: string,
+): {
   apiKey: string | undefined;
+  name: string | undefined;
   json: boolean;
 } {
   let apiKey: string | undefined;
+  let name: string | undefined;
   let json = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -100,10 +118,16 @@ function parseStartFlags(args: string[]): {
       json = true;
       continue;
     }
-    const kv = consumeApiKey(args, i);
-    if (kv !== undefined) {
-      apiKey = kv.value;
-      i = kv.next - 1;
+    const apiKv = consumeFlag("api-key", args, i);
+    if (apiKv !== undefined) {
+      apiKey = apiKv.value;
+      i = apiKv.next - 1;
+      continue;
+    }
+    const nameKv = consumeFlag("name", args, i);
+    if (nameKv !== undefined) {
+      name = nameKv.value;
+      i = nameKv.next - 1;
       continue;
     }
     if (arg === "init") {
@@ -111,16 +135,16 @@ function parseStartFlags(args: string[]): {
         `subcommand "init" must be the first argument.\n  Try: sideband init --api-key <key>`,
       );
     }
-    throw new CliUsageError(`Unknown argument: ${arg}\n${USAGE}`);
+    throw new CliUsageError(`Unknown argument: ${arg}\n${usage}`);
   }
-  return { apiKey, json };
+  return { apiKey, name, json };
 }
 
 function parseInitFlags(args: string[], start: number): string | undefined {
   let apiKey: string | undefined;
   for (let i = start; i < args.length; i++) {
     const arg = args[i]!;
-    const kv = consumeApiKey(args, i);
+    const kv = consumeFlag("api-key", args, i);
     if (kv !== undefined) {
       apiKey = kv.value;
       i = kv.next - 1;
@@ -165,7 +189,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  await runStart({ apiKey, configDir, json: parsed.json });
+  await runStart({
+    apiKey,
+    configDir,
+    json: parsed.json,
+    name: resolveDaemonName(parsed.name),
+  });
 }
 
 // Only execute when run directly, not when imported by tests.

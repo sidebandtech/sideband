@@ -7,11 +7,11 @@ import { PeerErrorCode } from "./errors.js";
 import { listen } from "./listen.js";
 import { createPeer, sbpNegotiator } from "./peer.js";
 import { waitFor } from "./peer.test-helpers.js";
-import type { AcceptedPeer } from "./types.js";
+import type { ConnectedPeer } from "./types.js";
 
 // Coverage obligation: every SessionSignal type handled by handleSessionSignal
 // (session_paused, session_resumed, session_ended, session_pending) MUST have
-// a test here for both PeerImpl (createPeer) and AcceptedPeerImpl (listen).
+// a test here for both PeerImpl (createPeer) and ConnectedPeerImpl (listen).
 // When new signal types are added to the protocol, extend this file first.
 // See ADR-014 for behavioral contracts.
 
@@ -54,15 +54,15 @@ function withControllableSignals(base: Negotiator): {
   };
 }
 
-// ─── Session signals — AcceptedPeer ───────────────────────────────────────────
+// ─── Session signals — ConnectedPeer ───────────────────────────────────────────
 
-describe("session signals — AcceptedPeer", () => {
+describe("session signals — ConnectedPeer", () => {
   it("session_paused transitions to paused and emits sessionPaused", async () => {
     const transport = new LoopbackTransport();
     const endpoint = `loopback://sig-accepted-pause-${++testCounter}`;
     const { negotiator, emitSignal } = withControllableSignals(sbpNegotiator());
 
-    let serverPeer: AcceptedPeer | undefined;
+    let serverPeer: ConnectedPeer | undefined;
     const server = await listen({
       endpoint,
       transport,
@@ -103,7 +103,7 @@ describe("session signals — AcceptedPeer", () => {
     const endpoint = `loopback://sig-accepted-resume-${++testCounter}`;
     const { negotiator, emitSignal } = withControllableSignals(sbpNegotiator());
 
-    let serverPeer: AcceptedPeer | undefined;
+    let serverPeer: ConnectedPeer | undefined;
     const server = await listen({
       endpoint,
       transport,
@@ -152,7 +152,7 @@ describe("session signals — AcceptedPeer", () => {
     const endpoint = `loopback://sig-accepted-ended-${++testCounter}`;
     const { negotiator, emitSignal } = withControllableSignals(sbpNegotiator());
 
-    let serverPeer: AcceptedPeer | undefined;
+    let serverPeer: ConnectedPeer | undefined;
     const server = await listen({
       endpoint,
       transport,
@@ -193,7 +193,7 @@ describe("session signals — AcceptedPeer", () => {
     const endpoint = `loopback://sig-accepted-pending-${++testCounter}`;
     const { negotiator, emitSignal } = withControllableSignals(sbpNegotiator());
 
-    let serverPeer: AcceptedPeer | undefined;
+    let serverPeer: ConnectedPeer | undefined;
     const server = await listen({
       endpoint,
       transport,
@@ -236,7 +236,7 @@ describe("session signals — AcceptedPeer", () => {
     const endpoint = `loopback://sig-accepted-idempotent-${++testCounter}`;
     const { negotiator, emitSignal } = withControllableSignals(sbpNegotiator());
 
-    let serverPeer: AcceptedPeer | undefined;
+    let serverPeer: ConnectedPeer | undefined;
     const server = await listen({
       endpoint,
       transport,

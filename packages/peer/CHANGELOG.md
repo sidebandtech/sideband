@@ -112,7 +112,7 @@
 
 - [#21](https://github.com/sidebandtech/sideband/pull/21) [`c23e3aa`](https://github.com/sidebandtech/sideband/commit/c23e3aacb0cbb45ce95d11a4dbba95cd86a630b3) Thanks [@koistya](https://github.com/koistya)! - Add SBRP E2EE negotiators and `@sideband/peer/sbrp` subpath export
 
-  `@sideband/peer` gains `sbrpClientNegotiator` and `sbrpDaemonNegotiator` via a new
+  `@sideband/peer` gains `relayClientNegotiator` and `relayDaemonNegotiator` via a new
   `@sideband/peer/sbrp` entry point (requires `@sideband/secure-relay` as a peer dep).
   Includes TOFU identity pinning, configurable trust policies (`auto`/`prompt`/`strict`),
   ephemeral key zeroization, and an encrypted channel wrapper with injected crypto ops.

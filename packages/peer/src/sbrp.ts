@@ -8,10 +8,10 @@
  *
  * @example
  * ```ts
- * import { sbrpClientNegotiator, createMemoryIdentityKeyStore } from "@sideband/peer/sbrp";
+ * import { relayClientNegotiator, createMemoryIdentityKeyStore } from "@sideband/peer/sbrp";
  * import { createPeer } from "@sideband/peer";
  *
- * const negotiator = sbrpClientNegotiator({
+ * const negotiator = relayClientNegotiator({
  *   daemonId: asDaemonId("my-daemon"),
  *   sessionId: 1n,
  *   identityKeyStore: createMemoryIdentityKeyStore(),
@@ -26,8 +26,8 @@ export {
   classifySbrpError,
   createMemoryIdentityKeyStore,
   createSbrpChannel,
-  sbrpClientNegotiator,
-  sbrpDaemonNegotiator,
+  relayClientNegotiator,
+  relayDaemonNegotiator,
 } from "./negotiator/index.js";
 export type {
   ChannelCrypto,

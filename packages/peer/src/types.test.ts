@@ -12,7 +12,7 @@ import { describe, expectTypeOf, test } from "bun:test";
 import { PeerError, PeerErrorCode } from "./errors.js";
 import type { listen } from "./listen.js";
 import type {
-  AcceptedPeer,
+  ConnectedPeer,
   EventsInterface,
   ListenOptions,
   Peer,
@@ -153,21 +153,21 @@ describe("PeerState", () => {
   });
 });
 
-// ─── AcceptedPeer ─────────────────────────────────────────────────────────────
+// ─── ConnectedPeer ─────────────────────────────────────────────────────────────
 
-describe("AcceptedPeer", () => {
+describe("ConnectedPeer", () => {
   test("state is narrower than PeerState", () => {
-    expectTypeOf<AcceptedPeer["state"]>().toEqualTypeOf<
+    expectTypeOf<ConnectedPeer["state"]>().toEqualTypeOf<
       "active" | "paused" | "closed"
     >();
   });
 
   test("has no connect() method", () => {
-    expectTypeOf<AcceptedPeer>().not.toHaveProperty("connect");
+    expectTypeOf<ConnectedPeer>().not.toHaveProperty("connect");
   });
 
   test("has no reconnecting promise", () => {
-    expectTypeOf<AcceptedPeer>().not.toHaveProperty("reconnecting");
+    expectTypeOf<ConnectedPeer>().not.toHaveProperty("reconnecting");
   });
 });
 

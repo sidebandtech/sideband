@@ -10,18 +10,18 @@ import {
   WireControlCode,
 } from "@sideband/secure-relay";
 import { describe, expect, it, mock } from "bun:test";
-import { sbrpClientNegotiator } from "./client.js";
+import { relayClientNegotiator } from "./client.js";
 import { createMemoryIdentityKeyStore } from "./identity-key-store.js";
 import { createTransportPair } from "./test-helpers.js";
 
 const daemonId = asDaemonId("test-daemon");
 const sessionId = 100n;
 
-describe("sbrpClientNegotiator", () => {
+describe("relayClientNegotiator", () => {
   describe("construction validation", () => {
     it('throws if trustPolicy "prompt" without onFirstConnection', () => {
       expect(() =>
-        sbrpClientNegotiator({
+        relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore: createMemoryIdentityKeyStore(),
@@ -33,7 +33,7 @@ describe("sbrpClientNegotiator", () => {
 
     it('throws if trustPolicy "prompt" without onIdentityMismatch', () => {
       expect(() =>
-        sbrpClientNegotiator({
+        relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore: createMemoryIdentityKeyStore(),
@@ -46,7 +46,7 @@ describe("sbrpClientNegotiator", () => {
 
     it('does not throw for "auto" without onFirstConnection', () => {
       expect(() =>
-        sbrpClientNegotiator({
+        relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore: createMemoryIdentityKeyStore(),
@@ -55,13 +55,13 @@ describe("sbrpClientNegotiator", () => {
       ).not.toThrow();
     });
 
-    it('does not throw for "strict" without onFirstConnection', () => {
+    it('does not throw for "pinned-only" without onFirstConnection', () => {
       expect(() =>
-        sbrpClientNegotiator({
+        relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore: createMemoryIdentityKeyStore(),
-          trustPolicy: "strict",
+          trustPolicy: "pinned-only",
         }),
       ).not.toThrow();
     });
@@ -70,7 +70,7 @@ describe("sbrpClientNegotiator", () => {
       "throws for invalid handshakeTimeoutMs: %p",
       (value) => {
         expect(() =>
-          sbrpClientNegotiator({
+          relayClientNegotiator({
             daemonId,
             sessionId,
             identityKeyStore: createMemoryIdentityKeyStore(),
@@ -88,16 +88,16 @@ describe("sbrpClientNegotiator", () => {
       const identityKeyStore = createMemoryIdentityKeyStore();
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
         trustPolicy: "auto",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -127,9 +127,9 @@ describe("sbrpClientNegotiator", () => {
       const onFirstConnection = mock(async () => true);
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
@@ -138,7 +138,7 @@ describe("sbrpClientNegotiator", () => {
         onIdentityMismatch: async () => true,
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -158,9 +158,9 @@ describe("sbrpClientNegotiator", () => {
       const identityKeyStore = createMemoryIdentityKeyStore();
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
@@ -169,7 +169,7 @@ describe("sbrpClientNegotiator", () => {
         onIdentityMismatch: async () => true,
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -185,21 +185,21 @@ describe("sbrpClientNegotiator", () => {
       expect(pinnedKey).toBeNull();
     });
 
-    it('"strict" rejects when no pinned key exists', async () => {
+    it('"pinned-only" rejects when no pinned key exists', async () => {
       const identity = generateIdentityKeyPair();
       const identityKeyStore = createMemoryIdentityKeyStore();
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
-        trustPolicy: "strict",
+        trustPolicy: "pinned-only",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -208,26 +208,26 @@ describe("sbrpClientNegotiator", () => {
       daemonNeg.negotiate(daemonConn).catch(() => {});
 
       await expect(clientPromise).rejects.toThrow(SbrpError);
-      await expect(clientPromise).rejects.toThrow(/strict mode/);
+      await expect(clientPromise).rejects.toThrow(/pinned-only mode/);
     });
 
-    it('"strict" accepts when pinned key matches', async () => {
+    it('"pinned-only" accepts when pinned key matches', async () => {
       const identity = generateIdentityKeyPair();
       const identityKeyStore = createMemoryIdentityKeyStore();
       // Pre-pin the key
       await identityKeyStore.set(daemonId, identity.publicKey);
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
-        trustPolicy: "strict",
+        trustPolicy: "pinned-only",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -248,16 +248,16 @@ describe("sbrpClientNegotiator", () => {
       await identityKeyStore.set(daemonId, identity.publicKey);
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
         trustPolicy: "auto",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -277,10 +277,10 @@ describe("sbrpClientNegotiator", () => {
       await identityKeyStore.set(daemonId, originalIdentity.publicKey);
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
       const onIdentityMismatch = mock(async () => false);
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
@@ -289,7 +289,7 @@ describe("sbrpClientNegotiator", () => {
         onIdentityMismatch,
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: newIdentity,
       });
@@ -308,9 +308,9 @@ describe("sbrpClientNegotiator", () => {
       await identityKeyStore.set(daemonId, originalIdentity.publicKey);
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
@@ -319,7 +319,7 @@ describe("sbrpClientNegotiator", () => {
         onIdentityMismatch: async () => true,
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: newIdentity,
       });
@@ -342,10 +342,10 @@ describe("sbrpClientNegotiator", () => {
       await identityKeyStore.set(daemonId, originalIdentity.publicKey);
 
       const { clientConn, daemonConn } = createTransportPair();
-      const { sbrpDaemonNegotiator } = await import("./daemon.js");
+      const { relayDaemonNegotiator } = await import("./daemon.js");
 
       const onIdentityMismatch = mock(async () => false);
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
@@ -353,7 +353,7 @@ describe("sbrpClientNegotiator", () => {
         onIdentityMismatch,
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: newIdentity,
       });
@@ -392,7 +392,7 @@ describe("sbrpClientNegotiator", () => {
         },
       };
 
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -407,7 +407,7 @@ describe("sbrpClientNegotiator", () => {
 
   describe("classifyError", () => {
     it("classifies identity_key_changed as fatal", () => {
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -422,7 +422,7 @@ describe("sbrpClientNegotiator", () => {
     });
 
     it("classifies handshake_failed as fatal", () => {
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -437,7 +437,7 @@ describe("sbrpClientNegotiator", () => {
     });
 
     it("classifies handshake_timeout as retryable", () => {
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -452,7 +452,7 @@ describe("sbrpClientNegotiator", () => {
     });
 
     it("classifies decrypt_failed as fatal", () => {
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -467,7 +467,7 @@ describe("sbrpClientNegotiator", () => {
     });
 
     it("classifies relay terminal codes as fatal", () => {
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -494,7 +494,7 @@ describe("sbrpClientNegotiator", () => {
     });
 
     it("classifies transient relay codes as retryable", () => {
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -515,7 +515,7 @@ describe("sbrpClientNegotiator", () => {
     });
 
     it("classifies non-SbrpError as retryable", () => {
-      const negotiator = sbrpClientNegotiator({
+      const negotiator = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),

@@ -3,8 +3,8 @@
 import type { Negotiator } from "@sideband/runtime";
 import { asDaemonId } from "@sideband/secure-relay";
 import { describe, expectTypeOf, test } from "bun:test";
-import { sbrpClientNegotiator } from "./client.js";
-import { sbrpDaemonNegotiator } from "./daemon.js";
+import { relayClientNegotiator } from "./client.js";
+import { relayDaemonNegotiator } from "./daemon.js";
 import { createMemoryIdentityKeyStore } from "./identity-key-store.js";
 import type { SbrpClientOptions, TrustPolicy } from "./types.js";
 
@@ -12,14 +12,14 @@ describe("sbrp negotiator type contracts", () => {
   test("factory return types remain Negotiator", () => {
     const daemonId = asDaemonId("type-test-daemon");
 
-    const clientNegotiator = sbrpClientNegotiator({
+    const clientNegotiator = relayClientNegotiator({
       daemonId,
       sessionId: 1n,
       identityKeyStore: createMemoryIdentityKeyStore(),
       trustPolicy: "auto",
     });
 
-    const daemonNegotiator = sbrpDaemonNegotiator({
+    const daemonNegotiator = relayDaemonNegotiator({
       daemonId,
       identityKeyPair: {
         publicKey: new Uint8Array(32),
@@ -33,14 +33,14 @@ describe("sbrp negotiator type contracts", () => {
 
   test("client options enforce prompt callback at compile time", () => {
     expectTypeOf<
-      Parameters<typeof sbrpClientNegotiator>[0]
+      Parameters<typeof relayClientNegotiator>[0]
     >().toEqualTypeOf<SbrpClientOptions>();
 
     if (false) {
       const daemonId = asDaemonId("type-test-daemon");
       const identityKeyStore = createMemoryIdentityKeyStore();
 
-      sbrpClientNegotiator({
+      relayClientNegotiator({
         daemonId,
         sessionId: 1n,
         identityKeyStore,
@@ -49,7 +49,7 @@ describe("sbrp negotiator type contracts", () => {
         onIdentityMismatch: async () => true,
       });
 
-      sbrpClientNegotiator({
+      relayClientNegotiator({
         daemonId,
         sessionId: 1n,
         identityKeyStore,
@@ -57,14 +57,14 @@ describe("sbrp negotiator type contracts", () => {
       });
 
       // @ts-expect-error default trustPolicy is "prompt", so callback is required
-      sbrpClientNegotiator({
+      relayClientNegotiator({
         daemonId,
         sessionId: 1n,
         identityKeyStore,
       });
 
       // @ts-expect-error explicit "prompt" also requires callback
-      sbrpClientNegotiator({
+      relayClientNegotiator({
         daemonId,
         sessionId: 1n,
         identityKeyStore,
@@ -81,14 +81,14 @@ describe("sbrp negotiator type contracts", () => {
       // Widened policies that may include "prompt" must still require callback.
       const trustPolicy: TrustPolicy = "auto";
       // @ts-expect-error TrustPolicy includes "prompt", callback is required.
-      sbrpClientNegotiator({
+      relayClientNegotiator({
         daemonId,
         sessionId: 1n,
         identityKeyStore,
         trustPolicy,
       });
 
-      sbrpClientNegotiator({
+      relayClientNegotiator({
         daemonId,
         sessionId: 1n,
         identityKeyStore,
@@ -110,7 +110,7 @@ describe("sbrp negotiator type contracts", () => {
         identityKeyStore,
         trustPolicy: "auto",
       } satisfies SbrpClientOptions;
-      sbrpClientNegotiator(options);
+      relayClientNegotiator(options);
     }
   });
 });

@@ -44,7 +44,7 @@ const server = await listen({
   },
 });
 
-// server.connections — ReadonlyMap<string, AcceptedPeer>
+// server.connections — ReadonlyMap<string, ConnectedPeer>
 await server.close();
 ```
 
@@ -80,7 +80,7 @@ For end-to-end encrypted relay sessions via `@sideband/secure-relay`:
 ```ts
 import { createPeer } from "@sideband/peer";
 import {
-  sbrpClientNegotiator,
+  relayClientNegotiator,
   createMemoryIdentityKeyStore,
 } from "@sideband/peer/sbrp";
 import { asDaemonId } from "@sideband/secure-relay";
@@ -88,7 +88,7 @@ import { asDaemonId } from "@sideband/secure-relay";
 const store = createMemoryIdentityKeyStore();
 const peer = createPeer({
   endpoint: "ws://relay.example.com",
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: asDaemonId("target-daemon-id"),
     // Relay mode: pass the JWT — sessionId is extracted from the `sid` claim.
     sessionToken: "<relay-session-jwt>",
@@ -108,7 +108,7 @@ When the relay pauses a session, the peer transitions to `"paused"`: `peer.ready
 
 `PeerOptions.endpoint` is optional when the negotiator implements `getConnectionParams()` to supply a fresh URL on each connect attempt (e.g. `@sideband/cloud`'s negotiator mints a new relay session token per attempt). A runtime error is thrown if no endpoint is available at connect time.
 
-Server side uses `sbrpDaemonNegotiator` with an `identityKeyPair`. See `@sideband/secure-relay` for details.
+Server side uses `relayDaemonNegotiator` with an `identityKeyPair`. See `@sideband/secure-relay` for details.
 
 ## Events (NATS patterns)
 
