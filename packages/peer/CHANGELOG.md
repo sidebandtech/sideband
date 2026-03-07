@@ -1,5 +1,11 @@
 # @sideband/peer
 
+## 0.6.1
+
+### Patch Changes
+
+- [#54](https://github.com/sidebandtech/sideband/pull/54) [`ea8661b`](https://github.com/sidebandtech/sideband/commit/ea8661b2fd7e150462e69ffabf6472c99acb94e1) Thanks [@koistya](https://github.com/koistya)! - Add runtime guard in `relayClientNegotiator` for unknown `trustPolicy` values.
+
 ## 0.6.0
 
 ### Minor Changes
