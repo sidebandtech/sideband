@@ -45,7 +45,7 @@ bound to the Noise static key (binding details deferred to the SBDP specificatio
 * Both parties must provision Noise static keypairs before a direct session.
 * TOFU pinning applies to both directions independently.
 * MITM detection works in both directions.
-* `sbdpNegotiator()` requires a Noise static keypair from both sides (unlike `sbrpClientNegotiator`
+* `sbdpNegotiator()` requires a Noise static keypair from both sides (unlike `relayClientNegotiator`
   where the client has no persistent identity).
 
 ### 3. Transport is pluggable; no single P2P transport is mandated

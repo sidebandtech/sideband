@@ -1614,10 +1614,10 @@ url: /adr/013-peer-sdk-design.md
 
 ```typescript
 /** Client-side SBRP (browser or CLI connecting to a daemon) */
-function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator;
+function relayClientNegotiator(options: SbrpClientOptions): Negotiator;
 
 /** Daemon-side SBRP (service accepting relay connections) */
-function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
+function relayDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
 ```
 
 **Rationale:** `SbrpNegotiatorOptions` mixes client-only fields (TOFU pinning, `onFirstConnection`, `trustPolicy`, `controlPlaneUrl`) with daemon-only fields (`serverIdentity`, `resumable`, `pauseBufferLimitBytes`). Options A and B allow invalid combinations to compile and fail only at runtime — violating the "hard to misuse" design goal. Separate factories give each role a dedicated, focused type with unambiguous autocomplete and error messages.
@@ -1668,7 +1668,7 @@ SAFE_CHAR  = ALPHA | DIGIT | "-" | "_"
 
 ## Consequences
 
-* `@sideband/peer` exposes `sbrpClientNegotiator` and `sbrpDaemonNegotiator`. They live in peer (not secure-relay) because peer already depends on runtime for `Negotiator`/`SbpNegotiator`, while secure-relay stays a pure crypto library with zero runtime dependencies.
+* `@sideband/peer` exposes `relayClientNegotiator` and `relayDaemonNegotiator`. They live in peer (not secure-relay) because peer already depends on runtime for `Negotiator`/`SbpNegotiator`, while secure-relay stays a pure crypto library with zero runtime dependencies.
 * `@sideband/peer` validates event patterns client-side via `onPattern()` / `validatePattern()`.
 * All documentation and examples MUST use `>` (not `**`) for multi-segment wildcard patterns.
 * Server-side consumers import from `@sideband/peer/server`; browser consumers import from `@sideband/peer`.
@@ -1765,7 +1765,7 @@ Returning an unsubscribe function gives the SDK precise lifecycle control: on ea
 * ADR-013: Peer SDK Core Design Decisions
 * `packages/runtime/src/session/types.ts` — `NegotiationResult`, `SessionSignal`
 * `packages/peer/src/peer.ts` — `handleSessionSignal`, `transition`
-* `packages/peer/src/listen.ts` — `AcceptedPeerImpl.handleSessionSignal`
+* `packages/peer/src/listen.ts` — `ConnectedPeerImpl.handleSessionSignal`
 
 ---
 
@@ -1816,7 +1816,7 @@ bound to the Noise static key (binding details deferred to the SBDP specificatio
 * Both parties must provision Noise static keypairs before a direct session.
 * TOFU pinning applies to both directions independently.
 * MITM detection works in both directions.
-* `sbdpNegotiator()` requires a Noise static keypair from both sides (unlike `sbrpClientNegotiator`
+* `sbdpNegotiator()` requires a Noise static keypair from both sides (unlike `relayClientNegotiator`
   where the client has no persistent identity).
 
 ### 3. Transport is pluggable; no single P2P transport is mandated
@@ -1913,8 +1913,8 @@ url: /adr/016-relay-server-design.md
 ## Context
 
 The hosted Sideband relay is the infrastructure that enables browser ↔ daemon communication
-through NAT. It is the bridge between `sbrpClientNegotiator` (browser/client) and
-`sbrpDaemonNegotiator` (local daemon). Without a relay endpoint, the E2EE value proposition
+through NAT. It is the bridge between `relayClientNegotiator` (browser/client) and
+`relayDaemonNegotiator` (local daemon). Without a relay endpoint, the E2EE value proposition
 is theoretical.
 
 The relay must:
@@ -1973,7 +1973,7 @@ from consuming DO resources.
 
 Connection routing uses a fixed endpoint with token-derived routing:
 
-```
+```text
 wss://{region}.relay.sideband.cloud?token=<jwt>
 ```
 
@@ -1996,7 +1996,7 @@ Security note: query-string tokens MUST be short-lived and redacted from logs/an
 ### 5. Pause/resume signaling
 
 When a client connection drops, the relay emits `Control(session_ended)` to the daemon; the
-daemon's `AcceptedPeer` transitions to `closed` (no pause semantics for client drops — clients
+daemon's `ConnectedPeer` transitions to `closed` (no pause semantics for client drops — clients
 are ephemeral from the relay's perspective).
 
 When the daemon connection closes unexpectedly, the DO emits `Control(session_paused)` to affected
@@ -2142,7 +2142,7 @@ RelayDaemonTransport.listen()
     │ known SID → route frame to existing RelayVirtualConn
     │ SID=0 Control → rate_limited: continue; other: reconnect
     ↓
-sbrpDaemonNegotiator per session → AcceptedPeer → onConnection(peer)
+relayDaemonNegotiator per session → ConnectedPeer → onConnection(peer)
 ```
 
 `peerListen()` is unchanged — it sees a stream of `TransportConnection` objects regardless of
@@ -2150,11 +2150,11 @@ whether they come from a local server or relay mux. Slow consumers are terminate
 Consecutive malformed frames trigger reconnect with backoff (circuit breaker against log storms
 on protocol version mismatch).
 
-`listen()` returns `CloudPeerServer` (extends `PeerServer`) with three additional members that
+`listen()` returns `CloudServer` (extends `PeerServer`) with three additional members that
 are only available after the first relay connection resolves:
 
 ```typescript
-interface CloudPeerServer extends PeerServer {
+interface CloudServer extends PeerServer {
   readonly daemonId: string; // `did` claim extracted from the presence token
   readonly relayUrl: string; // e.g. "wss://relay.sideband.cloud"
   createQuickConnect(opts?: { ttlSeconds?: number }): Promise<{
@@ -2181,7 +2181,94 @@ stale even if the daemon ID was omitted from `ListenOptions`.
 * ADR-016: Relay Server Design
 * `packages/runtime/src/session/types.ts` — `Negotiator`, `NegotiatorConnectionParams`
 * `packages/cloud/src/connect.ts` — `CloudClientNegotiator`
-* `packages/cloud/src/listen.ts` — `RelayDaemonTransport`, `RelayVirtualConn`, `runMux`, `CloudPeerServer`
+* `packages/cloud/src/listen.ts` — `RelayDaemonTransport`, `RelayVirtualConn`, `runMux`, `CloudServer`
+
+---
+
+---
+url: /adr/018-daemon-capabilities.md
+---
+# ADR-018: Daemon Built-in Capabilities and `$sideband/*` Namespace
+
+* **Date**: 2026-03-07
+* **Status**: Accepted
+* **Affects**: SDK, CLI
+
+## Context
+
+The connect page needs something meaningful to render when a peer connects. Before this PR the daemon had only two methods (`$sideband/echo`, `$sideband/info`) with no introspection surface and no way for a UI to discover what a daemon can do. Three design questions arose:
+
+1. **How should a UI discover which RPC methods exist?** — enumerating all handlers vs. a dedicated introspection protocol.
+2. **How should user-facing features (stats, future file browser) be advertised?** — a free-form capability bag vs. a fixed schema.
+3. **Where does method introspection belong in the SDK?** — a separate introspection API vs. a method on `RpcInterface`.
+
+## Decision
+
+### 1. `$sideband/*` — reserved namespace for platform-provided handlers
+
+All handlers registered by the Sideband platform (CLI built-ins, SDK infrastructure) use the `$sideband/` prefix. User-registered methods MUST NOT use this prefix.
+
+This makes the platform surface unambiguous and lets UIs apply consistent treatment (e.g., grouping, filtering) without heuristics.
+
+### 2. Two-tier introspection: infrastructure vs. capabilities
+
+**Infrastructure handlers** (`$sideband/rpc.list`, `$sideband/rpc.describe`) are always available on every daemon, CLI or programmatic. They are universal and are NOT listed in `capabilities` — their presence is implicit.
+
+**Capabilities** (`stats`, future `fs`) represent user-facing functional areas that may or may not be present. They are advertised explicitly in `$sideband/info`:
+
+```typescript
+// $sideband/info response
+{
+  daemonId: string;
+  name: string;
+  version: string;
+  capabilities: Record<string, object>; // { stats: {}, fs: { root, write } … }
+}
+```
+
+The key design invariant: **`rpc.list` is the truth; `rpc.describe` is optional display metadata; `capabilities` is the user-feature contract.**
+
+Rationale for the separation:
+
+* `rpc.list` returns all registered methods — including user-defined ones. The UI uses it for the full method set.
+* `capabilities` is a curated, stable API for feature detection. A UI checking `capabilities.stats` is more robust than checking whether `$sideband/stats` appears in `rpc.list`.
+* `rpc.describe` is sparse metadata for human display. It is intentionally not filtered against `rpc.list` — undescribed methods appear in `rpc.list` but not in `rpc.describe`, which is correct and expected.
+
+### 3. `listMethods()` on `RpcInterface`
+
+Method introspection is placed on `RpcInterface` rather than a separate API:
+
+```typescript
+interface RpcInterface {
+  listMethods(): string[]; // Returns registered handler names, sorted lexicographically.
+}
+```
+
+**Rationale:** `$sideband/rpc.list` must work for every daemon — CLI and programmatic. Placing `listMethods()` on `RpcInterface` means any daemon, regardless of how it was created, exposes the same introspection surface. A separate top-level introspection API would require daemon authors to opt in explicitly; an `RpcInterface` method is always there.
+
+### 4. Stats subscriptions are session-scoped
+
+`$sideband/stats.start` subscriptions are not resumed across reconnects. The client must call `stats.start` again after a new session is established. Rationale: resuming a subscription requires the daemon to track per-client state across sessions, which adds complexity and creates implicit cleanup obligations. Explicit restart is simpler, predictable, and keeps the daemon stateless between sessions.
+
+## Invariants
+
+* `$sideband/*` prefix is reserved for platform use. User handlers MUST NOT use it.
+* `rpc.list` and `rpc.describe` MUST NOT appear in `capabilities`.
+* `listMethods()` returns a sorted array — clients may rely on lexicographic order for stable display.
+* Stats subscriptions are terminal at session end — not resumed on reconnect.
+
+## Consequences
+
+* UI can use `capabilities` for feature detection and `rpc.list` + `rpc.describe` for the RPC explorer.
+* New CLI capabilities (e.g., `fs`) follow the same pattern: register handlers, return `{ fs: <descriptor> }` from the handler registrar, merge into `$sideband/info`.
+* Programmatic daemons that want `rpc.list` to work correctly call `registerRpcMeta()` themselves; it is opt-in, not automatic.
+
+## References
+
+* ADR-013: Peer SDK Core Design Decisions
+* `packages/cli/src/handlers/rpc-meta.ts` — `registerRpcMeta()`
+* `packages/cli/src/handlers/stats.ts` — `registerStatsHandlers()`
+* `packages/peer/src/types.ts` — `RpcInterface.listMethods()`
 
 ---
 
@@ -2248,6 +2335,7 @@ This section documents significant architectural decisions for the Sideband proj
 | [015](./015-p2p-direct-protocol.md)                   | P2P Direct Protocol (SBDP)            | Accepted |
 | [016](./016-relay-server-design.md)                   | Relay Server Design                   | Accepted |
 | [017](./017-cloud-sdk-design.md)                      | Cloud SDK Design                      | Accepted |
+| [018](./018-daemon-capabilities.md)                   | Daemon Built-in Capabilities          | Accepted |
 
 ## Creating a new ADR
 
@@ -2398,7 +2486,7 @@ await peer.disconnect();
 ```
 
 On the server side, `listen()` accepts incoming connections. Each accepted connection is an
-`AcceptedPeer` — the same abstraction, but with no `connect()` (the server doesn't initiate).
+`ConnectedPeer` — the same abstraction, but with no `connect()` (the server doesn't initiate).
 
 ***
 
@@ -2418,7 +2506,7 @@ createPeer({ endpoint: "ws://..." });
 // E2EE via relay (SBRP)
 createPeer({
   endpoint: relayUrl, // from POST /api/sessions
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId,
     sessionToken,
     identityKeyStore,
@@ -2456,7 +2544,7 @@ The subject identifies the message class; the envelope identifies the operation.
 A peer moves through states in a defined order. Understanding states matters when you handle
 errors or want to react to connection changes.
 
-```
+```text
 idle → connecting → negotiating → active
          ↑                          ↓
          └──── reconnecting ────────┘
@@ -3097,7 +3185,7 @@ messages, but cannot read them.
 
 ## How it Works
 
-```
+```text
 Browser (client) ──SBRP──▶ Relay ──SBRP──▶ Daemon
         ◀──────────────────────────────────────────
 ```
@@ -3206,12 +3294,12 @@ For self-hosted relay servers, use `@sideband/peer` directly:
 
 ```typescript
 import { listen } from "@sideband/peer/server";
-import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
+import { relayDaemonNegotiator } from "@sideband/peer/sbrp";
 import { generateIdentityKeyPair } from "@sideband/secure-relay";
 
 const server = await listen({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpDaemonNegotiator({
+  negotiator: relayDaemonNegotiator({
     daemonId: asDaemonId("my-daemon"),
     identityKeyPair: identity,
   }),
@@ -3225,7 +3313,7 @@ const server = await listen({
 
 ```typescript
 import { createPeer } from "@sideband/peer";
-import { sbrpClientNegotiator } from "@sideband/peer/sbrp";
+import { relayClientNegotiator } from "@sideband/peer/sbrp";
 
 // sessionToken from your relay API — contains the sid claim
 const { relayUrl, token: sessionToken } = await api.createSession({
@@ -3234,7 +3322,7 @@ const { relayUrl, token: sessionToken } = await api.createSession({
 
 const peer = createPeer({
   endpoint: `${relayUrl}?token=${sessionToken}`,
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: asDaemonId("my-daemon"),
     sessionToken, // sessionId extracted from JWT sid claim automatically
     identityKeyStore,
@@ -3267,7 +3355,7 @@ subsequent connections verify against the pinned fingerprint.
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `"prompt"` (default) | Calls `onFirstConnection` and `onIdentityMismatch`; throws if callbacks are missing                                                                                                    |
 | `"auto"`             | Trusts silently on first contact; pins automatically. On identity mismatch, silently accepts the new key and re-pins — convenient but trades MITM detection for zero-friction rotation |
-| `"strict"`           | Requires the key to already be pinned; throws if not found                                                                                                                             |
+| `"pinned-only"`      | Requires the key to already be pinned; throws if not found                                                                                                                             |
 
 With the default `trustPolicy: "prompt"`, an identity mismatch invokes the `onIdentityMismatch`
 callback. If it returns `true`, the new key is **permanently re-pinned** in the `identityKeyStore`,
@@ -3275,7 +3363,7 @@ replacing the old key. If it returns `false`, the connection is closed — the p
 `"closed"`, not `"reconnecting"`. Choose carefully — re-pinning should only happen when the user has
 out-of-band confirmation that the daemon was intentionally re-keyed.
 
-With `trustPolicy: "strict"`, any mismatch is unconditionally fatal — the peer transitions to
+With `trustPolicy: "pinned-only"`, any mismatch is unconditionally fatal — the peer transitions to
 `"closed"` immediately. This prevents silent MITM attacks without relying on user judgment.
 
 ***
@@ -3653,7 +3741,7 @@ Recommended order for new users:
 | [Concepts](concepts.md)         | 1) Mental model: peers, sessions, subjects, state machine     |
 | [RPC](rpc.md)                   | 2) Request/response patterns, typed clients, errors, timeouts |
 | [Events](events.md)             | 3) Fire-and-forget events, NATS pattern subscriptions         |
-| [Server](server.md)             | 4) `listen()`, AcceptedPeer, connection management            |
+| [Server](server.md)             | 4) `listen()`, ConnectedPeer, connection management           |
 | [E2EE Relay](e2ee.md)           | 5) End-to-end encrypted sessions via SBRP and TOFU            |
 | [Testing](testing.md)           | 6) LoopbackTransport and integration testing patterns         |
 | [Self-Hosting](self-hosting.md) | Relay architecture and self-hosted deployment                 |
@@ -3903,7 +3991,7 @@ Package boundaries and dependency direction for the current Sideband workspace.
 
 ### `@sideband/cloud`
 
-* Provides: relay.sideband.cloud integration — `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudPeerServer` (extends `PeerServer`) with `daemonId`, `relayUrl`, and `createQuickConnect()`. Also exports `renewPresenceToken` and `extractDaemonIdFromToken`.
+* Provides: relay.sideband.cloud integration — `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudServer` (extends `PeerServer`) with `daemonId`, `relayUrl`, and `createQuickConnect()`. Also exports `renewPresenceToken` and `extractDaemonIdFromToken`.
 * Does not provide: protocol definitions or cryptographic primitives.
 * Runtime dependencies: `@sideband/peer`, `@sideband/secure-relay`, `@sideband/transport-ws`.
 
@@ -4046,7 +4134,7 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 • Depends on: none (uses @noble/\* for crypto). Used by: relay implementations, browser/daemon apps.
 
 `@sideband/cloud` — relay.sideband.cloud integration
-• `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudPeerServer` with `daemonId`, `relayUrl`, and `createQuickConnect()` for zero-infrastructure Quick Connect URLs.
+• `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudServer` with `daemonId`, `relayUrl`, and `createQuickConnect()` for zero-infrastructure Quick Connect URLs.
 • Depends on: peer, secure-relay, transport-ws.
 
 `sideband` — Daemon CLI
@@ -4966,7 +5054,7 @@ function sbpNegotiator(opts?: {
   capabilities?: string[];
   handshakeTimeoutMs?: number;
 }): Negotiator;
-// sbrpClientNegotiator / sbrpDaemonNegotiator — see §10
+// relayClientNegotiator / relayDaemonNegotiator — see §10
 
 // Pattern utilities (also exported from the package)
 function isValidEventName(name: string): boolean;
@@ -4983,7 +5071,7 @@ interface PeerOptions {
 
   /**
    * Session negotiator. Defaults to sbpNegotiator() (plain SBP handshake).
-   * Pass sbrpClientNegotiator(...) for E2EE relay mode.
+   * Pass relayClientNegotiator(...) for E2EE relay mode.
    */
   negotiator?: Negotiator;
 
@@ -5204,6 +5292,13 @@ interface RpcInterface {
    * are function signatures describing params and return type.
    */
   client<T>(): TypedRpcClient<T>;
+
+  /**
+   * Returns currently registered RPC handler method names, sorted
+   * lexicographically. Used by platform infrastructure (e.g. $sideband/rpc.list)
+   * and available to programmatic daemons for introspection. See ADR-018.
+   */
+  listMethods(): string[];
 }
 
 interface RpcCallOptions {
@@ -5292,12 +5387,12 @@ type PatternSubscription = Unsubscribe;
 
 Valid characters in segment tokens: `A-Z`, `a-z`, `0-9`, `-`, `_`. Case-sensitive. Max 255 UTF-8 bytes.
 
-### 6.9 AcceptedPeer
+### 6.9 ConnectedPeer
 
-`AcceptedPeer` is the server-side view of a connection, handed to `ListenOptions.onConnection` after negotiation completes.
+`ConnectedPeer` is the server-side view of a connection, handed to `ListenOptions.onConnection` after negotiation completes.
 
 ```typescript
-interface AcceptedPeer {
+interface ConnectedPeer {
   readonly state: "active" | "paused" | "closed";
   readonly connected: boolean; // state === "active" || state === "paused"
   readonly ready: boolean; // state === "active"
@@ -5329,11 +5424,11 @@ interface ListenOptions {
    * Called for each accepted connection after negotiation.
    * peer is always in "active" state at the time of the callback.
    */
-  onConnection: (peer: AcceptedPeer) => void | Promise<void>;
+  onConnection: (peer: ConnectedPeer) => void | Promise<void>;
 
   /**
    * Session negotiator. Defaults to sbpNegotiator().
-   * Pass sbrpDaemonNegotiator(...) for E2EE relay mode.
+   * Pass relayDaemonNegotiator(...) for E2EE relay mode.
    */
   negotiator?: Negotiator;
   transport?: Transport;
@@ -5347,9 +5442,9 @@ interface PeerServer {
   /** The address the server is listening on. */
   readonly address: string;
   /** All currently-connected accepted peers, keyed by remote PeerId. */
-  readonly connections: ReadonlyMap<string, AcceptedPeer>;
+  readonly connections: ReadonlyMap<string, ConnectedPeer>;
   /**
-   * Hard shutdown. Transitions all AcceptedPeer instances to "closed",
+   * Hard shutdown. Transitions all ConnectedPeer instances to "closed",
    * severs transports. Idempotent.
    */
   close(): Promise<void>;
@@ -5545,27 +5640,27 @@ SBRP (Sideband Bridge Relay Protocol) provides end-to-end encryption over an unt
 
 ```typescript
 // Client-side (browser / CLI)
-function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator;
+function relayClientNegotiator(options: SbrpClientOptions): Negotiator;
 
 // Server-side (daemon connecting to relay)
-function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
+function relayDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
 ```
 
 Client and daemon roles use distinct negotiators because their handshake responsibilities differ: the client verifies daemon identity via TOFU, while the daemon presents its identity key pair and registers with the relay. See ADR-013.
 
 ### 10.4 TOFU Trust Policies
 
-| Policy     | First Connection | Mismatch                                       | Use Case             |
-| ---------- | ---------------- | ---------------------------------------------- | -------------------- |
-| `"auto"`   | Auto-accept      | Silent re-pin                                  | Development only     |
-| `"prompt"` | Require callback | Call `onIdentityMismatch()`, abort if rejected | Production (default) |
-| `"strict"` | Reject if no pin | Abort                                          | High-security        |
+| Policy          | First Connection | Mismatch                                       | Use Case             |
+| --------------- | ---------------- | ---------------------------------------------- | -------------------- |
+| `"auto"`        | Auto-accept      | Silent re-pin                                  | Development only     |
+| `"prompt"`      | Require callback | Call `onIdentityMismatch()`, abort if rejected | Production (default) |
+| `"pinned-only"` | Reject if no pin | Abort                                          | High-security        |
 
 ```typescript
 // Development: auto-accept (NOT RECOMMENDED for production)
 const peer = createPeer({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "dev-daemon",
     sessionId,
     identityKeyStore,
@@ -5576,7 +5671,7 @@ const peer = createPeer({
 // Production: require explicit acceptance
 const peer = createPeer({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "prod-daemon",
     sessionId,
     identityKeyStore,
@@ -5590,11 +5685,11 @@ const peer = createPeer({
 // High-security: pre-provisioned keys only
 const peer = createPeer({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "secure-daemon",
     sessionId,
     identityKeyStore, // Must already contain the pinned key
-    trustPolicy: "strict",
+    trustPolicy: "pinned-only",
   }),
 });
 ```
@@ -5608,7 +5703,7 @@ const peer = createPeer({
 │  2. No pin found:                                                │
 │     - "auto": Accept, pin, emit warning                          │
 │     - "prompt": Call onFirstConnection (REQUIRED)                │
-│     - "strict": Abort with handshake_failed                      │
+│     - "pinned-only": Abort with handshake_failed                 │
 │  3. State transitions to "active" via stateChange event          │
 └──────────────────────────────────────────────────────────────────┘
                               │
@@ -5619,7 +5714,7 @@ const peer = createPeer({
 │  2. Pin found; compare against daemon's key from handshake       │
 │  3a. Match → connection proceeds normally                        │
 │  3b. Mismatch:                                                   │
-│      - "strict": Abort (no callback)                             │
+│      - "pinned-only": Abort (no callback)                        │
 │      - "prompt": Call onIdentityMismatch(), abort if rejected    │
 │      - "auto": Silent re-pin (no callback)                       │
 └──────────────────────────────────────────────────────────────────┘
@@ -5696,7 +5791,7 @@ console.log("Listening on", server.address);
 ```typescript
 import { createPeer } from "@sideband/peer";
 import {
-  sbrpClientNegotiator,
+  relayClientNegotiator,
   createMemoryIdentityKeyStore,
 } from "@sideband/peer/sbrp";
 
@@ -5707,7 +5802,7 @@ const { relayUrl, token: sessionToken } = await api.createSession({
 
 const peer = createPeer({
   endpoint: relayUrl, // e.g. wss://eu-1.relay.sideband.cloud
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: "daemon-prod-001",
     sessionToken,
     identityKeyStore: createMemoryIdentityKeyStore(),
@@ -5736,11 +5831,11 @@ const status = await peer.rpc.call("system.status");
 
 ```typescript
 import { createPeer } from "@sideband/peer";
-import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
+import { relayDaemonNegotiator } from "@sideband/peer/sbrp";
 
 const peer = createPeer({
   endpoint: "wss://relay.sideband.cloud",
-  negotiator: sbrpDaemonNegotiator({
+  negotiator: relayDaemonNegotiator({
     daemonId: process.env.DAEMON_ID!,
     identityKeyPair: await loadIdentityKeyPair("./daemon-identity.key"),
   }),
@@ -6952,10 +7047,10 @@ SDK docs may reference `runtime/` for behavioral contracts and `protocols/` for 
 
 ## Documents
 
-| Document                        | Scope                                                                       | Status |
-| ------------------------------- | --------------------------------------------------------------------------- | ------ |
-| [peer.md](./peer.md)            | Peer SDK API design, lifecycle, pub/sub, error handling                     | Active |
-| [`@sideband/cloud`](./cloud.md) | Cloud relay SDK: `connect()`, `listen()` → `CloudPeerServer`, Quick Connect | Active |
+| Document                        | Scope                                                                   | Status |
+| ------------------------------- | ----------------------------------------------------------------------- | ------ |
+| [peer.md](./peer.md)            | Peer SDK API design, lifecycle, pub/sub, error handling                 | Active |
+| [`@sideband/cloud`](./cloud.md) | Cloud relay SDK: `connect()`, `listen()` → `CloudServer`, Quick Connect | Active |
 
 ## Layer Boundary
 
@@ -7112,7 +7207,7 @@ import { listen } from "@sideband/peer/server";
 const server = await listen({
   endpoint: "ws://0.0.0.0:8080",
   onConnection(peer) {
-    // peer is an AcceptedPeer
+    // peer is an ConnectedPeer
     peer.rpc.handle("greet", ({ name }) => `Hello, ${name}`);
   },
 });
@@ -7123,11 +7218,11 @@ await server.close();
 
 ***
 
-## AcceptedPeer vs Peer
+## ConnectedPeer vs Peer
 
-`AcceptedPeer` is the server-side counterpart to `Peer`. Key differences:
+`ConnectedPeer` is the server-side counterpart to `Peer`. Key differences:
 
-|                | `Peer` (client)                                                                   | `AcceptedPeer` (server)              |
+|                | `Peer` (client)                                                                   | `ConnectedPeer` (server)             |
 | -------------- | --------------------------------------------------------------------------------- | ------------------------------------ |
 | `connect()`    | Yes — initiates connection                                                        | No — already connected               |
 | `reconnecting` | Yes — managed by Peer                                                             | No                                   |
@@ -7136,9 +7231,9 @@ await server.close();
 | `disconnect()` | Hard close, idempotent                                                            | Hard close, idempotent               |
 | `whenReady()`  | Waits for `active`                                                                | Returns immediately (already active) |
 
-`disconnect()` on an `AcceptedPeer` closes that one connection. `server.close()` closes all.
+`disconnect()` on an `ConnectedPeer` closes that one connection. `server.close()` closes all.
 
-When a client reconnects, the server receives a fresh `AcceptedPeer` in `onConnection` — any
+When a client reconnects, the server receives a fresh `ConnectedPeer` in `onConnection` — any
 handlers or state attached to the previous instance are not carried over. Design server-side
 per-connection setup to be re-initializable in `onConnection`.
 
@@ -7168,7 +7263,7 @@ const server = await listen({
 
 ## Server Connection Pool
 
-`server.connections` is a `ReadonlyMap<string, AcceptedPeer>` of all active connections:
+`server.connections` is a `ReadonlyMap<string, ConnectedPeer>` of all active connections:
 
 ```typescript
 // Broadcast an event to all connected peers
@@ -7178,14 +7273,14 @@ for (const peer of server.connections.values()) {
 ```
 
 `PeerId` is the identity from the handshake. For plain SBP connections, it is the `peerId`
-declared in the client's `PeerOptions`. When an `AcceptedPeer` transitions to `closed`, it is
+declared in the client's `PeerOptions`. When an `ConnectedPeer` transitions to `closed`, it is
 automatically removed from `server.connections`.
 
 ***
 
 ## Bidirectional RPC
 
-The server can call RPC on connected clients — `AcceptedPeer` has the full `rpc` interface
+The server can call RPC on connected clients — `ConnectedPeer` has the full `rpc` interface
 including `rpc.call()`.
 
 ```typescript
@@ -7206,7 +7301,7 @@ const server = await listen({
 
 ## Shutdown
 
-`server.close()` transitions all `AcceptedPeer` connections to `"closed"` and stops accepting
+`server.close()` transitions all `ConnectedPeer` connections to `"closed"` and stops accepting
 new connections. It is idempotent.
 
 ```typescript
@@ -7220,7 +7315,7 @@ Handlers executing at the time of `close()` run to JavaScript completion. Gracef
 
 ## E2EE Server (SBRP Daemon)
 
-For E2EE sessions, pass `sbrpDaemonNegotiator` in `ListenOptions`. See the [E2EE guide](e2ee.md).
+For E2EE sessions, pass `relayDaemonNegotiator` in `ListenOptions`. See the [E2EE guide](e2ee.md).
 
 ***
 
@@ -7996,7 +8091,7 @@ await server.close();
 ## SBRP Coverage
 
 For encrypted session coverage, reuse the same loopback pattern but pass
-`sbrpClientNegotiator(...)` and `sbrpDaemonNegotiator(...)`. Current reference tests live in:
+`relayClientNegotiator(...)` and `relayDaemonNegotiator(...)`. Current reference tests live in:
 
 * `packages/peer/src/negotiator/*.test.ts`
 * `packages/peer/src/peer.session-signals.test.ts`

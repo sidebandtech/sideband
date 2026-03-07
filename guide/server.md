@@ -17,7 +17,7 @@ import { listen } from "@sideband/peer/server";
 const server = await listen({
   endpoint: "ws://0.0.0.0:8080",
   onConnection(peer) {
-    // peer is an AcceptedPeer
+    // peer is an ConnectedPeer
     peer.rpc.handle("greet", ({ name }) => `Hello, ${name}`);
   },
 });
@@ -28,11 +28,11 @@ await server.close();
 
 ***
 
-## AcceptedPeer vs Peer
+## ConnectedPeer vs Peer
 
-`AcceptedPeer` is the server-side counterpart to `Peer`. Key differences:
+`ConnectedPeer` is the server-side counterpart to `Peer`. Key differences:
 
-|                | `Peer` (client)                                                                   | `AcceptedPeer` (server)              |
+|                | `Peer` (client)                                                                   | `ConnectedPeer` (server)             |
 | -------------- | --------------------------------------------------------------------------------- | ------------------------------------ |
 | `connect()`    | Yes — initiates connection                                                        | No — already connected               |
 | `reconnecting` | Yes — managed by Peer                                                             | No                                   |
@@ -41,9 +41,9 @@ await server.close();
 | `disconnect()` | Hard close, idempotent                                                            | Hard close, idempotent               |
 | `whenReady()`  | Waits for `active`                                                                | Returns immediately (already active) |
 
-`disconnect()` on an `AcceptedPeer` closes that one connection. `server.close()` closes all.
+`disconnect()` on an `ConnectedPeer` closes that one connection. `server.close()` closes all.
 
-When a client reconnects, the server receives a fresh `AcceptedPeer` in `onConnection` — any
+When a client reconnects, the server receives a fresh `ConnectedPeer` in `onConnection` — any
 handlers or state attached to the previous instance are not carried over. Design server-side
 per-connection setup to be re-initializable in `onConnection`.
 
@@ -73,7 +73,7 @@ const server = await listen({
 
 ## Server Connection Pool
 
-`server.connections` is a `ReadonlyMap<string, AcceptedPeer>` of all active connections:
+`server.connections` is a `ReadonlyMap<string, ConnectedPeer>` of all active connections:
 
 ```typescript
 // Broadcast an event to all connected peers
@@ -83,14 +83,14 @@ for (const peer of server.connections.values()) {
 ```
 
 `PeerId` is the identity from the handshake. For plain SBP connections, it is the `peerId`
-declared in the client's `PeerOptions`. When an `AcceptedPeer` transitions to `closed`, it is
+declared in the client's `PeerOptions`. When an `ConnectedPeer` transitions to `closed`, it is
 automatically removed from `server.connections`.
 
 ***
 
 ## Bidirectional RPC
 
-The server can call RPC on connected clients — `AcceptedPeer` has the full `rpc` interface
+The server can call RPC on connected clients — `ConnectedPeer` has the full `rpc` interface
 including `rpc.call()`.
 
 ```typescript
@@ -111,7 +111,7 @@ const server = await listen({
 
 ## Shutdown
 
-`server.close()` transitions all `AcceptedPeer` connections to `"closed"` and stops accepting
+`server.close()` transitions all `ConnectedPeer` connections to `"closed"` and stops accepting
 new connections. It is idempotent.
 
 ```typescript
@@ -125,7 +125,7 @@ Handlers executing at the time of `close()` run to JavaScript completion. Gracef
 
 ## E2EE Server (SBRP Daemon)
 
-For E2EE sessions, pass `sbrpDaemonNegotiator` in `ListenOptions`. See the [E2EE guide](e2ee.md).
+For E2EE sessions, pass `relayDaemonNegotiator` in `ListenOptions`. See the [E2EE guide](e2ee.md).
 
 ***
 

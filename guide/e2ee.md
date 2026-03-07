@@ -11,7 +11,7 @@ messages, but cannot read them.
 
 ## How it Works
 
-```
+```text
 Browser (client) ──SBRP──▶ Relay ──SBRP──▶ Daemon
         ◀──────────────────────────────────────────
 ```
@@ -120,12 +120,12 @@ For self-hosted relay servers, use `@sideband/peer` directly:
 
 ```typescript
 import { listen } from "@sideband/peer/server";
-import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
+import { relayDaemonNegotiator } from "@sideband/peer/sbrp";
 import { generateIdentityKeyPair } from "@sideband/secure-relay";
 
 const server = await listen({
   endpoint: "wss://relay.example.com",
-  negotiator: sbrpDaemonNegotiator({
+  negotiator: relayDaemonNegotiator({
     daemonId: asDaemonId("my-daemon"),
     identityKeyPair: identity,
   }),
@@ -139,7 +139,7 @@ const server = await listen({
 
 ```typescript
 import { createPeer } from "@sideband/peer";
-import { sbrpClientNegotiator } from "@sideband/peer/sbrp";
+import { relayClientNegotiator } from "@sideband/peer/sbrp";
 
 // sessionToken from your relay API — contains the sid claim
 const { relayUrl, token: sessionToken } = await api.createSession({
@@ -148,7 +148,7 @@ const { relayUrl, token: sessionToken } = await api.createSession({
 
 const peer = createPeer({
   endpoint: `${relayUrl}?token=${sessionToken}`,
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId: asDaemonId("my-daemon"),
     sessionToken, // sessionId extracted from JWT sid claim automatically
     identityKeyStore,
@@ -181,7 +181,7 @@ subsequent connections verify against the pinned fingerprint.
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `"prompt"` (default) | Calls `onFirstConnection` and `onIdentityMismatch`; throws if callbacks are missing                                                                                                    |
 | `"auto"`             | Trusts silently on first contact; pins automatically. On identity mismatch, silently accepts the new key and re-pins — convenient but trades MITM detection for zero-friction rotation |
-| `"strict"`           | Requires the key to already be pinned; throws if not found                                                                                                                             |
+| `"pinned-only"`      | Requires the key to already be pinned; throws if not found                                                                                                                             |
 
 With the default `trustPolicy: "prompt"`, an identity mismatch invokes the `onIdentityMismatch`
 callback. If it returns `true`, the new key is **permanently re-pinned** in the `identityKeyStore`,
@@ -189,7 +189,7 @@ replacing the old key. If it returns `false`, the connection is closed — the p
 `"closed"`, not `"reconnecting"`. Choose carefully — re-pinning should only happen when the user has
 out-of-band confirmation that the daemon was intentionally re-keyed.
 
-With `trustPolicy: "strict"`, any mismatch is unconditionally fatal — the peer transitions to
+With `trustPolicy: "pinned-only"`, any mismatch is unconditionally fatal — the peer transitions to
 `"closed"` immediately. This prevents silent MITM attacks without relying on user judgment.
 
 ***

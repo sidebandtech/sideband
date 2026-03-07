@@ -81,7 +81,7 @@ Package boundaries and dependency direction for the current Sideband workspace.
 
 ### `@sideband/cloud`
 
-* Provides: relay.sideband.cloud integration — `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudPeerServer` (extends `PeerServer`) with `daemonId`, `relayUrl`, and `createQuickConnect()`. Also exports `renewPresenceToken` and `extractDaemonIdFromToken`.
+* Provides: relay.sideband.cloud integration — `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudServer` (extends `PeerServer`) with `daemonId`, `relayUrl`, and `createQuickConnect()`. Also exports `renewPresenceToken` and `extractDaemonIdFromToken`.
 * Does not provide: protocol definitions or cryptographic primitives.
 * Runtime dependencies: `@sideband/peer`, `@sideband/secure-relay`, `@sideband/transport-ws`.
 

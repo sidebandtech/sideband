@@ -10,8 +10,8 @@ url: /adr/016-relay-server-design.md
 ## Context
 
 The hosted Sideband relay is the infrastructure that enables browser ↔ daemon communication
-through NAT. It is the bridge between `sbrpClientNegotiator` (browser/client) and
-`sbrpDaemonNegotiator` (local daemon). Without a relay endpoint, the E2EE value proposition
+through NAT. It is the bridge between `relayClientNegotiator` (browser/client) and
+`relayDaemonNegotiator` (local daemon). Without a relay endpoint, the E2EE value proposition
 is theoretical.
 
 The relay must:
@@ -70,7 +70,7 @@ from consuming DO resources.
 
 Connection routing uses a fixed endpoint with token-derived routing:
 
-```
+```text
 wss://{region}.relay.sideband.cloud?token=<jwt>
 ```
 
@@ -93,7 +93,7 @@ Security note: query-string tokens MUST be short-lived and redacted from logs/an
 ### 5. Pause/resume signaling
 
 When a client connection drops, the relay emits `Control(session_ended)` to the daemon; the
-daemon's `AcceptedPeer` transitions to `closed` (no pause semantics for client drops — clients
+daemon's `ConnectedPeer` transitions to `closed` (no pause semantics for client drops — clients
 are ephemeral from the relay's perspective).
 
 When the daemon connection closes unexpectedly, the DO emits `Control(session_paused)` to affected
