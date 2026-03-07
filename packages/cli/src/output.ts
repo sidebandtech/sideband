@@ -26,6 +26,8 @@ export interface ReadyInfo {
   relayUrl: string;
   quickConnectCode: string;
   quickConnectUrl: string;
+  /** Active capability names, e.g. ["stats", "fs (my-app)"]. */
+  capabilities: string[];
 }
 
 export interface QuickConnectInfo {
@@ -37,20 +39,24 @@ export interface QuickConnectInfo {
 // ─── Human mode ─────────────────────────────────────────────────────────────
 
 export function printReady(info: ReadyInfo): void {
-  process.stdout.write(
-    [
-      "",
-      "  Sideband daemon running",
-      `  Daemon ID: ${info.daemonId}`,
-      `  Relay:     ${info.relayUrl}`,
-      "",
-      `  Quick Connect: ${info.quickConnectUrl}`,
-      `  Code:          ${info.quickConnectCode}`,
-      "",
-      "  Waiting for connections...",
-      "",
-    ].join("\n"),
+  const lines = [
+    "",
+    "  Sideband daemon running",
+    `  Daemon ID: ${info.daemonId}`,
+    `  Relay:     ${info.relayUrl}`,
+  ];
+  if (info.capabilities.length > 0) {
+    lines.push(`  Capabilities: ${info.capabilities.join(", ")}`);
+  }
+  lines.push(
+    "",
+    `  Quick Connect: ${info.quickConnectUrl}`,
+    `  Code:          ${info.quickConnectCode}`,
+    "",
+    "  Waiting for connections...",
+    "",
   );
+  process.stdout.write(lines.join("\n"));
 }
 
 export function printConnected(peerId: string): void {
@@ -118,6 +124,7 @@ export function emitReady(info: ReadyInfo): void {
     relayUrl: info.relayUrl,
     quickConnectCode: info.quickConnectCode,
     quickConnectUrl: info.quickConnectUrl,
+    capabilities: info.capabilities,
   });
 }
 

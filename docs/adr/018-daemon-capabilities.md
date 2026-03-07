@@ -24,7 +24,7 @@ This makes the platform surface unambiguous and lets UIs apply consistent treatm
 
 **Infrastructure handlers** (`$sideband/rpc.list`, `$sideband/rpc.describe`) are always available on every daemon, CLI or programmatic. They are universal and are NOT listed in `capabilities` — their presence is implicit.
 
-**Capabilities** (`stats`, future `fs`) represent user-facing functional areas that may or may not be present. They are advertised explicitly in `$sideband/info`:
+**Capabilities** (`stats`, `fs`) represent user-facing functional areas that may or may not be present. They are advertised explicitly in `$sideband/info`:
 
 ```typescript
 // $sideband/info response
@@ -32,7 +32,7 @@ This makes the platform surface unambiguous and lets UIs apply consistent treatm
   daemonId: string;
   name: string;
   version: string;
-  capabilities: Record<string, object>; // { stats: {}, fs: { root, write } … }
+  capabilities: Record<string, object>; // { stats: {}, fs: { name, write } … }
 }
 ```
 
@@ -70,7 +70,7 @@ interface RpcInterface {
 ## Consequences
 
 - UI can use `capabilities` for feature detection and `rpc.list` + `rpc.describe` for the RPC explorer.
-- New CLI capabilities (e.g., `fs`) follow the same pattern: register handlers, return `{ fs: <descriptor> }` from the handler registrar, merge into `$sideband/info`.
+- The `fs` capability (`--dir` flag) follows this pattern: `registerFsHandlers()` returns `{ fs: { name, write: false } }`, merged into `$sideband/info`. The `name` field is `fsDisplayName(root)` (`basename(root)`, or the full path only when basename is empty, e.g. `"/"` for `--dir /`) — local machine layout is not exposed.
 - Programmatic daemons that want `rpc.list` to work correctly call `registerRpcMeta()` themselves; it is opt-in, not automatic.
 
 ## References
@@ -78,4 +78,6 @@ interface RpcInterface {
 - ADR-013: Peer SDK Core Design Decisions
 - `packages/cli/src/handlers/rpc-meta.ts` — `registerRpcMeta()`
 - `packages/cli/src/handlers/stats.ts` — `registerStatsHandlers()`
+- `packages/cli/src/handlers/fs.ts` — `registerFsHandlers()`
+- `packages/cli/src/handlers/fs-classify.ts` — `classifyFile()`
 - `packages/peer/src/types.ts` — `RpcInterface.listMethods()`

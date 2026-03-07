@@ -66,6 +66,17 @@ describe("relayClientNegotiator", () => {
       ).not.toThrow();
     });
 
+    it("throws for unknown trustPolicy value", () => {
+      expect(() =>
+        relayClientNegotiator({
+          daemonId,
+          sessionId,
+          identityKeyStore: createMemoryIdentityKeyStore(),
+          trustPolicy: "strict" as unknown as "auto",
+        }),
+      ).toThrow(/unknown trustPolicy/);
+    });
+
     it.each([0, -1, NaN, Infinity])(
       "throws for invalid handshakeTimeoutMs: %p",
       (value) => {
