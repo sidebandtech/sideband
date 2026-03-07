@@ -2,8 +2,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
-import { hostname } from "node:os";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "./bin.js";
 import { resolveDaemonName } from "./commands/start.js";
@@ -63,6 +62,8 @@ describe("parseArgs", () => {
         apiKey: "sbnd_dak_abc",
         name: undefined,
         json: false,
+        dir: undefined,
+        allowDotfiles: false,
       });
     });
 
@@ -72,6 +73,8 @@ describe("parseArgs", () => {
         apiKey: "sbnd_dak_abc",
         name: undefined,
         json: false,
+        dir: undefined,
+        allowDotfiles: false,
       });
     });
 
@@ -81,6 +84,8 @@ describe("parseArgs", () => {
         apiKey: undefined,
         name: undefined,
         json: true,
+        dir: undefined,
+        allowDotfiles: false,
       });
     });
 
@@ -90,6 +95,8 @@ describe("parseArgs", () => {
         apiKey: "key123",
         name: undefined,
         json: true,
+        dir: undefined,
+        allowDotfiles: false,
       });
     });
 
@@ -99,7 +106,48 @@ describe("parseArgs", () => {
         apiKey: undefined,
         name: undefined,
         json: false,
+        dir: undefined,
+        allowDotfiles: false,
       });
+    });
+
+    it("parses --dir /tmp", () => {
+      expect(parseArgs(argv("--dir", "/tmp"))).toMatchObject({
+        command: "start",
+        dir: "/tmp",
+        allowDotfiles: false,
+      });
+    });
+
+    it("parses --dir=/tmp", () => {
+      expect(parseArgs(argv("--dir=/tmp"))).toMatchObject({
+        command: "start",
+        dir: "/tmp",
+      });
+    });
+
+    it("throws when --dir has no value", () => {
+      expect(() => parseArgs(argv("--dir"))).toThrow("--dir requires a value");
+    });
+
+    it("throws when --dir= is empty string", () => {
+      expect(() => parseArgs(argv("--dir="))).toThrow("--dir requires a value");
+    });
+
+    it("parses --allow-dotfiles --dir /tmp", () => {
+      expect(
+        parseArgs(argv("--allow-dotfiles", "--dir", "/tmp")),
+      ).toMatchObject({
+        command: "start",
+        dir: "/tmp",
+        allowDotfiles: true,
+      });
+    });
+
+    it("throws when --allow-dotfiles is used without --dir", () => {
+      expect(() => parseArgs(argv("--allow-dotfiles"))).toThrow(
+        "--allow-dotfiles requires --dir",
+      );
     });
 
     it("throws on unknown flag", () => {

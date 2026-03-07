@@ -50,6 +50,17 @@ const DEFAULT_HANDSHAKE_TIMEOUT_MS = 30_000;
 export function relayClientNegotiator(options: SbrpClientOptions): Negotiator {
   const trustPolicy = options.trustPolicy ?? "prompt";
 
+  // Fail-fast: unknown trustPolicy is a programming error (catches renamed values like "strict")
+  if (
+    trustPolicy !== "auto" &&
+    trustPolicy !== "prompt" &&
+    trustPolicy !== "pinned-only"
+  ) {
+    throw new Error(
+      `relayClientNegotiator: unknown trustPolicy "${trustPolicy as string}"`,
+    );
+  }
+
   // Fail-fast: "prompt" without callbacks is a programming error
   if (trustPolicy === "prompt" && !options.onFirstConnection) {
     throw new Error(

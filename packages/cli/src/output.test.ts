@@ -42,6 +42,7 @@ describe("NDJSON event contract", () => {
         relayUrl: "wss://relay.sideband.cloud",
         quickConnectCode: "abcd-efgh-ijkl",
         quickConnectUrl: "https://sideband.cloud/connect#qc=abcd-efgh-ijkl",
+        capabilities: ["stats"],
       }),
     );
     const ev = parseEvent(out);
@@ -129,6 +130,7 @@ describe("NDJSON event contract", () => {
         relayUrl: "wss://relay",
         quickConnectCode: "code",
         quickConnectUrl: "https://url",
+        capabilities: ["stats"],
       }),
     );
     // First line must be parseable JSON — critical for scripting consumers

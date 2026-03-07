@@ -29,12 +29,14 @@ import { printFatal } from "./output.js";
 
 const USAGE = `
   Usage:
-    sideband [--api-key <key>] [--name <value>] [--json]
+    sideband [--api-key <key>] [--name <value>] [--dir <path>] [--json]
     sideband init --api-key <key>
 
   Options:
     --api-key <key>   Override API key from env/config
     --name <value>    Daemon name (default: hostname)
+    --dir <path>      Enable file browser, scoped to this directory
+    --allow-dotfiles  Include dotfiles in listing and allow reading them (requires --dir)
     --json            NDJSON output (for scripting/CI)
     --version, -V     Print version and exit
     --help            Show this help
@@ -58,6 +60,8 @@ export type ParsedArgs =
       apiKey: string | undefined;
       name: string | undefined;
       json: boolean;
+      dir: string | undefined;
+      allowDotfiles: boolean;
     }
   | { command: "init"; apiKey: string | undefined }
   | { command: "version" }
@@ -108,14 +112,22 @@ function parseStartFlags(
   apiKey: string | undefined;
   name: string | undefined;
   json: boolean;
+  dir: string | undefined;
+  allowDotfiles: boolean;
 } {
   let apiKey: string | undefined;
   let name: string | undefined;
   let json = false;
+  let dir: string | undefined;
+  let allowDotfiles = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--json") {
       json = true;
+      continue;
+    }
+    if (arg === "--allow-dotfiles") {
+      allowDotfiles = true;
       continue;
     }
     const apiKv = consumeFlag("api-key", args, i);
@@ -130,6 +142,13 @@ function parseStartFlags(
       i = nameKv.next - 1;
       continue;
     }
+    const dirKv = consumeFlag("dir", args, i);
+    if (dirKv !== undefined) {
+      if (!dirKv.value) throw new CliUsageError("--dir requires a value");
+      dir = dirKv.value;
+      i = dirKv.next - 1;
+      continue;
+    }
     if (arg === "init") {
       throw new CliUsageError(
         `subcommand "init" must be the first argument.\n  Try: sideband init --api-key <key>`,
@@ -137,7 +156,10 @@ function parseStartFlags(
     }
     throw new CliUsageError(`Unknown argument: ${arg}\n${usage}`);
   }
-  return { apiKey, name, json };
+  if (allowDotfiles && !dir) {
+    throw new CliUsageError("--allow-dotfiles requires --dir");
+  }
+  return { apiKey, name, json, dir, allowDotfiles };
 }
 
 function parseInitFlags(args: string[], start: number): string | undefined {
@@ -194,6 +216,8 @@ async function main(): Promise<void> {
     configDir,
     json: parsed.json,
     name: resolveDaemonName(parsed.name),
+    dir: parsed.dir,
+    allowDotfiles: parsed.allowDotfiles,
   });
 }
 
