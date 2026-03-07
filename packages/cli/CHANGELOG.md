@@ -1,5 +1,16 @@
 # sideband
 
+## 0.6.0
+
+### Minor Changes
+
+- [#52](https://github.com/sidebandtech/sideband/pull/52) [`410de06`](https://github.com/sidebandtech/sideband/commit/410de0691fb6a03a0f6241a7fb2de77df614afdf) Thanks [@koistya](https://github.com/koistya)! - Add built-in daemon capabilities: `$sideband/stats` snapshot and live subscription, `$sideband/rpc.list` / `$sideband/rpc.describe` method introspection, `--name` CLI flag, and `capabilities` + `name` fields in `$sideband/info`. Adds `RpcInterface.listMethods()` to the peer SDK. Renames `AcceptedPeer` → `ConnectedPeer` and `CloudPeerServer` → `CloudServer`.
+
+### Patch Changes
+
+- Updated dependencies [[`410de06`](https://github.com/sidebandtech/sideband/commit/410de0691fb6a03a0f6241a7fb2de77df614afdf)]:
+  - @sideband/cloud@0.6.0
+
 ## 0.5.2
 
 ### Patch Changes
