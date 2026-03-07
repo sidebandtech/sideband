@@ -49,7 +49,7 @@ export { isValidEventName, matchPattern, validatePattern } from "./pattern.js";
 
 // Public types
 export type {
-  AcceptedPeer,
+  ConnectedPeer,
   ConnectionPolicy,
   EventPolicy,
   EventsInterface,

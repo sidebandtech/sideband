@@ -50,7 +50,7 @@ interface PatternSub {
   handler: (eventName: string, data: unknown) => void;
 }
 
-/** Events implementation shared by PeerImpl and AcceptedPeerImpl. */
+/** Events implementation shared by PeerImpl and ConnectedPeerImpl. */
 export class EventsImpl implements EventsInterface {
   private exactSubs = new Map<string, Set<(data: unknown) => void>>();
   private patternSubs: PatternSub[] = [];

@@ -15,8 +15,8 @@ import {
   SbrpErrorCode,
 } from "@sideband/secure-relay";
 import { describe, expect, it } from "bun:test";
-import { sbrpClientNegotiator } from "./client.js";
-import { sbrpDaemonNegotiator } from "./daemon.js";
+import { relayClientNegotiator } from "./client.js";
+import { relayDaemonNegotiator } from "./daemon.js";
 import { createMemoryIdentityKeyStore } from "./identity-key-store.js";
 import { createTransportPair } from "./test-helpers.js";
 
@@ -34,14 +34,14 @@ describe("SBRP negotiator integration", () => {
 
       const { clientConn, daemonConn } = createTransportPair();
 
-      const clientNeg = sbrpClientNegotiator({
+      const clientNeg = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
         trustPolicy: "auto",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -64,14 +64,14 @@ describe("SBRP negotiator integration", () => {
 
       const { clientConn, daemonConn } = createTransportPair();
 
-      const clientNeg = sbrpClientNegotiator({
+      const clientNeg = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
         trustPolicy: "auto",
       });
 
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
       });
@@ -117,14 +117,14 @@ describe("SBRP negotiator integration", () => {
       {
         const { clientConn, daemonConn } = createTransportPair();
 
-        const clientNeg = sbrpClientNegotiator({
+        const clientNeg = relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore,
           trustPolicy: "auto",
         });
 
-        const daemonNeg = sbrpDaemonNegotiator({
+        const daemonNeg = relayDaemonNegotiator({
           daemonId,
           identityKeyPair: identity,
         });
@@ -142,14 +142,14 @@ describe("SBRP negotiator integration", () => {
       {
         const { clientConn, daemonConn } = createTransportPair();
 
-        const clientNeg = sbrpClientNegotiator({
+        const clientNeg = relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore,
-          trustPolicy: "strict", // Now strict works because key is pinned
+          trustPolicy: "pinned-only", // pinned-only works because key is already pinned
         });
 
-        const daemonNeg = sbrpDaemonNegotiator({
+        const daemonNeg = relayDaemonNegotiator({
           daemonId,
           identityKeyPair: identity, // Same identity
         });
@@ -175,14 +175,14 @@ describe("SBRP negotiator integration", () => {
       {
         const { clientConn, daemonConn } = createTransportPair();
 
-        const clientNeg = sbrpClientNegotiator({
+        const clientNeg = relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore,
           trustPolicy: "auto",
         });
 
-        const daemonNeg = sbrpDaemonNegotiator({
+        const daemonNeg = relayDaemonNegotiator({
           daemonId,
           identityKeyPair: originalIdentity,
         });
@@ -197,14 +197,14 @@ describe("SBRP negotiator integration", () => {
       {
         const { clientConn, daemonConn } = createTransportPair();
 
-        const clientNeg = sbrpClientNegotiator({
+        const clientNeg = relayClientNegotiator({
           daemonId,
           sessionId,
           identityKeyStore,
-          trustPolicy: "strict",
+          trustPolicy: "pinned-only",
         });
 
-        const daemonNeg = sbrpDaemonNegotiator({
+        const daemonNeg = relayDaemonNegotiator({
           daemonId,
           identityKeyPair: attackerIdentity, // Different identity!
         });
@@ -226,7 +226,7 @@ describe("SBRP negotiator integration", () => {
       const { clientConn, daemonConn } = createTransportPair();
 
       // Client side with tight timeout
-      const clientNeg = sbrpClientNegotiator({
+      const clientNeg = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore,
@@ -236,7 +236,7 @@ describe("SBRP negotiator integration", () => {
 
       // Daemon side: complete SBRP handshake but stall on inner SBP
       // by never reading from the encrypted channel
-      const daemonNeg = sbrpDaemonNegotiator({
+      const daemonNeg = relayDaemonNegotiator({
         daemonId,
         identityKeyPair: identity,
         handshakeTimeoutMs: timeoutMs,
@@ -275,7 +275,7 @@ describe("SBRP negotiator integration", () => {
         },
       };
 
-      const clientNeg = sbrpClientNegotiator({
+      const clientNeg = relayClientNegotiator({
         daemonId,
         sessionId,
         identityKeyStore: createMemoryIdentityKeyStore(),
@@ -301,7 +301,7 @@ describe("SBRP negotiator integration", () => {
           const identityKeyStore = createMemoryIdentityKeyStore();
           const { clientConn, daemonConn } = createTransportPair();
 
-          const clientNeg = sbrpClientNegotiator({
+          const clientNeg = relayClientNegotiator({
             daemonId,
             sessionId: BigInt(i + 1),
             identityKeyStore,
@@ -309,7 +309,7 @@ describe("SBRP negotiator integration", () => {
             peerId: `client-${i}`,
           });
 
-          const daemonNeg = sbrpDaemonNegotiator({
+          const daemonNeg = relayDaemonNegotiator({
             daemonId,
             identityKeyPair: identity,
             peerId: `daemon-for-${i}`,

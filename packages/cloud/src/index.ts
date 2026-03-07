@@ -62,11 +62,16 @@ export {
 export { connect } from "./connect.js";
 export type { ConnectOptions } from "./connect.js";
 export { listen } from "./listen.js";
-export type { CloudPeerServer, ListenOptions } from "./listen.js";
+export type { CloudServer, ListenOptions } from "./listen.js";
 
 // Convenience re-exports so callers don't need to import from @sideband/peer directly
 export { PeerError, PeerErrorCode } from "@sideband/peer";
-export type { AcceptedPeer, Peer, PeerServer, PeerState } from "@sideband/peer";
+export type {
+  ConnectedPeer,
+  Peer,
+  PeerServer,
+  PeerState,
+} from "@sideband/peer";
 export { createMemoryIdentityKeyStore } from "@sideband/peer/sbrp";
 export type { IdentityKeyStore } from "@sideband/peer/sbrp";
 export { createIndexedDBIdentityKeyStore } from "./identity-key-store.js";

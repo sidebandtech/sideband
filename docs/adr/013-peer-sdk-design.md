@@ -22,10 +22,10 @@
 
 ```typescript
 /** Client-side SBRP (browser or CLI connecting to a daemon) */
-function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator;
+function relayClientNegotiator(options: SbrpClientOptions): Negotiator;
 
 /** Daemon-side SBRP (service accepting relay connections) */
-function sbrpDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
+function relayDaemonNegotiator(options: SbrpDaemonOptions): Negotiator;
 ```
 
 **Rationale:** `SbrpNegotiatorOptions` mixes client-only fields (TOFU pinning, `onFirstConnection`, `trustPolicy`, `controlPlaneUrl`) with daemon-only fields (`serverIdentity`, `resumable`, `pauseBufferLimitBytes`). Options A and B allow invalid combinations to compile and fail only at runtime — violating the "hard to misuse" design goal. Separate factories give each role a dedicated, focused type with unambiguous autocomplete and error messages.
@@ -76,7 +76,7 @@ SAFE_CHAR  = ALPHA | DIGIT | "-" | "_"
 
 ## Consequences
 
-- `@sideband/peer` exposes `sbrpClientNegotiator` and `sbrpDaemonNegotiator`. They live in peer (not secure-relay) because peer already depends on runtime for `Negotiator`/`SbpNegotiator`, while secure-relay stays a pure crypto library with zero runtime dependencies.
+- `@sideband/peer` exposes `relayClientNegotiator` and `relayDaemonNegotiator`. They live in peer (not secure-relay) because peer already depends on runtime for `Negotiator`/`SbpNegotiator`, while secure-relay stays a pure crypto library with zero runtime dependencies.
 - `@sideband/peer` validates event patterns client-side via `onPattern()` / `validatePattern()`.
 - All documentation and examples MUST use `>` (not `**`) for multi-segment wildcard patterns.
 - Server-side consumers import from `@sideband/peer/server`; browser consumers import from `@sideband/peer`.

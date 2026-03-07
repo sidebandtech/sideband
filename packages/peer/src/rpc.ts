@@ -74,7 +74,7 @@ export const RPC_SUBJECT = "rpc";
 // 1100–1199 RPC protocol codes). Hidden from callers behind PeerErrorCode.RpcError.
 const HANDLER_ERROR_CODE = 2000;
 
-/** RPC implementation shared by PeerImpl and AcceptedPeerImpl. */
+/** RPC implementation shared by PeerImpl and ConnectedPeerImpl. */
 export class RpcImpl implements RpcInterface {
   // Outgoing calls waiting for a response, keyed by cid hex
   private pending = new Map<string, PendingCall>();
@@ -149,6 +149,10 @@ export class RpcImpl implements RpcInterface {
         this.handlers.delete(method);
       }
     };
+  }
+
+  listMethods(): string[] {
+    return Array.from(this.handlers.keys()).sort();
   }
 
   client<T>(): TypedRpcClient<T> {

@@ -64,7 +64,7 @@ Recommended order for new users:
 | [Concepts](concepts.md)         | 1) Mental model: peers, sessions, subjects, state machine     |
 | [RPC](rpc.md)                   | 2) Request/response patterns, typed clients, errors, timeouts |
 | [Events](events.md)             | 3) Fire-and-forget events, NATS pattern subscriptions         |
-| [Server](server.md)             | 4) `listen()`, AcceptedPeer, connection management            |
+| [Server](server.md)             | 4) `listen()`, ConnectedPeer, connection management           |
 | [E2EE Relay](e2ee.md)           | 5) End-to-end encrypted sessions via SBRP and TOFU            |
 | [Testing](testing.md)           | 6) LoopbackTransport and integration testing patterns         |
 | [Self-Hosting](self-hosting.md) | Relay architecture and self-hosted deployment                 |

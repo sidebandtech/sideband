@@ -47,25 +47,25 @@ const DEFAULT_HANDSHAKE_TIMEOUT_MS = 30_000;
  * Performs SBRP E2EE handshake → TOFU verification → inner SBP handshake.
  * Returns a `Negotiator` compatible with `createPeer({ negotiator: ... })`.
  */
-export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
+export function relayClientNegotiator(options: SbrpClientOptions): Negotiator {
   const trustPolicy = options.trustPolicy ?? "prompt";
 
   // Fail-fast: "prompt" without callbacks is a programming error
   if (trustPolicy === "prompt" && !options.onFirstConnection) {
     throw new Error(
-      'sbrpClientNegotiator: trustPolicy "prompt" requires onFirstConnection callback',
+      'relayClientNegotiator: trustPolicy "prompt" requires onFirstConnection callback',
     );
   }
   if (trustPolicy === "prompt" && !options.onIdentityMismatch) {
     throw new Error(
-      'sbrpClientNegotiator: trustPolicy "prompt" requires onIdentityMismatch callback',
+      'relayClientNegotiator: trustPolicy "prompt" requires onIdentityMismatch callback',
     );
   }
 
   const timeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error(
-      `sbrpClientNegotiator: handshakeTimeoutMs must be a finite positive number (got ${timeoutMs})`,
+      `relayClientNegotiator: handshakeTimeoutMs must be a finite positive number (got ${timeoutMs})`,
     );
   }
   const sessionId: SessionId =
@@ -117,7 +117,7 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
             const pinnedFingerprint = computeFingerprint(pinnedKey);
             const mismatchMsg = `Daemon identity key changed (pinned: ${pinnedFingerprint}, received: ${wireFingerprint})`;
 
-            if (trustPolicy === "strict") {
+            if (trustPolicy === "pinned-only") {
               throw new SbrpError(
                 SbrpErrorCode.IdentityKeyChanged,
                 mismatchMsg,
@@ -145,10 +145,10 @@ export function sbrpClientNegotiator(options: SbrpClientOptions): Negotiator {
           }
         } else {
           // No pinned key — first connection
-          if (trustPolicy === "strict") {
+          if (trustPolicy === "pinned-only") {
             throw new SbrpError(
               SbrpErrorCode.HandshakeFailed,
-              `No pinned identity key for daemon "${options.daemonId}" (strict mode)`,
+              `No pinned identity key for daemon "${options.daemonId}" (pinned-only mode)`,
             );
           }
 

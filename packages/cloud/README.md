@@ -63,7 +63,7 @@ const server = await listen({
   },
 });
 
-// server is CloudPeerServer — extends PeerServer with cloud-specific members:
+// server is CloudServer — extends PeerServer with cloud-specific members:
 console.log(server.daemonId); // e.g. "d_abc123" (from presence token `did` claim)
 console.log(server.relayUrl); // e.g. "wss://relay.sideband.cloud"
 
@@ -74,7 +74,7 @@ const { code, url, expiresAt } = await server.createQuickConnect({
 console.log(`Connect at ${url} — expires ${expiresAt}`);
 ```
 
-`listen()` returns a `CloudPeerServer` (extends `PeerServer`) and makes an outbound WebSocket to the relay (not a local port bind), demultiplexing incoming SBRP sessions from multiple clients over it. Resolves once the first relay connection succeeds — transient failures (network unavailable, 502, DNS) are retried with exponential backoff before resolving. Only fatal API errors (400/401/403/404) reject immediately.
+`listen()` returns a `CloudServer` (extends `PeerServer`) and makes an outbound WebSocket to the relay (not a local port bind), demultiplexing incoming SBRP sessions from multiple clients over it. Resolves once the first relay connection succeeds — transient failures (network unavailable, 502, DNS) are retried with exponential backoff before resolving. Only fatal API errors (400/401/403/404) reject immediately.
 
 If `daemonId` is provided it is validated against the token's `did` claim on startup. A mismatch (API key belongs to a different daemon) throws `CloudApiError(400)` immediately, making misconfiguration obvious.
 
@@ -101,13 +101,13 @@ User-provided policy values override the defaults in both cases.
 
 `connect()` accepts a `trustPolicy` option (default `"auto"`):
 
-| Policy     | Behavior                                                                              |
-| ---------- | ------------------------------------------------------------------------------------- |
-| `"auto"`   | Pins on first connection; silently re-pins on identity change (TOFR, not strict TOFU) |
-| `"prompt"` | Calls `onFirstConnection` / `onIdentityMismatch` — both callbacks required            |
-| `"strict"` | Rejects any identity mismatch with an error                                           |
+| Policy          | Behavior                                                                              |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `"auto"`        | Pins on first connection; silently re-pins on identity change (TOFR, not strict TOFU) |
+| `"prompt"`      | Calls `onFirstConnection` / `onIdentityMismatch` — both callbacks required            |
+| `"pinned-only"` | Rejects any identity mismatch with an error                                           |
 
-`"auto"` is appropriate when `api.sideband.cloud` is trusted as the daemon identity authority (daemon registered via API key). Use `"prompt"` or `"strict"` when daemon key compromise is a concern.
+`"auto"` is appropriate when `api.sideband.cloud` is trusted as the daemon identity authority (daemon registered via API key). Use `"prompt"` or `"pinned-only"` when daemon key compromise is a concern.
 
 ```ts
 const peer = connect({

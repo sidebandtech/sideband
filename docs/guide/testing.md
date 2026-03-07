@@ -138,7 +138,7 @@ await server.close();
 ## SBRP Coverage
 
 For encrypted session coverage, reuse the same loopback pattern but pass
-`sbrpClientNegotiator(...)` and `sbrpDaemonNegotiator(...)`. Current reference tests live in:
+`relayClientNegotiator(...)` and `relayDaemonNegotiator(...)`. Current reference tests live in:
 
 - `packages/peer/src/negotiator/*.test.ts`
 - `packages/peer/src/peer.session-signals.test.ts`

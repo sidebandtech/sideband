@@ -7,7 +7,7 @@ import { PeerError, PeerErrorCode } from "./errors.js";
 import { listen } from "./listen.js";
 import { createPeer, sbpNegotiator } from "./peer.js";
 import { waitFor } from "./peer.test-helpers.js";
-import type { AcceptedPeer, Peer, PeerServer, PeerState } from "./types.js";
+import type { ConnectedPeer, Peer, PeerServer, PeerState } from "./types.js";
 
 // ─── Test harness ─────────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ interface PairHooks {
 
 /** Stand up a loopback listen + createPeer pair. Both start disconnected. */
 async function createPair(
-  serverSetup?: (peer: AcceptedPeer) => void,
+  serverSetup?: (peer: ConnectedPeer) => void,
   hooks: PairHooks = {},
 ): Promise<TestPair> {
   const transport = new LoopbackTransport();
@@ -195,9 +195,9 @@ describe("createPeer lifecycle", () => {
     }
   });
 
-  it("AcceptedPeer starts active after onConnection", async () => {
+  it("ConnectedPeer starts active after onConnection", async () => {
     let acceptedState: string | undefined;
-    let acceptedPeer: AcceptedPeer | undefined;
+    let acceptedPeer: ConnectedPeer | undefined;
 
     const { client, server } = await createPair((peer) => {
       acceptedState = peer.state;
@@ -1378,9 +1378,9 @@ describe("onDisconnect: 'pause' buffer", () => {
   });
 });
 
-// ─── AcceptedPeer ─────────────────────────────────────────────────────────────
+// ─── ConnectedPeer ─────────────────────────────────────────────────────────────
 
-describe("AcceptedPeer", () => {
+describe("ConnectedPeer", () => {
   it("disconnect() closes accepted peer", async () => {
     const { client, server } = await createPair();
     try {
@@ -1444,7 +1444,7 @@ describe("AcceptedPeer", () => {
   });
 
   it("peerId is accessible and matches server.connections key", async () => {
-    let acceptedPeer: AcceptedPeer | undefined;
+    let acceptedPeer: ConnectedPeer | undefined;
     const { client, server } = await createPair((peer) => {
       acceptedPeer = peer;
     });

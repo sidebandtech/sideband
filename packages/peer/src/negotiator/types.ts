@@ -16,10 +16,10 @@ export interface IdentityKeyStore {
 }
 
 /** Trust policy for first-connection and reconnection identity verification. */
-export type TrustPolicy = "auto" | "prompt" | "strict";
+export type TrustPolicy = "auto" | "prompt" | "pinned-only";
 
 /**
- * Session source for `sbrpClientNegotiator`.
+ * Session source for `relayClientNegotiator`.
  *
  * - `sessionToken`: relay mode — provide the JWT directly; `sessionId` is
  *   extracted from the `sid` claim automatically (base64url → uint64).
@@ -48,12 +48,12 @@ type IdentityMismatchHandler = (info: {
 }) => Promise<boolean>;
 
 /**
- * Options for `sbrpClientNegotiator()`.
+ * Options for `relayClientNegotiator()`.
  *
  * `trustPolicy` controls TOFU behavior:
  * - `"auto"`: accept on first connection, verify on reconnect
  * - `"prompt"`: call `onFirstConnection`/`onIdentityMismatch` (default)
- * - `"strict"`: reject if no pinned key exists or if key changed
+ * - `"pinned-only"`: reject if no pinned key exists or if key changed
  *
  * If `trustPolicy` is omitted, it defaults to `"prompt"` and both
  * `onFirstConnection` and `onIdentityMismatch` are required.
@@ -67,12 +67,12 @@ export type SbrpClientOptions =
       onIdentityMismatch: IdentityMismatchHandler;
     })
   | (SbrpClientSharedOptions & {
-      trustPolicy: "auto" | "strict";
+      trustPolicy: "auto" | "pinned-only";
       onFirstConnection?: FirstConnectionPrompt;
       onIdentityMismatch?: IdentityMismatchHandler;
     });
 
-/** Options for `sbrpDaemonNegotiator()`. */
+/** Options for `relayDaemonNegotiator()`. */
 export interface SbrpDaemonOptions {
   daemonId: DaemonId;
   identityKeyPair: IdentityKeyPair;

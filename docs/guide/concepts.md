@@ -19,7 +19,7 @@ await peer.disconnect();
 ```
 
 On the server side, `listen()` accepts incoming connections. Each accepted connection is an
-`AcceptedPeer` — the same abstraction, but with no `connect()` (the server doesn't initiate).
+`ConnectedPeer` — the same abstraction, but with no `connect()` (the server doesn't initiate).
 
 ---
 
@@ -39,7 +39,7 @@ createPeer({ endpoint: "ws://..." });
 // E2EE via relay (SBRP)
 createPeer({
   endpoint: relayUrl, // from POST /api/sessions
-  negotiator: sbrpClientNegotiator({
+  negotiator: relayClientNegotiator({
     daemonId,
     sessionToken,
     identityKeyStore,
@@ -77,7 +77,7 @@ The subject identifies the message class; the envelope identifies the operation.
 A peer moves through states in a defined order. Understanding states matters when you handle
 errors or want to react to connection changes.
 
-```
+```text
 idle → connecting → negotiating → active
          ↑                          ↓
          └──── reconnecting ────────┘

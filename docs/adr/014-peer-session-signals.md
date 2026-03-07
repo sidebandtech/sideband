@@ -78,4 +78,4 @@ Returning an unsubscribe function gives the SDK precise lifecycle control: on ea
 - ADR-013: Peer SDK Core Design Decisions
 - `packages/runtime/src/session/types.ts` — `NegotiationResult`, `SessionSignal`
 - `packages/peer/src/peer.ts` — `handleSessionSignal`, `transition`
-- `packages/peer/src/listen.ts` — `AcceptedPeerImpl.handleSessionSignal`
+- `packages/peer/src/listen.ts` — `ConnectedPeerImpl.handleSessionSignal`

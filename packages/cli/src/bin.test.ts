@@ -2,9 +2,11 @@
 
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { hostname } from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "./bin.js";
+import { resolveDaemonName } from "./commands/start.js";
 
 const binPath = join(import.meta.dirname, "bin.ts");
 
@@ -59,6 +61,7 @@ describe("parseArgs", () => {
       expect(parseArgs(argv("--api-key", "sbnd_dak_abc"))).toEqual({
         command: "start",
         apiKey: "sbnd_dak_abc",
+        name: undefined,
         json: false,
       });
     });
@@ -67,6 +70,7 @@ describe("parseArgs", () => {
       expect(parseArgs(argv("--api-key=sbnd_dak_abc"))).toEqual({
         command: "start",
         apiKey: "sbnd_dak_abc",
+        name: undefined,
         json: false,
       });
     });
@@ -75,6 +79,7 @@ describe("parseArgs", () => {
       expect(parseArgs(argv("--json"))).toEqual({
         command: "start",
         apiKey: undefined,
+        name: undefined,
         json: true,
       });
     });
@@ -83,6 +88,7 @@ describe("parseArgs", () => {
       expect(parseArgs(argv("--json", "--api-key=key123"))).toEqual({
         command: "start",
         apiKey: "key123",
+        name: undefined,
         json: true,
       });
     });
@@ -91,6 +97,7 @@ describe("parseArgs", () => {
       expect(parseArgs(argv())).toEqual({
         command: "start",
         apiKey: undefined,
+        name: undefined,
         json: false,
       });
     });
@@ -109,6 +116,77 @@ describe("parseArgs", () => {
       expect(() => parseArgs(argv("--api-key"))).toThrow(
         "--api-key requires a value",
       );
+    });
+
+    it("throws when --api-key is followed by another flag (not a value)", () => {
+      expect(() => parseArgs(argv("--api-key", "--json"))).toThrow(
+        "--api-key requires a value",
+      );
+    });
+
+    it('parses --name "My Dev"', () => {
+      expect(parseArgs(argv("--name", "My Dev"))).toMatchObject({
+        command: "start",
+        name: "My Dev",
+      });
+    });
+
+    it("parses --name=MyDev", () => {
+      expect(parseArgs(argv("--name=MyDev"))).toMatchObject({
+        command: "start",
+        name: "MyDev",
+      });
+    });
+
+    it("throws when --name has no value", () => {
+      expect(() => parseArgs(argv("--name"))).toThrow(
+        "--name requires a value",
+      );
+    });
+
+    it("throws when --name is followed by another flag (not a value)", () => {
+      expect(() => parseArgs(argv("--name", "--json"))).toThrow(
+        "--name requires a value",
+      );
+    });
+
+    it('parseArgs preserves --name "" as empty string (fallback handled by resolveDaemonName)', () => {
+      expect(parseArgs(argv("--name", ""))).toMatchObject({
+        command: "start",
+        name: "",
+      });
+    });
+
+    it('parseArgs preserves --name "  " as whitespace string', () => {
+      expect(parseArgs(argv("--name", "  "))).toMatchObject({
+        command: "start",
+        name: "  ",
+      });
+    });
+
+    it("parses --name= (equals form with empty value) as empty string", () => {
+      expect(parseArgs(argv("--name="))).toMatchObject({
+        command: "start",
+        name: "",
+      });
+    });
+  });
+
+  describe("resolveDaemonName", () => {
+    it("returns provided name as-is", () => {
+      expect(resolveDaemonName("My Dev")).toBe("My Dev");
+    });
+
+    it("falls back to hostname for blank string", () => {
+      expect(resolveDaemonName("")).toBe(hostname());
+    });
+
+    it("falls back to hostname for whitespace-only string", () => {
+      expect(resolveDaemonName("   ")).toBe(hostname());
+    });
+
+    it("falls back to hostname when undefined", () => {
+      expect(resolveDaemonName(undefined)).toBe(hostname());
     });
   });
 

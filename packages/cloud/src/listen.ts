@@ -13,17 +13,17 @@
  *       │ demultiplexes frames by SessionID
  *       │ HandshakeInit (new SID) → creates RelayVirtualConn → handler(vconn)
  *       ↓
- *   sbrpDaemonNegotiator (per session)
+ *   relayDaemonNegotiator (per session)
  *       ↓
- *   AcceptedPeer → onConnection(peer)
+ *   ConnectedPeer → onConnection(peer)
  *
  * The transport reconnects automatically when the relay WebSocket drops,
  * fetching a fresh presence token on each attempt.
  */
 
-import type { AcceptedPeer, PeerServer } from "@sideband/peer";
+import type { ConnectedPeer, PeerServer } from "@sideband/peer";
 import { listen as peerListen } from "@sideband/peer/server";
-import { sbrpDaemonNegotiator } from "@sideband/peer/sbrp";
+import { relayDaemonNegotiator } from "@sideband/peer/sbrp";
 import type {
   CloseInfo,
   CloseOptions,
@@ -87,7 +87,7 @@ class SessionClosedError extends Error {
  * Server returned by the cloud `listen()`. Extends `PeerServer` with
  * cloud-specific identifiers and the Quick Connect code factory.
  */
-export interface CloudPeerServer extends PeerServer {
+export interface CloudServer extends PeerServer {
   /** Daemon ID extracted from the presence token (`did` JWT claim). */
   readonly daemonId: string;
   /** Relay WebSocket base URL used by this daemon (e.g. `wss://relay.sideband.cloud`). */
@@ -116,7 +116,7 @@ export interface ListenOptions {
   /** Ed25519 identity keypair for SBRP daemon authentication. */
   identityKeyPair: IdentityKeyPair;
   /** Called for each accepted client session. */
-  onConnection: (peer: AcceptedPeer) => void | Promise<void>;
+  onConnection: (peer: ConnectedPeer) => void | Promise<void>;
   /** Defaults to `"https://api.sideband.cloud"`. */
   apiUrl?: string;
   /** Defaults to `"wss://relay.sideband.cloud"`. */
@@ -163,7 +163,7 @@ export interface ListenOptions {
  * });
  * ```
  */
-export async function listen(opts: ListenOptions): Promise<CloudPeerServer> {
+export async function listen(opts: ListenOptions): Promise<CloudServer> {
   const relayBase = opts.relayUrl ?? "wss://relay.sideband.cloud";
 
   // Fetch initial token eagerly: (1) validates API key credentials immediately
@@ -250,7 +250,7 @@ export async function listen(opts: ListenOptions): Promise<CloudPeerServer> {
 
   const server = await peerListen({
     transport,
-    negotiator: sbrpDaemonNegotiator({
+    negotiator: relayDaemonNegotiator({
       daemonId: asDaemonId(daemonId),
       identityKeyPair: opts.identityKeyPair,
     }),
@@ -572,7 +572,7 @@ async function runMux(
         vconn = new RelayVirtualConn(sid, relayConn, onError);
         sessions.set(sid, vconn);
         vconn.whenClosed().then(() => sessions.delete(sid));
-        // handler() runs sbrpDaemonNegotiator.negotiate(vconn) asynchronously.
+        // handler() runs relayDaemonNegotiator.negotiate(vconn) asynchronously.
         // SessionClosedError is an expected teardown race — suppress it.
         // All other errors indicate a bug in the session handler and are surfaced.
         Promise.resolve(handler(vconn)).catch((err) => {
@@ -586,7 +586,7 @@ async function runMux(
     }
   } finally {
     // Relay connection closed — terminate all sessions so their inbound
-    // iterators complete and AcceptedPeer instances transition to "closed".
+    // iterators complete and ConnectedPeer instances transition to "closed".
     for (const [, conn] of sessions) conn.terminate(false);
     sessions.clear();
   }

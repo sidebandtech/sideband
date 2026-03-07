@@ -65,7 +65,7 @@ Optional root files (not shown): AI helper notes (`CLAUDE.md`), lockfiles (`bun.
 • Depends on: none (uses @noble/\* for crypto). Used by: relay implementations, browser/daemon apps.
 
 `@sideband/cloud` — relay.sideband.cloud integration
-• `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudPeerServer` with `daemonId`, `relayUrl`, and `createQuickConnect()` for zero-infrastructure Quick Connect URLs.
+• `connect()` (client) and `listen()` (daemon). `listen()` returns `CloudServer` with `daemonId`, `relayUrl`, and `createQuickConnect()` for zero-infrastructure Quick Connect URLs.
 • Depends on: peer, secure-relay, transport-ws.
 
 `sideband` — Daemon CLI
