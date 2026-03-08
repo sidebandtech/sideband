@@ -40,6 +40,7 @@ import {
   asDaemonId,
   decodeControl,
   decodeFrame,
+  encodePing,
   encodePong,
   fromWireControlCode,
   FrameType,
@@ -492,6 +493,14 @@ async function runMux(
   let consecutiveDecodeErrors = 0;
   const MAX_CONSECUTIVE_DECODE_ERRORS = 10;
 
+  // Relay liveness sweep closes connections idle for 90s (checked every 30s).
+  // Send SBRP Ping every 45s so the daemon's relay connection never goes idle.
+  const ping = encodePing();
+  const keepalive = setInterval(() => {
+    relayConn.send(ping).catch(() => clearInterval(keepalive));
+  }, 45_000);
+  (keepalive as { unref?: () => void }).unref?.();
+
   try {
     for await (const bytes of relayConn.inbound) {
       let frame: ReturnType<typeof decodeFrame>;
@@ -585,6 +594,7 @@ async function runMux(
       vconn.deliver(bytes);
     }
   } finally {
+    clearInterval(keepalive);
     // Relay connection closed — terminate all sessions so their inbound
     // iterators complete and ConnectedPeer instances transition to "closed".
     for (const [, conn] of sessions) conn.terminate(false);

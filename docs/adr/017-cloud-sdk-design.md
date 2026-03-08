@@ -133,6 +133,7 @@ stale even if the daemon ID was omitted from `ListenOptions`.
 
 - ADR-013: Peer SDK Core Design Decisions
 - ADR-016: Relay Server Design
+- ADR-019: Cloud SDK Trust Policy Defaults
 - `packages/runtime/src/session/types.ts` — `Negotiator`, `NegotiatorConnectionParams`
 - `packages/cloud/src/connect.ts` — `CloudClientNegotiator`
 - `packages/cloud/src/listen.ts` — `RelayDaemonTransport`, `RelayVirtualConn`, `runMux`, `CloudServer`

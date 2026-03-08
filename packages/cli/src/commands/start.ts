@@ -3,7 +3,7 @@
 import type { CloudServer, ConnectedPeer } from "@sideband/cloud";
 import { listen } from "@sideband/cloud";
 import { promises as fsPromises, readFileSync } from "node:fs";
-import { hostname } from "node:os";
+import { arch, hostname, platform } from "node:os";
 import { loadIdentityKeyPair } from "../config.js";
 import { fsDisplayName, fsMeta, registerFsHandlers } from "../handlers/fs.js";
 import type { MethodMeta } from "../handlers/rpc-meta.js";
@@ -108,6 +108,10 @@ export async function runStart(args: StartArgs): Promise<void> {
           daemonId: server.daemonId,
           name,
           version: cliVersion,
+          platform: platform(),
+          arch: arch(),
+          nodeVersion: process.version,
+          uptime: process.uptime(),
           capabilities,
         };
       });

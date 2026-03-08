@@ -23,7 +23,7 @@ import type {
 import { classifySbrpError, relayClientNegotiator } from "@sideband/peer/sbrp";
 import type { IdentityKeyStore } from "@sideband/peer/sbrp";
 import type { TransportConnection } from "@sideband/transport";
-import { asDaemonId } from "@sideband/secure-relay";
+import { asDaemonId, encodePing } from "@sideband/secure-relay";
 import {
   classifyApiError,
   CloudApiError,
@@ -98,16 +98,20 @@ interface ConnectOptionsAccount extends ConnectOptionsCommon {
 export type ConnectOptions =
   | ((ConnectOptionsQC | ConnectOptionsAccount) & {
       /**
-       * TOFU trust policy. Defaults to `"auto"` in the cloud context because
-       * the control plane has already authenticated the daemon via API key at
-       * registration time.
+       * TOFU trust policy. Defaults to `"auto"` for both auth paths because
+       * the relay's API key auth provides a baseline trust anchor — the daemon
+       * identity is control-plane-registered, not arbitrary.
        *
-       * ⚠ `"auto"` weakens TOFU guarantees: it silently re-pins on identity
-       * mismatch, making it TOFR (Trust On First Registration) rather than
-       * strict TOFU. Use `"prompt"` or `"pinned-only"` for higher-assurance scenarios.
+       * ⚠ `"auto"` is TOFR (Trust On First Registration): it accepts any
+       * identity on first connect and silently re-pins on mismatch. Use
+       * `"pinned-only"` when you have a pre-populated `identityKeyStore`
+       * (it rejects immediately if no key is pinned), or `"prompt"` to let
+       * the user approve first connections and mismatches interactively.
        */
       trustPolicy?: "auto" | "pinned-only";
+      /** No-op unless `trustPolicy === "prompt"`. */
       onFirstConnection?: (info: { fingerprint: string }) => Promise<boolean>;
+      /** No-op unless `trustPolicy === "prompt"`. */
       onIdentityMismatch?: (info: {
         expectedFingerprint: string;
         receivedFingerprint: string;
@@ -211,6 +215,8 @@ export class CloudClientNegotiator {
   private qcRedeemed = false;
   /** DaemonId resolved from the QC redeem response; undefined in account path. */
   private resolvedDaemonId: string | undefined;
+  /** Active keepalive interval — cleared by terminate() before transport close. */
+  private keepalive: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly opts: ConnectOptions) {}
 
@@ -307,10 +313,30 @@ export class CloudClientNegotiator {
             onFirstConnection: opts.onFirstConnection,
             onIdentityMismatch: opts.onIdentityMismatch,
           });
-    return inner.negotiate(transport);
+    const result = await inner.negotiate(transport);
+    // Relay closes idle connections after 90s (liveness sweep every 30s).
+    // Send SBRP Ping every 45s to keep lastSeenAt fresh. Ping is sent on the
+    // raw transport — the relay echoes Pong and does not forward it to the daemon.
+    const ping = encodePing();
+    // Close over `timer` (not `this.keepalive`) so the catch handler always
+    // clears the interval it owns — not whatever `this.keepalive` points to
+    // at the time the async send fails (which may be a newer connection's timer).
+    const timer = setInterval(() => {
+      transport.send(ping).catch(() => {
+        clearInterval(timer);
+        if (this.keepalive === timer) this.keepalive = null;
+      });
+    }, 45_000);
+    (timer as { unref?: () => void }).unref?.();
+    this.keepalive = timer;
+    return result;
   }
 
   async terminate(transport: TransportConnection): Promise<void> {
+    if (this.keepalive !== null) {
+      clearInterval(this.keepalive);
+      this.keepalive = null;
+    }
     try {
       await transport.close();
     } catch {

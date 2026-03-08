@@ -4,11 +4,15 @@
  * Output formatting for the Sideband CLI.
  *
  * Human mode (default): indented, readable text to stdout; errors to stderr.
- * JSON mode (--json): NDJSON to stdout (one JSON object per line); errors to stderr.
+ * JSON mode (--json): NDJSON to stdout (one JSON object per line); errors go
+ * to stdout as `{ event: "error" }` AND to stderr as a human-readable mirror
+ * — stdout is the authoritative stream for automation; stderr is best-effort.
  *
  * Activity lines use a consistent format: `  {sigil} {message} [{HH:MM:SS}]`
  * Sigils: + connected, - disconnected, → RPC call, ← echo reply, ⚠ warning.
  */
+
+import encodeQR from "qr";
 
 function timestamp(): string {
   return new Date().toTimeString().slice(0, 8); // HH:MM:SS
@@ -52,11 +56,44 @@ export function printReady(info: ReadyInfo): void {
     "",
     `  Quick Connect: ${info.quickConnectUrl}`,
     `  Code:          ${info.quickConnectCode}`,
-    "",
-    "  Waiting for connections...",
-    "",
   );
-  process.stdout.write(lines.join("\n"));
+  process.stdout.write(lines.join("\n") + "\n");
+  printQr(info.quickConnectUrl);
+  process.stdout.write("\n  Waiting for connections...\n\n");
+}
+
+/**
+ * Print a QR code for the given URL to stdout.
+ *
+ * Skipped when the terminal is too narrow to fit the QR (matrix width + 2-char
+ * left margin) or when `encodeQR` throws — startup must not fail due to QR rendering.
+ *
+ * Renders using Unicode half-block characters (▀▄█ ) to halve the height —
+ * full-size QRs for URLs of this length are ~35 lines, too tall for most
+ * terminal windows. Works on both light and dark terminal themes without ANSI
+ * color codes (contrast comes from the block glyph shapes, not background color).
+ */
+export function printQr(url: string): void {
+  try {
+    const matrix = encodeQR(url, "raw");
+    const w = matrix[0]?.length ?? 0;
+    // Guard after computing w: actual rendered width is w + 2 (left margin).
+    // A line-wrapped QR is unscannable, so skip rather than render partially.
+    if ((process.stdout.columns ?? 0) < w + 2) return;
+    const rows: string[] = ["\n  Scan to connect:"];
+    for (let y = 0; y < matrix.length; y += 2) {
+      let row = "  ";
+      for (let x = 0; x < w; x++) {
+        const top = matrix[y]?.[x] ?? false;
+        const bot = matrix[y + 1]?.[x] ?? false;
+        row += top && bot ? "█" : top ? "▀" : bot ? "▄" : " ";
+      }
+      rows.push(row);
+    }
+    process.stdout.write(rows.join("\n") + "\n");
+  } catch {
+    // Never let QR rendering abort startup
+  }
 }
 
 export function printConnected(peerId: string): void {
