@@ -29,7 +29,7 @@ sideband --version                # print version
 sideband --help                   # show help
 ```
 
-```
+```text
 $ npx sideband
 
   Sideband daemon running
@@ -39,6 +39,14 @@ $ npx sideband
   Quick Connect: https://sideband.cloud/connect#qc=abcd-efgh-ijkl
   Code:          abcd-efgh-ijkl
 
+  Scan to connect:
+  ████████████████████████████████
+  ██ ▄▄▄▄▄ █▀▄ █▄▀▄▀▄▄▀ █ ▄▄▄▄▄ ██
+  ██ █   █ █▀▀▄█▄▄█▄▀ ▀▄█ █   █ ██
+  ██ █▄▄▄█ █▀▄▀▄▀▀▄▀▄▄▄▀█ █▄▄▄█ ██
+  ██▄▄▄▄▄▄▄█▄█ █▄▀▄▄█ █ █▄▄▄▄▄▄▄██
+  ████████████████████████████████
+
   Waiting for connections...
 
   + Connected (8f3kN2p1) [12:34:05]
@@ -46,6 +54,10 @@ $ npx sideband
   → $sideband/info [12:34:07]
   - Disconnected (8f3kN2p1) [12:34:12]
 ```
+
+A QR code is rendered below the Quick Connect URL when the terminal is wide enough to fit
+it without line-wrapping (skipped silently otherwise). In `--json` mode, QR rendering is
+disabled — use the `quickConnectUrl` field from the `ready` event instead.
 
 ## API key resolution
 
@@ -79,7 +91,9 @@ Two methods are always available under the reserved `$sideband/` namespace:
 {"event":"error","message":"Quick Connect renewal failed: rate limited"}
 ```
 
-Errors are written to stderr in both modes.
+In human mode, errors go to stderr. In `--json` mode, errors are emitted as
+`{ event: "error" }` to stdout (authoritative for automation) and also written to stderr
+as a human-readable mirror.
 
 ## Quick Connect renewal
 

@@ -24,6 +24,7 @@ This section documents significant architectural decisions for the Sideband proj
 | [016](./016-relay-server-design.md)                   | Relay Server Design                   | Accepted |
 | [017](./017-cloud-sdk-design.md)                      | Cloud SDK Design                      | Accepted |
 | [018](./018-daemon-capabilities.md)                   | Daemon Built-in Capabilities          | Accepted |
+| [019](./019-cloud-sdk-trust-policy.md)                | Cloud SDK Trust Policy Defaults       | Accepted |
 
 ## Creating a new ADR
 
