@@ -1,5 +1,16 @@
 # @sideband/cloud
 
+## 0.6.1
+
+### Patch Changes
+
+- [#56](https://github.com/sidebandtech/sideband/pull/56) [`00fca3e`](https://github.com/sidebandtech/sideband/commit/00fca3eadceb2bb92990e0fbcd608ea5ceae232c) Thanks [@koistya](https://github.com/koistya)! - Fix relay keepalive lifecycle on both client and daemon sides.
+  - **Daemon (`listen`):** add SBRP Ping every 45s in `runMux` to prevent the relay from
+    closing idle daemon connections (relay sweeps at 90s; cleared in `finally` on disconnect)
+  - **Client (`connect`):** fix keepalive timer race — capture interval handle in a local
+    `const timer` so a stale in-flight `send` failure from a previous connection cannot clear
+    the active connection's timer; `terminate()` now clears explicitly before transport close
+
 ## 0.6.0
 
 ### Minor Changes

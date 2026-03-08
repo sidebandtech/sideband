@@ -1,5 +1,21 @@
 # sideband
 
+## 0.6.2
+
+### Patch Changes
+
+- [#56](https://github.com/sidebandtech/sideband/pull/56) [`00fca3e`](https://github.com/sidebandtech/sideband/commit/00fca3eadceb2bb92990e0fbcd608ea5ceae232c) Thanks [@koistya](https://github.com/koistya)! - Print a QR code in the terminal at daemon startup alongside the Quick Connect URL.
+  - Renders below the URL/code block using Unicode half-block characters (`▀▄█ `) — halves
+    the height vs full-size QR, works on light and dark terminals without ANSI color codes
+  - Skipped when the terminal is too narrow to fit the QR without line-wrapping (dynamic
+    guard based on actual matrix width + 2-char left margin)
+  - Silently skipped on error — QR rendering never blocks startup
+  - Not reprinted on QC renewal (would spam the terminal); only URL + code are shown
+  - Zero new transitive dependencies (`qr` package, 0 deps, 7 KB gzipped)
+
+- Updated dependencies [[`00fca3e`](https://github.com/sidebandtech/sideband/commit/00fca3eadceb2bb92990e0fbcd608ea5ceae232c)]:
+  - @sideband/cloud@0.6.1
+
 ## 0.6.1
 
 ### Patch Changes
